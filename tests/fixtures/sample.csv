@@ -1,0 +1,5 @@
+Property Number,Owner Name,School District,Location Address,Amount,View Property
+01-0000999.000,DOE JOHN   JANE,CAMBRIDGE CSD,"412 MAPLE ST  
+CAMBRIDGE OH 43725",4438.50,https://example.gov/Account/Index?Property_ID=1&Tax_Year=2025
+02-0000123.000,SMITH MARY,EAST MUSKINGUM LSD,"CABIN HILL RD  
+NEW CONCORD OH 43762",73.33,https://example.gov/Account/Index?Property_ID=2&Tax_Year=2025

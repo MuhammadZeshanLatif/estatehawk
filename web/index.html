@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EstateHawk</title>
+<meta name="theme-color" content="#14532D">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<link rel="stylesheet" href="/static/styles.css">
+<script src="/static/vendor/leaflet.js"></script>
+<script src="/static/vendor/chart.umd.js"></script>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <a class="brand" href="#/deals"><img src="/static/icon.svg" alt=""><span>EstateHawk</span></a>
+    <nav id="nav"></nav>
+    <div class="plan-card" id="planCard"></div>
+  </aside>
+  <div id="main">
+    <header id="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menu"></button>
+      <div class="search" id="globalSearch">
+        <span class="i i-search"></span>
+        <input id="searchInput" placeholder="Search by address, owner, county, or APN..." autocomplete="off">
+        <kbd>Ctrl K</kbd>
+        <div class="search-results" id="searchResults"></div>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="helpBtn" aria-label="Help"><span class="i i-help"></span></button>
+        <button class="icon-btn" id="bellBtn" aria-label="Alerts"><span class="i i-bell"></span><b class="dot" id="bellDot"></b></button>
+        <div class="dropdown" id="bellMenu"></div>
+        <button class="user" id="userBtn"><span class="avatar" id="avatar">A</span><span id="userName">Ashhad</span><span class="i i-chev"></span></button>
+        <div class="dropdown" id="userMenu"></div>
+      </div>
+    </header>
+    <div id="banner"></div>
+    <main id="view"></main>
+  </div>
+  <nav id="tabbar"></nav>
+</div>
+<div id="modal" class="modal" hidden><div class="modal-card" id="modalCard"></div></div>
+<div id="toasts"></div>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
