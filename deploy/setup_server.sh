@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # EstateHawk server setup for Ubuntu 22.04/24.04 (Oracle Cloud Always Free, ARM or AMD).
-# Run once on the server:   bash setup_server.sh <github-repo-ssh-url> <cloudflare-tunnel-token>
-# Example:                  bash setup_server.sh git@github.com:Arius-Automation/estatehawk.git eyJhIjoi...
+# Run once on the server:   bash setup_server.sh <github-repo-ssh-url> <site-name>
+# Example:                  bash setup_server.sh git@github.com:MuhammadZeshanLatif/estatehawk.git estatehawk.duckdns.org
+# The DuckDNS token is asked on screen (it is never stored in GitHub).
 set -euo pipefail
 REPO="${1:?GitHub repo SSH url}"
-CF_TOKEN="${2:-}"
+SITE="${2:?site name, e.g. estatehawk.duckdns.org}"
 APP=/opt/estatehawk
 U=$(whoami)
 
@@ -82,14 +83,39 @@ echo "$U ALL=(root) NOPASSWD: /usr/bin/systemctl restart estatehawk" | sudo tee 
 sudo systemctl daemon-reload
 sudo systemctl enable --now estatehawk estatehawk-update.timer
 
-echo "== Cloudflare tunnel"
-if [ -n "$CF_TOKEN" ]; then
-  ARCH=$(dpkg --print-architecture)
-  curl -fsSL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$ARCH.deb"
-  sudo dpkg -i /tmp/cloudflared.deb
-  sudo cloudflared service install "$CF_TOKEN" || true
+echo "== open web ports 80/443 on the server firewall (also add them in Oracle: VCN > Security List > Ingress)"
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT || true
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT || true
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent && sudo netfilter-persistent save || true
+
+echo "== DuckDNS (keeps $SITE pointing at this server)"
+if [[ "$SITE" == *.duckdns.org ]]; then
+  SUB=${SITE%%.duckdns.org}
+  if [ ! -f ~/.duckdns_token ]; then
+    read -rsp "Paste your DuckDNS token (from duckdns.org, top of the page): " TOK; echo
+    echo "$TOK" > ~/.duckdns_token; chmod 600 ~/.duckdns_token
+  fi
+  cat > ~/duckdns.sh <<DD
+#!/usr/bin/env bash
+curl -fsS "https://www.duckdns.org/update?domains=$SUB&token=\$(cat ~/.duckdns_token)&ip=" -o ~/duckdns.log
+DD
+  chmod +x ~/duckdns.sh && ~/duckdns.sh && echo "DuckDNS: $(cat ~/duckdns.log)"
+  ( crontab -l 2>/dev/null | grep -v duckdns.sh; echo "*/5 * * * * $HOME/duckdns.sh" ) | crontab -
 fi
+
+echo "== Caddy (free HTTPS certificate, renews by itself)"
+sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https gnupg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+sudo apt-get update -y && sudo apt-get install -y caddy
+sudo tee /etc/caddy/Caddyfile >/dev/null <<CF
+$SITE {
+  encode gzip
+  reverse_proxy 127.0.0.1:8000
+}
+CF
+sudo systemctl reload caddy || sudo systemctl restart caddy
 
 sleep 3
 curl -s -o /dev/null -w "local check: HTTP %{http_code}\n" http://127.0.0.1:8000/api/auth/me || true
-echo "Done. Open your domain and create the admin account. Put GEMINI_API_KEY in $APP/.env, then: sudo systemctl restart estatehawk"
+echo "Done. Open https://$SITE and create the admin account. Put GEMINI_API_KEY in $APP/.env, then: sudo systemctl restart estatehawk"
