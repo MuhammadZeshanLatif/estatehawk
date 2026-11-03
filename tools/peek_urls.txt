@@ -1,10 +1,6 @@
-https://www.hamiltoncountyauditor.org/download/Delinquent/unpaid.xlsx
-https://www.hamiltoncountyauditor.org/download/Delinquent/AdvertisedDelinquentFile2025.xlsx
-https://allencountyohauditor.com/wp-content/uploads/2025/10/Final-Delq-Adv-List.xlsx
-https://akronlegalnews.com/notices/delinquent_taxes_detail/8011
-https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm
-https://www.co.marion.oh.us/elected_offices/auditor/taxes/delinquent_tax_list.php
-https://clintoncountyauditor.org/api/Media?p=Delinquent%20Advertising/Advertising_2nd%20Final%20Run.pdf
-https://www.knoxcountyauditor.org/media/14034/delinquent-tax-ad-18-22.pdf
-https://www.clermontauditor.org/downloads/
-https://www.starkcountyohio.gov/government/offices/treasurer/departments/delinquent_tax_and_foreclosures/index.php
+https://www.starkcountyohio.gov/Treasurer/Delinquent%20Tax%20and%20Foreclosures/2026-05-01.Delq_Taxpayer_List_AllThatOwe5k_20260430.xlsx
+https://wedge3.hcauditor.org/view/re/0010003001500/2025/summary
+https://www.hamiltoncountyauditor.org/download/
+https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm?type=delq
+https://allencountyohpropertytax.com/
+https://www.co.marion.oh.us/news_detail_T4_R90.php
