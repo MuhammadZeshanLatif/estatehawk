@@ -34,7 +34,7 @@ def main(argv):
         print([r["id"] for r in db.q("SELECT id FROM counties WHERE enabled=1 AND demo=0 AND sync_status='never' ORDER BY id")])
         return 0
     if cmd == "county":
-        res = jobs.sync_county(int(argv[2]))
+        res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)
         return 0 if res.get("ok") else 1
     print(__doc__)

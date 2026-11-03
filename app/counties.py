@@ -24,5 +24,10 @@ KNOWN_ISSG = [
     {"name": "Morgan County", "state": "OH", "host": "morgan-treasurer-public.issg.io", "lat": 39.62, "lng": -81.85, "verified": True},
     {"name": "Ottawa County", "state": "OH", "host": "ottawa-auditor-public.issg.io", "lat": 41.54, "lng": -83.10, "verified": True},
     {"name": "Seneca County", "state": "OH", "host": "seneca-auditor-public.issg.io", "lat": 41.12, "lng": -83.13, "verified": True},
+    {"name": "Huron County", "state": "OH", "host": "www.huroncountytreasurer.org", "lat": 41.15, "lng": -82.60, "verified": True},
+    # counties that publish a downloadable list file instead of ISSG (app/scraper/files.py)
+    {"name": "Hamilton County", "state": "OH", "host": "file:hamilton", "lat": 39.17, "lng": -84.54, "verified": True},
+    {"name": "Stark County", "state": "OH", "host": "file:stark", "lat": 40.81, "lng": -81.37, "verified": True},
+    {"name": "Allen County", "state": "OH", "host": "file:allen", "lat": 40.77, "lng": -84.11, "verified": True},
     {"name": "Wayne County", "state": "OH", "host": "wayne-treasurer-public.issg.io", "lat": 40.83, "lng": -81.89, "verified": True},
 ]

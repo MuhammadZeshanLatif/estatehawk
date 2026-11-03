@@ -6,6 +6,7 @@ Each source returns rows in the same shape as the ISSG scraper:
 plus optional extras (mail_address, mail_zip, land_use, appraised_total, land_value, improvement_value).
 """
 import datetime as dt
+import html as htmllib
 import io
 import re
 import time
@@ -41,8 +42,8 @@ def _split_addr(text):
         return t, "", ""
     street, city, z = m.group(1).strip(), m.group(2).strip(), m.group(3)
     # street suffixes run into the city name ("VINE ST W ALLIANCE"): split on the last street word
-    sm = re.match(r"(.*\b(?:ST|AVE|RD|DR|LN|CT|BLVD|PL|WAY|PIKE|HWY|CIR|TER|PKWY|TRL|RUN|SQ)\b(?:\s+[NSEW])?)\s+(.*)$", f"{street} {city}")
-    if sm and not re.search(r"\b(?:ST|AVE|RD|DR|LN|CT|BLVD)\b", city):
+    sm = re.match(r"(.*\b(?:ST|AVE|RD|DR|LN|CT|BLVD|PL|WAY|PIKE|HWY|CIR|TER|PKWY|TRL|RUN|SQ)\b(?:\s+(?:NE|NW|SE|SW|[NSEW]))?)\s+(.*)$", f"{street} {city}")
+    if sm and sm.group(2):
         street, city = sm.group(1), sm.group(2)
     return street, city, z
 
@@ -140,7 +141,7 @@ def parse_wedge(html):
     """DEVNET wEdge property summary (Hamilton and other wEdge counties)."""
     body = re.sub(r"<script.*?</script>|<style.*?</style>", " ", html, flags=re.S | re.I)
     toks = [t.strip() for t in re.split(r"<[^>]+>", body)]
-    toks = [re.sub(r"\s+", " ", t) for t in toks if t and t.strip() and not t.strip().startswith("(")]
+    toks = [re.sub(r"\s+", " ", htmllib.unescape(t)).strip() for t in toks if t and t.strip() and not t.strip().startswith("(")]
     val = {}
     for i, t in enumerate(toks[:-1]):
         if t not in val:
@@ -151,11 +152,6 @@ def parse_wedge(html):
     own = val.get("Owner Name and Address")
     if own:
         out["owner_full_name"] = own
-    mail = val.get("Tax Bill Mail Address") or own
-    if mail:
-        m = re.search(r"(\d+\s.*?)\s([A-Z .]+)\s(OH|[A-Z]{2})\s(\d{5})", mail)
-        if m:
-            out["mail_address"], out["mail_state"], out["mail_zip"] = f"{m.group(1)}, {m.group(2)}", m.group(3), m.group(4)
     num = lambda k: _num(val.get(k))
     out.update({"land_value": num("Market Land Value"), "improvement_value": num("Market Improvement Value"),
                 "appraised_total": num("Market Total Value"), "annual_tax": num("Total Tax"), "acres": num("Acreage"),
