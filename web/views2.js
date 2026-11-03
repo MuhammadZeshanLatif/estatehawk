@@ -99,7 +99,7 @@ export async function counties(el) {
   <div class="county-grid" id="cGrid"></div>`;
   // the status pill is also the "sync this county now" button (owner only); while syncing it spins
   const statusPill = (c) => {
-    const can = S.meta.super && c.sync_status !== 'syncing';
+    const can = S.meta.super;  // a sync cut off by a server restart can stay 'syncing': still clickable
     const p = ({ synced: ['p-green', 'check', 'Synced'], syncing: ['p-amber', 'refresh', 'Syncing'], error: ['p-red', 'alert', 'Error'], never: ['p-grey', 'refresh', 'Not synced'] })[c.sync_status] || ['p-grey', 'refresh', c.sync_status];
     return `<span class="pill ${p[0]} ${can ? 'sync-pill' : ''}" data-id="${c.id}" ${can ? `title="Click to sync ${esc(c.name)} now" style="cursor:pointer"` : ''}><span class="${c.sync_status === 'syncing' ? 'spin' : ''}" style="display:inline-flex">${ic(p[1], 13)}</span> ${esc(p[2])}</span>`;
   };
