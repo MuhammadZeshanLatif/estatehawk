@@ -249,7 +249,11 @@ def tx():
 
 def q(sql, args=()):
     with _lock:
-        return [dict(r) for r in con().execute(sql, args).fetchall()]
+        c = con()
+        rows = [dict(r) for r in c.execute(sql, args).fetchall()]
+        if PG:
+            c.commit()  # never leave a read transaction open: it would block table changes on deploy
+        return rows
 
 
 def q1(sql, args=()):
@@ -316,6 +320,12 @@ def columns(c, table):
 
 def migrate(c):
     """One-time upgrade of a single-team database to companies. Existing data becomes company #1 (EstateHawk HQ)."""
+    if PG and ("org_id" not in columns(c, "pipeline") or "org_id" not in columns(c, "users")):
+        # the previous app version may still hold an open read transaction; close it so the table changes can run
+        c.execute("""SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database()
+                     AND pid<>pg_backend_pid() AND state LIKE 'idle in transaction%'""").fetchall()
+        c.commit()
+        c.execute("SET lock_timeout = '60s'")
     for t in ("activities", "tasks", "offers", "users"):
         if "org_id" not in columns(c, t):
             c.execute(f"ALTER TABLE {t} ADD COLUMN org_id INTEGER")
