@@ -28,6 +28,7 @@ KNOWN_ISSG = [
     # counties that publish a downloadable list file instead of ISSG (app/scraper/files.py)
     {"name": "Hamilton County", "state": "OH", "host": "file:hamilton", "lat": 39.17, "lng": -84.54, "verified": True},
     {"name": "Stark County", "state": "OH", "host": "file:stark", "lat": 40.81, "lng": -81.37, "verified": True},
+    {"name": "Franklin County", "state": "OH", "host": "file:franklin", "lat": 39.97, "lng": -83.00, "verified": True},
     {"name": "Montgomery County", "state": "OH", "host": "file:montgomery", "lat": 39.75, "lng": -84.29, "verified": True},
     {"name": "Summit County", "state": "OH", "host": "file:summit", "lat": 41.13, "lng": -81.53, "verified": True},
     {"name": "Allen County", "state": "OH", "host": "file:allen", "lat": 40.77, "lng": -84.11, "verified": True},
