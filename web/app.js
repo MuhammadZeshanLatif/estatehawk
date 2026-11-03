@@ -38,6 +38,7 @@ const P = {
   layers: '<path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/>', locate: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/>',
   db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>', link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>', sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   print: '<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5z"/>', menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
@@ -91,10 +92,14 @@ export const streetView = (p) => `https://www.google.com/maps/@?api=1&map_action
 export const gmaps = (p) => `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`;
 
 export async function api(path, opts = {}) {
-  const o = { headers: { 'Content-Type': 'application/json' }, ...opts };
+  const o = { headers: { 'Content-Type': 'application/json', ...(S.viewOrg ? { 'X-Org': String(S.viewOrg) } : {}) }, ...opts };
   if (o.body && typeof o.body !== 'string') o.body = JSON.stringify(o.body);
   const r = await fetch(path, o);
   if (r.status === 401 && !path.startsWith('/api/auth/')) { showLogin(); throw new Error('Please log in'); }
+  if (r.status === 402) {
+    let j = {}; try { j = await r.clone().json(); } catch (e) { }
+    if (j.expired) { showExpired(j.detail); throw new Error(j.detail); }
+  }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch (e) { }
@@ -140,7 +145,7 @@ export function menu(anchor, items) {
 export function closeMenus() { $$('.dropdown.floating').forEach((d) => d.remove()); $$('.dropdown.open').forEach((d) => d.classList.remove('open')); }
 
 // ---------- global state ----------
-export const S = { meta: null, user: null, county: localStorage.getItem('eh_county') || 'all' };
+export const S = { meta: null, user: null, viewOrg: (() => { try { return +localStorage.getItem('eh_view_org') || null; } catch (e) { return null; } })(), county: localStorage.getItem('eh_county') || 'all' };
 export function setCounty(c) { S.county = String(c); try { localStorage.setItem('eh_county', S.county); } catch (e) { } }
 export async function refreshMeta() {
   S.meta = await api('/api/meta');
@@ -159,24 +164,38 @@ const NAV = [
   ['deals', 'Deals', 'home'], ['map', 'Map', 'map'], ['alerts', 'Alerts', 'bell'], ['counties', 'Counties', 'county'],
   ['outreach', 'Outreach', 'send'], ['reports', 'Reports', 'chart'], ['settings', 'Settings', 'gear'],
 ];
+export function setViewOrg(id) {
+  try { id ? localStorage.setItem('eh_view_org', String(id)) : localStorage.removeItem('eh_view_org'); } catch (e) { }
+  S.viewOrg = id || null; S.meta = null; location.hash = '#/deals'; location.reload();
+}
+
 function renderChrome() {
   const m = S.meta;
+  const nav = m.super ? NAV.concat([['admin', 'Admin', 'shield']]) : NAV;
   const route = location.hash.split('/')[1] || 'deals';
   const active = route === 'deal' ? 'deals' : route;
-  $('#nav').innerHTML = NAV.map(([k, l, i]) => `<a href="#/${k}" class="${active === k ? 'active' : ''}">${ic(i, 19)}<span>${l}</span>${k === 'alerts' && m.unread_alerts ? `<span class="badge">${m.unread_alerts}</span>` : ''}</a>`).join('');
+  $('#nav').innerHTML = nav.map(([k, l, i]) => `<a href="#/${k}" class="${active === k ? 'active' : ''}">${ic(i, 19)}<span>${l}</span>${k === 'alerts' && m.unread_alerts ? `<span class="badge">${m.unread_alerts}</span>` : ''}</a>`).join('');
   $('#tabbar').innerHTML = [['deals', 'Deals', 'home'], ['map', 'Map', 'map'], ['alerts', 'Alerts', 'bell'], ['outreach', 'Outreach', 'send'], ['settings', 'More', 'dots']]
     .map(([k, l, i]) => `<a href="#/${k}" class="${active === k || (k === 'settings' && ['counties', 'reports', 'settings'].includes(active)) ? 'active' : ''}">${ic(i, 21)}<span>${l}</span>${k === 'alerts' && m.unread_alerts ? `<span class="badge">${m.unread_alerts}</span>` : ''}</a>`).join('');
-  const limit = 1000;
-  $('#planCard').innerHTML = `<b>Pro Plan</b><div class="small muted">${m.counties.filter((c) => c.enabled).length} counties tracked</div>
-    <div class="bar"><i style="width:${Math.min(100, m.active / limit * 100)}%"></i></div>
-    <div class="small muted">${num(m.active)} / ${num(limit)} leads</div>
-    <a class="btn sm" style="width:100%;margin-top:12px" href="#/settings/billing">Upgrade Plan</a>`;
+  const o = m.org || {}, L = o.limits || {};
+  const cLimit = L.counties == null ? 'all' : L.counties;
+  $('#planCard').innerHTML = `<b>${esc(o.label || 'Plan')}${o.plan === 'internal' ? '' : ' plan'}</b>
+    <div class="small muted">${esc(o.name || '')}</div>
+    <div class="small muted" style="margin-top:6px">${cLimit === 'all' ? m.counties.length + ' counties' : m.counties.length + ' of ' + cLimit + ' counties'} · ${num(m.active)} leads</div>
+    ${L.reveals ? `<div class="bar"><i style="width:${Math.min(100, o.reveals_used / L.reveals * 100)}%"></i></div><div class="small muted">${o.reveals_used} / ${L.reveals} leads opened</div>` : ''}
+    ${o.plan === 'trial' ? `<div class="small" style="margin-top:4px;color:${o.days_left <= 3 ? '#B42318' : 'var(--ink2)'}">${o.days_left >= 0 ? o.days_left + ' days left in trial' : 'Trial ended'}</div>` : ''}
+    ${o.plan === 'internal' ? '' : `<button class="btn sm" style="width:100%;margin-top:12px" id="upBtn">Upgrade Plan</button>`}`;
+  if ($('#upBtn')) $('#upBtn').onclick = () => plansModal();
   const name = S.user?.name || m.settings.profile?.name || 'You';
   $('#userName').textContent = name;
   $('#avatar').textContent = name.trim()[0]?.toUpperCase() || 'U';
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
-  $('#banner').innerHTML = m.settings.demo ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
-    <a class="btn xs" style="margin-left:auto" href="#/settings/profile">Manage</a></div>` : '';
+  const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
+  const trial = o.plan === 'trial' && !viewing ? `<div class="demo-banner">${ic('lock', 16)}<span><b>Free trial:</b> ${o.days_left >= 0 ? o.days_left + ' days left' : 'ended'}. You can open ${o.reveals_left} more leads in full. Paid plans show every lead, owner and contact.</span><button class="btn xs primary" style="margin-left:auto" id="bannerUp">See plans</button></div>` : '';
+  $('#banner').innerHTML = viewing + trial + (m.settings.demo ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
+    <a class="btn xs" style="margin-left:auto" href="#/settings/profile">Manage</a></div>` : '');
+  if ($('#exitView')) $('#exitView').onclick = () => setViewOrg(null);
+  if ($('#bannerUp')) $('#bannerUp').onclick = () => plansModal();
 }
 
 function initTopbar() {
@@ -234,7 +253,8 @@ function initTopbar() {
       '-',
       { label: 'Setup wizard', icon: 'sparkle', fn: () => location.hash = '#/welcome' },
       '-',
-      ...(S.user?.role === 'admin' ? [{ label: 'Team & logins', icon: 'user', fn: teamModal }] : []),
+      ...(['admin', 'superadmin'].includes(S.user?.role) ? [{ label: 'Team & logins', icon: 'user', fn: teamModal }] : []),
+      ...(S.meta?.super ? [{ label: 'Admin panel', icon: 'shield', fn: () => location.hash = '#/admin' }] : []),
       { label: 'Change password', icon: 'sliders', fn: passwordModal },
       { label: 'Log out', icon: 'right', fn: async () => { await api('/api/auth/logout', { method: 'POST' }); location.reload(); } },
     ]);
@@ -288,6 +308,36 @@ export async function showLogin() {
   };
 }
 
+const CONTACT = 'zeeshanlatif.tech@gmail.com';
+export function plansModal(note = '') {
+  const P = (S.meta && S.meta.plans) || {};
+  const cur = S.meta?.org?.plan;
+  const feat = (k, p) => [p.counties == null ? 'All counties' : `${p.counties} ${p.counties > 1 ? 'counties' : 'county'}`,
+    p.users == null ? 'Unlimited users' : `${p.users} ${p.users > 1 ? 'users' : 'user'}`,
+    p.reveals ? `${p.reveals} leads in full` : 'Every lead in full: owner, address, contacts',
+    p.export ? 'CSV export + mail-merge letters' : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
+  modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">Online payment is coming soon. To upgrade now, contact us and we switch your plan the same day.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0">${Object.entries(P).map(([k, p]) => `
+      <div class="card card-pad" style="${k === cur ? 'border:2px solid var(--green)' : ''}"><b>${esc(p.label)}</b>
+        <div style="font-size:24px;font-weight:700;margin:6px 0">${p.price ? '$' + p.price : 'Free'}<span class="small muted" style="font-weight:400">${p.price ? ' / month' : ''}</span></div>
+        <ul class="small" style="padding-left:16px;margin:0;line-height:1.7">${feat(k, p).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+        ${k === cur ? '<div class="pill p-green tiny" style="margin-top:8px">Current plan</div>' : ''}</div>`).join('')}</div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Close</button>
+      <a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade: ' + (S.meta?.org?.name || ''))}">Contact us to upgrade</a></div>`);
+}
+
+export function showExpired(msg) {
+  ['#sidebar', '#topbar'].forEach((s) => { if ($(s)) $(s).style.display = 'none'; });
+  $('#view').innerHTML = `<div style="min-height:70vh;display:grid;place-items:center"><div class="card card-pad" style="max-width:460px;text-align:center">
+    <div style="margin-bottom:8px">${ic('lock', 32)}</div><h2>${esc(msg || 'Your free trial has ended')}</h2>
+    <p class="muted">Your deals, notes and offers are saved. Pick a plan and we turn your account back on right away.</p>
+    <div class="row" style="justify-content:center;gap:8px"><button class="btn" id="exPlans">See plans</button>
+    <a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade')}">Contact us</a>
+    <button class="btn" id="exOut">Log out</button></div></div></div>`;
+  $('#exPlans').onclick = () => plansModal();
+  $('#exOut').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); location.reload(); };
+}
+
 function passwordModal() {
   modal(`<h2>Change password</h2><div style="height:10px"></div>
     <div class="field"><label>Current password</label><input class="input" type="password" id="pOld"></div>
@@ -300,9 +350,10 @@ function passwordModal() {
   });
 }
 
-async function teamModal() {
+export async function teamModal() {
   const users = await api('/api/users');
-  modal(`<h2>Team & logins</h2><p class="muted small">Everyone here can log in. Contacts, notes and deals are shared with the whole team.</p>
+  const lim = S.meta?.org?.limits?.users;
+  modal(`<h2>Team & logins</h2><p class="muted small">Everyone here can log in to ${esc(S.meta?.org?.name || 'your company')}. Notes, deals and offers are shared inside your team only.${lim ? ` Your plan allows ${lim} user(s).` : ''}</p>
     <div style="max-height:260px;overflow:auto">${users.map((u) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line);gap:8px">
       <div class="grow" style="min-width:0"><b>${esc(u.name)}</b> <span class="pill tiny">${u.role}</span>${u.active ? '' : ' <span class="pill tiny" style="background:#FEE4E2;color:#B42318">blocked</span>'}<div class="tiny muted ellip">${esc(u.email)} · last login ${u.last_login ? esc(fmtDate(u.last_login)) : 'never'}</div></div>
       ${u.id === S.user.id ? '' : `<button class="btn xs" data-reset="${u.id}">Reset password</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button>`}</div>`).join('')}</div>
@@ -328,7 +379,7 @@ async function teamModal() {
 // ---------- router ----------
 const routes = {
   deals: V.deals, deal: V.deal, map: V.mapView, alerts: V.alerts, counties: V.counties, outreach: V.outreach,
-  reports: V.reports, settings: V.settings, welcome: V.welcome,
+  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin,
 };
 let cleanup = null;
 async function route() {
@@ -342,7 +393,9 @@ async function route() {
   }
   ['#sidebar', '#topbar'].forEach((s) => { if ($(s)) $(s).style.display = ''; });
   if (!S.meta) await refreshMeta();
-  if (!S.meta.settings.onboarded && name !== 'welcome') { location.hash = '#/welcome'; return; }
+  if (S.meta.org?.expired && !S.meta.super) { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
+  if (!S.meta.settings.onboarded && S.meta.super && name !== 'welcome') { location.hash = '#/welcome'; return; }
+  if (name === 'admin' && !S.meta.super) { location.hash = '#/deals'; return; }
   const fn = routes[name] || V.deals;
   document.body.classList.toggle('onboarding', name === 'welcome');
   $('#sidebar').style.display = name === 'welcome' ? 'none' : '';

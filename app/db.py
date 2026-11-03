@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   read INTEGER NOT NULL DEFAULT 0, sent INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS pipeline (
-  parcel_id TEXT PRIMARY KEY, stage TEXT NOT NULL, updated_at TEXT, fee REAL, closed_at TEXT
+  org_id INTEGER NOT NULL DEFAULT 1, parcel_id TEXT NOT NULL, stage TEXT NOT NULL, updated_at TEXT, fee REAL, closed_at TEXT,
+  PRIMARY KEY (org_id, parcel_id)
 );
 CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT, parcel_id TEXT, kind TEXT, value TEXT, norm TEXT, sources TEXT, note TEXT, created TEXT,
@@ -72,6 +73,19 @@ CREATE TABLE IF NOT EXISTS offers (
   subject TEXT, body TEXT, source TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS orgs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, plan TEXT NOT NULL DEFAULT 'trial',
+  status TEXT NOT NULL DEFAULT 'active', trial_ends TEXT, created TEXT, notes TEXT
+);
+CREATE TABLE IF NOT EXISTS org_counties (org_id INTEGER NOT NULL, county_id INTEGER NOT NULL, PRIMARY KEY (org_id, county_id));
+CREATE TABLE IF NOT EXISTS reveals (org_id INTEGER NOT NULL, parcel_id TEXT NOT NULL, ts TEXT, PRIMARY KEY (org_id, parcel_id));
+CREATE TABLE IF NOT EXISTS alert_reads (org_id INTEGER NOT NULL, alert_id INTEGER NOT NULL, PRIMARY KEY (org_id, alert_id));
+CREATE TABLE IF NOT EXISTS org_settings (org_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT, PRIMARY KEY (org_id, key));
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, org_id INTEGER, user_id INTEGER, user_name TEXT,
+  action TEXT, detail TEXT, ip TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit_log(ts);
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE COLLATE NOCASE, name TEXT, pw TEXT,
   role TEXT DEFAULT 'member', active INTEGER DEFAULT 1, created TEXT, last_login TEXT
@@ -83,8 +97,10 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
 # tables whose INSERT should hand back the new id, and the conflict keys used for INSERT OR REPLACE
-_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users"}
-_PK = {"parcels": ["id"], "snapshots": ["parcel_id", "date"], "pipeline": ["parcel_id"], "settings": ["key"]}
+_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users", "orgs", "audit_log"}
+_PK = {"parcels": ["id"], "snapshots": ["parcel_id", "date"], "pipeline": ["org_id", "parcel_id"], "settings": ["key"],
+       "org_counties": ["org_id", "county_id"], "reveals": ["org_id", "parcel_id"], "alert_reads": ["org_id", "alert_id"],
+       "org_settings": ["org_id", "key"]}
 
 
 def pg_sql(sql):
@@ -206,6 +222,7 @@ def con():
             c.execute(f"ALTER TABLE parcels ADD COLUMN IF NOT EXISTS {k} {t.replace('REAL', 'DOUBLE PRECISION')}")
         c.commit()
         _con = c
+        migrate(c)
     if _con is None:
         _con = connect()
         _con.executescript(SCHEMA)
@@ -214,6 +231,7 @@ def con():
             if k not in have:
                 _con.execute(f"ALTER TABLE parcels ADD COLUMN {k} {t}")
         _con.commit()
+        migrate(_con)
     return _con
 
 
@@ -263,14 +281,14 @@ DEFAULT_SETTINGS = {
 }
 
 
-def get_setting(key):
+def _get_global(key):
     r = q1("SELECT value FROM settings WHERE key=?", (key,))
     if r is None:
         return json.loads(json.dumps(DEFAULT_SETTINGS.get(key)))
     return json.loads(r["value"])
 
 
-def set_setting(key, value):
+def _set_global(key, value):
     run("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, json.dumps(value)))
 
@@ -286,3 +304,72 @@ def load_env():
         for k, v in (get_setting("_env") or {}).items():
             if v and not os.environ.get(k):
                 os.environ[k] = v
+
+
+# ------------------------------------------------------------------ companies (multi-tenant) migration
+def columns(c, table):
+    if PG:
+        return {r["column_name"] for r in c.execute(
+            "SELECT column_name::text AS column_name FROM information_schema.columns WHERE table_name=?", (table,)).fetchall()}
+    return {r[1] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def migrate(c):
+    """One-time upgrade of a single-team database to companies. Existing data becomes company #1 (EstateHawk HQ)."""
+    for t in ("activities", "tasks", "offers", "users"):
+        if "org_id" not in columns(c, t):
+            c.execute(f"ALTER TABLE {t} ADD COLUMN org_id INTEGER")
+    if "org_id" not in columns(c, "pipeline"):  # old single-team pipeline: rebuild with (org_id, parcel_id) key
+        c.execute("""CREATE TABLE pipeline_new (org_id INTEGER NOT NULL DEFAULT 1, parcel_id TEXT NOT NULL, stage TEXT NOT NULL,
+                     updated_at TEXT, fee REAL, closed_at TEXT, PRIMARY KEY (org_id, parcel_id))""")
+        c.execute("INSERT INTO pipeline_new(org_id,parcel_id,stage,updated_at,fee,closed_at) SELECT 1,parcel_id,stage,updated_at,fee,closed_at FROM pipeline")
+        c.execute("DROP TABLE pipeline")
+        c.execute("ALTER TABLE pipeline_new RENAME TO pipeline")
+    if not c.execute("SELECT id FROM orgs WHERE id=1").fetchone():
+        from datetime import datetime
+        c.execute("INSERT INTO orgs(id,name,plan,status,created) VALUES(?,?,?,?,?)",
+                  (1, "EstateHawk HQ", "internal", "active", datetime.now().isoformat(sep=" ", timespec="seconds")))
+        if PG:
+            c.execute("SELECT setval(pg_get_serial_sequence('orgs','id'), (SELECT MAX(id) FROM orgs))")
+        c.execute("UPDATE activities SET org_id=1 WHERE org_id IS NULL AND COALESCE(author,'') NOT IN ('Gemini','Google')")
+        c.execute("UPDATE tasks SET org_id=1 WHERE org_id IS NULL")
+        c.execute("UPDATE offers SET org_id=1 WHERE org_id IS NULL")
+        c.execute("UPDATE users SET org_id=1 WHERE org_id IS NULL")
+        c.execute("INSERT INTO alert_reads(org_id, alert_id) SELECT 1, id FROM alerts WHERE read=1")
+    if not c.execute("SELECT 1 FROM users WHERE role='superadmin'").fetchone():
+        first = c.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1").fetchone()
+        if first:
+            c.execute("UPDATE users SET role='superadmin', org_id=1 WHERE id=?", (first["id"] if PG else first[0],))
+    c.commit()
+
+
+# settings that each company keeps for itself (the rest are global, owned by the super admin)
+ORG_KEYS = {"profile", "offer_defaults", "alert_rules", "channels", "digest", "deal_types", "onboarded"}
+
+
+def _org():
+    from . import ctx
+    return ctx.org_id()
+
+
+def get_setting(key, org=None):
+    org = org or _org()
+    if key in ORG_KEYS and org and org != 1:
+        r = q1("SELECT value FROM org_settings WHERE org_id=? AND key=?", (org, key))
+        if r is not None:
+            return json.loads(r["value"])
+        if key == "onboarded":
+            return False
+        if key == "profile":
+            o = q1("SELECT name FROM orgs WHERE id=?", (org,))
+            return {"name": "", "company": o["name"] if o else "", "email": "", "phone": "", "city": "Ohio"}
+    return _get_global(key)
+
+
+def set_setting(key, value, org=None):
+    org = org or _org()
+    if key in ORG_KEYS and org and org != 1:
+        run("INSERT INTO org_settings(org_id,key,value) VALUES(?,?,?) ON CONFLICT(org_id,key) DO UPDATE SET value=excluded.value",
+            (org, key, json.dumps(value)))
+    else:
+        _set_global(key, value)

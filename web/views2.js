@@ -1,7 +1,7 @@
 // Alerts, Counties, Outreach, Reports, Settings, Onboarding
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb,
-  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync,
+  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg,
 } from './app.js';
 import { alertIcon, baseTiles, taskModal, scoreColor } from './views.js';
 
@@ -95,7 +95,7 @@ export async function counties(el) {
   el.innerHTML = `${hide ? '' : `<div class="info-banner">${ic('db', 18)}<span>Data refreshes every night from official county records.</span><span class="small muted" style="margin-left:auto">Last full update: ${S.meta.last_sync ? fmtDate(S.meta.last_sync, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet'}</span><button class="icon-btn" id="hideBanner" style="width:28px;height:28px">${ic('x', 15)}</button></div>`}
   <div class="page-head"><div><div class="row"><h1>My counties</h1><span class="pill p-green">${rows.filter((r) => r.enabled).length} tracking</span></div><div class="sub">Track tax-delinquent properties in your target counties.</div></div>
     <div class="right"><div data-sync-status></div><div class="search" style="width:260px">${ic('search', 16)}<input id="cQ" placeholder="Search counties..."></div>
-      <button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button></div></div>
+      ${S.meta.super ? `<button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button>` : `<button class="btn primary" id="moreCounties">${ic('plus', 16)} Add more counties</button>`}</div></div>
   <div class="county-grid" id="cGrid"></div>`;
   const statusPill = (c) => ({ synced: `<span class="pill p-green">${ic('check', 13)} Synced</span>`, syncing: `<span class="pill p-amber">${ic('refresh', 13)} Syncing</span>`,
     error: `<span class="pill p-red">${ic('alert', 13)} Error</span>`, never: `<span class="pill p-grey">Not synced</span>` }[c.sync_status] || `<span class="pill p-grey">${esc(c.sync_status)}</span>`);
@@ -116,12 +116,14 @@ export async function counties(el) {
   if ($('#hideBanner')) $('#hideBanner').onclick = () => { try { localStorage.setItem('eh_hide_banner', '1'); } catch (e) { } $('.info-banner').remove(); };
   $('#cQ').oninput = (e) => draw(e.target.value);
   const syncIds = async (ids) => { const r = await api('/api/sync', { method: 'POST', body: { ids } }); if (!r.ok) return toast(r.error, true); toast('Sync started'); setTimeout(() => counties(el), 800); watchSync(() => counties(el)); };
-  $('#syncAll').onclick = () => syncIds(null);
+  if ($('#syncAll')) $('#syncAll').onclick = () => syncIds(null);
+  if ($('#moreCounties')) $('#moreCounties').onclick = () => plansModal(`Your ${S.meta.org.label} plan includes ${S.meta.org.limits.counties ?? 'all'} county(ies).`);
   $('#cGrid').onclick = (e) => {
     const rt = e.target.closest('.retry'); if (rt) return syncIds([+rt.dataset.id]);
     const b = e.target.closest('.more'); if (!b) return;
     e.stopPropagation();
     const c = rows.find((x) => x.id === +b.dataset.id);
+    if (!S.meta.super) return menu(b, [{ label: 'Show leads', icon: 'home', fn: () => { setCounty(c.id); location.hash = '#/deals'; } }]);
     menu(b, [
       { label: 'Sync now', icon: 'refresh', fn: () => syncIds([c.id]) },
       { label: 'Edit (website, tax sale date)', icon: 'edit', fn: () => countyModal(c) },
@@ -131,7 +133,7 @@ export async function counties(el) {
       '-', { label: 'Remove', icon: 'x', danger: true, fn: async () => { if (!confirm('Remove ' + c.name + '?')) return; await api('/api/counties/' + c.id, { method: 'DELETE' }); await refreshMeta(); counties(el); } },
     ]);
   };
-  $('#addCounty').onclick = () => countyModal(null);
+  if ($('#addCounty')) $('#addCounty').onclick = () => countyModal(null);
   async function countyModal(c) {
     const known = c ? [] : await api('/api/known-counties');
     modal(`<h2>${c ? 'Edit county' : 'Add county'}</h2><div style="height:12px"></div>
@@ -277,7 +279,10 @@ export async function reports(el) {
 
 // ================================================================ SETTINGS
 export async function settings(el, [tab = 'scoring']) {
-  const TABS = [['profile', 'Profile', 'user'], ['scoring', 'Deal scoring', 'chart'], ['integrations', 'Integrations', 'link'], ['notifications', 'Notifications', 'bell'], ['team', 'Team', 'users'], ['billing', 'Billing', 'card']];
+  const SUPER = S.meta.super;
+  const TABS = [['profile', 'Profile', 'user'], ...(SUPER ? [['scoring', 'Deal scoring', 'chart'], ['integrations', 'Integrations', 'link']] : []),
+    ['notifications', 'Notifications', 'bell'], ['team', 'Team', 'users'], ['billing', 'Plan & billing', 'card']];
+  if (!SUPER && ['scoring', 'integrations'].includes(tab)) tab = 'profile';
   el.innerHTML = `<div class="page-head"><div><h1>Settings</h1><div class="sub">Customize your preferences, integrations, and account settings.</div></div></div>
     <div class="settings-wrap"><div class="card sub-nav" style="padding:8px">${TABS.map(([k, l, i]) => `<a href="#/settings/${k}" class="${tab === k ? 'on' : ''}">${ic(i, 17)}${l}</a>`).join('')}</div><div id="sBody" style="min-width:0"></div></div>`;
   const body = $('#sBody');
@@ -295,22 +300,42 @@ export async function settings(el, [tab = 'scoring']) {
       <div class="field"><label>Financing</label><select class="select" id="oFin">${['Cash', 'DSCR loan (80% LTV)', 'Conventional loan', 'Hard money', 'Seller financing'].map((f) => `<option ${f === o.financing ? 'selected' : ''}>${f}</option>`).join('')}</select></div>
       <div class="field"><label>Closing timeline (days)</label><input class="input" id="oDays" value="${o.closing_days}"></div><div class="field"><label>Earnest money ($)</label><input class="input" id="oEarn" value="${o.earnest}"></div></div>
       <div class="field"><label>Seller credits</label><input class="input" id="oCred" value="${esc(o.seller_credits)}"></div>
-      <div class="field"><label>Nightly county sync time</label><select class="select" id="sTime" style="width:140px">${Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map((t) => `<option ${t === s.sync_time ? 'selected' : ''}>${t}</option>`).join('')}</select><div class="hint">The app must be running at this time (leave the window open or run it as a service).</div></div>
+      ${SUPER ? `<div class="field"><label>Nightly county sync time</label><select class="select" id="sTime" style="width:140px">${Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map((t) => `<option ${t === s.sync_time ? 'selected' : ''}>${t}</option>`).join('')}</select><div class="hint">Hosted: the daily sync runs on GitHub Actions at 08:17 Pakistan time.</div></div>` : ''}
       <button class="btn primary" id="pSave">Save changes</button></div>
-      <div class="card card-pad"><h3>Demo data</h3><p class="small muted">Made-up owners and addresses so you can try every screen before the first real county sync.</p>
+      ${SUPER ? `<div class="card card-pad"><h3>Demo data</h3><p class="small muted">Made-up owners and addresses so you can try every screen before the first real county sync.</p>
         <div class="row"><button class="btn" id="dSeed">${ic('db', 15)} Load demo data</button><button class="btn danger" id="dClear">${ic('x', 15)} Remove demo data</button></div>
-        <h3 style="margin-top:22px">Setup wizard</h3><p class="small muted">Run the first-time setup again (profile, counties, alerts).</p><a class="btn" href="#/welcome">${ic('sparkle', 15)} Open setup</a></div></div>`;
+        <h3 style="margin-top:22px">Setup wizard</h3><p class="small muted">Run the first-time setup again (profile, counties, alerts).</p><a class="btn" href="#/welcome">${ic('sparkle', 15)} Open setup</a></div>` : ''}</div>`;
     $('#pSave').onclick = async () => {
       const profile = { ...p, name: $('#pName').value, company: $('#pCo').value, email: $('#pEmail').value, phone: $('#pPhone').value };
       const offer_defaults = { ...o, discount_pct: +$('#oDisc').value || 65, financing: $('#oFin').value, closing_days: +$('#oDays').value || 21, earnest: +$('#oEarn').value || 0, seller_credits: $('#oCred').value };
-      await api('/api/settings', { method: 'PUT', body: { profile, offer_defaults, sync_time: $('#sTime').value } }); await refreshMeta(); toast('Saved');
+      await api('/api/settings', { method: 'PUT', body: { profile, offer_defaults, ...($('#sTime') ? { sync_time: $('#sTime').value } : {}) } }); await refreshMeta(); toast('Saved');
     };
+    if (!SUPER) return;
     $('#dSeed').onclick = async () => { $('#dSeed').disabled = true; await api('/api/demo/seed', { method: 'POST' }); await refreshMeta(); toast('Demo data loaded'); };
     $('#dClear').onclick = async () => { if (!confirm('Remove all demo parcels, alerts and pipeline items?')) return; const r = await api('/api/demo/clear', { method: 'POST' }); await refreshMeta(); toast(`Removed ${r.removed} demo parcels`); };
     return;
   }
-  if (tab === 'team') { body.innerHTML = `<div class="card card-pad"><h3>Team</h3><p class="muted">This is a single-user workspace running on your own computer. Everyone who opens it on your network shares the same data. Separate team logins are planned for the hosted version.</p></div>`; return; }
-  if (tab === 'billing') { body.innerHTML = `<div class="card card-pad"><h3>Billing</h3><p class="muted">Self-hosted: no subscription is needed and there is no lead limit. County data is free public record. Optional costs are only your own API keys (Gemini, Twilio, skip tracing).</p></div>`; return; }
+  if (tab === 'team') {
+    const users = ['admin', 'superadmin'].includes(S.user?.role) ? await api('/api/users') : [];
+    body.innerHTML = `<div class="card card-pad"><div class="row between"><h3>Team</h3>${users.length ? '<button class="btn primary" id="tOpen">Manage team</button>' : ''}</div>
+      <p class="muted small">${users.length ? `People who can log in to ${esc(S.meta.org.name)}. Your notes, deals and offers are private to your team.` : 'Only your company admin can add or remove people.'}</p>
+      ${users.map((u) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><div class="grow"><b>${esc(u.name)}</b> <span class="pill tiny">${esc(u.role)}</span><div class="tiny muted">${esc(u.email)}</div></div><span class="tiny muted">last login ${u.last_login ? fmtDate(u.last_login) : 'never'}</span></div>`).join('')}</div>`;
+    if ($('#tOpen')) $('#tOpen').onclick = () => teamModal();
+    return;
+  }
+  if (tab === 'billing') {
+    const o = S.meta.org, L = o.limits;
+    body.innerHTML = `<div class="card card-pad"><h3>Your plan: ${esc(o.label)}</h3>
+      <div class="facts" style="margin-top:10px">
+        <div class="fact"><div><div class="k">Company</div><div class="v">${esc(o.name)}</div></div></div>
+        <div class="fact"><div><div class="k">Counties</div><div class="v">${S.meta.counties.length} of ${L.counties ?? 'all'}</div></div></div>
+        <div class="fact"><div><div class="k">Users</div><div class="v">${o.users} of ${L.users ?? 'unlimited'}</div></div></div>
+        ${L.reveals ? `<div class="fact"><div><div class="k">Leads opened</div><div class="v">${o.reveals_used} of ${L.reveals}</div></div></div>` : ''}
+        ${o.plan === 'trial' ? `<div class="fact"><div><div class="k">Trial ends</div><div class="v">${fmtDate(o.trial_ends)} (${o.days_left} days)</div></div></div>` : ''}
+      </div>${o.plan === 'internal' ? '<p class="muted small">Owner account: no limits.</p>' : '<button class="btn primary" id="bPlans" style="margin-top:12px">See plans / upgrade</button>'}</div>`;
+    if ($('#bPlans')) $('#bPlans').onclick = () => plansModal();
+    return;
+  }
 }
 
 async function scoringTab(body) {
@@ -446,4 +471,106 @@ export async function welcome(el) {
   }
   draw();
   return () => map && map.remove();
+}
+
+
+// ---------- super admin ----------
+const ACTION = [
+  [/^login$/, 'Logged in'], [/reveal$/, 'Opened a locked lead'], [/\/offer$/, 'Drafted an offer'], [/\/stage$/, 'Moved a deal'],
+  [/\/activity$/, 'Added a note / call'], [/\/contacts\/ai$/, 'Gemini contact search'], [/\/contacts$/, 'Saved owner contact'],
+  [/export\.csv$/, 'Exported CSV'], [/^GET \/letters/, 'Printed letters'], [/batch-offers/, 'Batch offers'], [/\/api\/settings/, 'Changed settings'],
+  [/\/api\/users/, 'Team change'], [/\/api\/tasks/, 'Follow-up task'], [/alerts\/read/, 'Read alerts'], [/auth\/password/, 'Changed password'],
+  [/integrations/, 'Integrations'], [/\/api\/sync/, 'Started sync'], [/\/api\/counties/, 'County change'], [/^POST \/api\/admin\/orgs$/, 'Created company'], [/^PUT \/api\/admin\/orgs/, 'Changed company'], [/\/api\/admin\/users/, 'Changed user'], [/company/, null], [/user updated/, null],
+];
+const human = (a) => { for (const [re, l] of ACTION) if (re.test(a)) return l || a; return a; };
+
+export async function admin(el, [tab = 'companies']) {
+  const [st, orgs] = await Promise.all([api('/api/admin/stats'), api('/api/admin/orgs')]);
+  const T = [['companies', 'Companies'], ['users', 'All users'], ['activity', 'Activity log']];
+  el.innerHTML = `<div class="page-head"><div><h1>Admin</h1><div class="sub">Every company, user and action across EstateHawk.</div></div>
+    <div class="right"><button class="btn primary" id="newOrg">${ic('plus', 16)} New company</button></div></div>
+    <div class="stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+      ${[['Companies', st.companies], ['On trial', st.trials], ['Paying', st.paying], ['Monthly revenue', '$' + num(st.mrr)], ['Users', st.users], ['Active this week', st.active_week]]
+        .map(([k, v]) => `<div class="card card-pad"><div class="small muted">${k}</div><div style="font-size:24px;font-weight:700">${v}</div></div>`).join('')}</div>
+    <div class="row gap6" style="margin-bottom:12px">${T.map(([k, l]) => `<a class="btn ${tab === k ? 'primary' : ''}" href="#/admin/${k}">${l}</a>`).join('')}</div>
+    <div id="aBody"></div>`;
+  $('#newOrg').onclick = () => orgModal(null);
+  const body = $('#aBody');
+  const planPill = (o) => `<span class="pill tiny ${o.plan === 'trial' ? 'p-amber' : o.plan === 'internal' ? 'p-grey' : 'p-green'}">${esc(o.label)}</span>`;
+  if (tab === 'companies') {
+    body.innerHTML = `<div class="card" style="overflow:auto"><table class="table"><thead><tr><th>Company</th><th>Plan</th><th>Status</th><th>Counties</th><th class="r">Users</th><th class="r">Leads opened</th><th>Last activity</th><th></th></tr></thead><tbody>
+      ${orgs.map((o) => `<tr><td><b>${esc(o.name)}</b><div class="tiny muted">${o.admin ? esc(o.admin.email) : ''}</div></td><td>${planPill(o)}${o.plan === 'trial' ? `<div class="tiny ${o.days_left < 0 ? '' : 'muted'}" style="${o.days_left < 0 ? 'color:#B42318' : ''}">${o.days_left < 0 ? 'ended' : o.days_left + ' days left'}</div>` : ''}</td>
+        <td>${o.suspended ? '<span class="pill tiny p-red">Paused</span>' : '<span class="pill tiny p-green">Active</span>'}</td>
+        <td class="small">${esc(o.county_names.join(', ') || 'none chosen')}</td><td class="r">${o.users}</td><td class="r">${o.limits.reveals ? `${o.reveals_used}/${o.limits.reveals}` : '--'}</td>
+        <td class="small muted">${o.last_activity ? ago(o.last_activity) : 'never'}</td>
+        <td><div class="row gap4" style="flex-wrap:nowrap"><button class="btn xs" data-edit="${o.id}">Edit</button>${o.id !== 1 ? `<button class="btn xs" data-view="${o.id}">View as</button>` : ''}</div></td></tr>`).join('')}
+      </tbody></table></div>`;
+    $$('[data-edit]', body).forEach((b) => b.onclick = () => orgModal(orgs.find((o) => o.id === +b.dataset.edit)));
+    $$('[data-view]', body).forEach((b) => b.onclick = () => setViewOrg(+b.dataset.view));
+  }
+  if (tab === 'users') {
+    const us = await api('/api/admin/users');
+    body.innerHTML = `<div class="card" style="overflow:auto"><table class="table"><thead><tr><th>User</th><th>Company</th><th>Role</th><th>Last login</th><th></th></tr></thead><tbody>
+      ${us.map((u) => `<tr style="${u.active ? '' : 'opacity:.55'}"><td><b>${esc(u.name)}</b><div class="tiny muted">${esc(u.email)}</div></td><td>${esc(u.org_name || '')}</td><td><span class="pill tiny">${esc(u.role)}</span></td>
+        <td class="small muted">${u.last_login ? ago(u.last_login) : 'never'}</td>
+        <td>${u.role === 'superadmin' ? '' : `<div class="row gap4" style="flex-wrap:nowrap"><button class="btn xs" data-reset="${u.id}">Reset password</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button></div>`}</td></tr>`).join('')}
+      </tbody></table></div>`;
+    $$('[data-act]', body).forEach((b) => b.onclick = async () => { await api('/api/admin/users/' + b.dataset.act, { method: 'PUT', body: { active: b.dataset.on === '1' } }); admin(el, [tab]); });
+    $$('[data-reset]', body).forEach((b) => b.onclick = async () => {
+      const pw = Math.random().toString(36).slice(2, 8) + 'Eh!' + Math.floor(Math.random() * 90 + 10);
+      await api('/api/admin/users/' + b.dataset.reset, { method: 'PUT', body: { password: pw } });
+      modal(`<h2>New password</h2><p>Send this to the user:</p><div class="card card-pad" style="font-family:ui-monospace,monospace">${esc(pw)}</div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" data-close>Done</button></div>`);
+    });
+  }
+  if (tab === 'activity') {
+    body.innerHTML = `<div class="row gap6" style="margin-bottom:10px"><select class="select" id="aOrg" style="width:220px"><option value="">All companies</option>${orgs.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>
+      <div class="search" style="width:260px">${ic('search', 16)}<input id="aQ" placeholder="Search user or action..."></div></div><div class="card" style="overflow:auto"><table class="table"><thead><tr><th>When</th><th>Company</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody id="aRows"></tbody></table></div>`;
+    const load = async () => {
+      const rows = await api(`/api/admin/activity?org=${$('#aOrg').value}&q=${encodeURIComponent($('#aQ').value)}`);
+      const pid = (a) => (a.match(/\/api\/parcels\/(.+?)\/(reveal|offer|stage|activity|contacts)/) || [])[1];
+      $('#aRows').innerHTML = rows.map((r) => `<tr><td class="small muted" style="white-space:nowrap">${fmtDate(r.ts, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td class="small">${esc(r.org_name || '')}</td>
+        <td class="small">${esc(r.user_name || '')}</td><td><b class="small">${esc(human(r.action))}</b>${pid(r.action) ? ` <a class="tiny" href="#/deal/${pid(r.action)}">lead</a>` : ''}</td>
+        <td class="tiny muted">${esc(r.detail || '')}${r.ip ? ' · ' + esc(r.ip) : ''}</td></tr>`).join('') || '<tr><td colspan="5"><div class="empty">No activity yet</div></td></tr>';
+    };
+    $('#aOrg').onchange = load; let t; $('#aQ').oninput = () => { clearTimeout(t); t = setTimeout(load, 300); };
+    load();
+  }
+
+  function orgModal(o) {
+    const P = S.meta.plans, all = S.meta.counties;
+    const isNew = !o;
+    const pw = Math.random().toString(36).slice(2, 8) + 'Eh!' + Math.floor(Math.random() * 90 + 10);
+    const chosen = new Set(o ? (o.counties || all.map((c) => c.id)) : []);
+    modal(`<h2>${isNew ? 'New company' : 'Edit ' + esc(o.name)}</h2><div style="height:10px"></div>
+      <div class="terms"><div class="field"><label>Company name</label><input class="input" id="oName" value="${esc(o?.name || '')}"></div>
+      <div class="field"><label>Plan</label><select class="select" id="oPlan">${Object.entries(P).concat(o?.plan === 'internal' ? [['internal', { label: 'Owner' }]] : []).map(([k, p]) => `<option value="${k}" ${(o?.plan || 'trial') === k ? 'selected' : ''}>${esc(p.label)}${p.price ? ' ($' + p.price + '/mo)' : ''}</option>`).join('')}</select></div></div>
+      ${isNew ? `<div class="terms"><div class="field"><label>Admin name</label><input class="input" id="oAdmin"></div><div class="field"><label>Admin email (login)</label><input class="input" id="oEmail" type="text" autocomplete="off"></div></div>
+        <div class="field"><label>Temporary password (send it to them)</label><input class="input" id="oPw" value="${pw}" autocomplete="off"></div>` : ''}
+      <div class="field"><label>Counties <span class="muted small" id="oLim"></span></label><div class="row wrap gap6" id="oCounties">${all.map((c) => `<label class="pill" style="cursor:pointer"><input type="checkbox" value="${c.id}" ${chosen.has(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</div></div>
+      ${!isNew && o.plan === 'trial' ? `<div class="field"><label>Trial</label><div class="row gap6"><span class="small muted">ends ${fmtDate(o.trial_ends)}</span><button class="btn xs" data-ext="7">+7 days</button><button class="btn xs" data-ext="14">+14 days</button></div></div>` : ''}
+      ${!isNew && o.id !== 1 ? `<div class="field"><label>Status</label><select class="select" id="oStatus"><option value="active" ${o.status === 'active' ? 'selected' : ''}>Active</option><option value="suspended" ${o.status === 'suspended' ? 'selected' : ''}>Paused (cannot log in)</option></select></div>` : ''}
+      <div class="field"><label>Private notes</label><textarea class="input" id="oNotes" rows="2" style="width:100%">${esc(o?.notes || '')}</textarea></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="oSave">${isNew ? 'Create company' : 'Save'}</button></div>`, (m, close) => {
+      const lim = () => { const p = P[$('#oPlan', m).value] || {}; $('#oLim', m).textContent = p.counties == null ? '(all counties; leave empty for all)' : `(plan allows ${p.counties})`; };
+      $('#oPlan', m).onchange = lim; lim();
+      $$('[data-ext]', m).forEach((b) => b.onclick = async () => { await api('/api/admin/orgs/' + o.id, { method: 'PUT', body: { extend_days: +b.dataset.ext } }); close(); toast('Trial extended'); admin(el, [tab]); });
+      $('#oSave', m).onclick = async () => {
+        const counties = $$('#oCounties input:checked', m).map((x) => +x.value);
+        const body = { name: $('#oName', m).value, plan: $('#oPlan', m).value, counties, notes: $('#oNotes', m).value };
+        try {
+          if (isNew) {
+            Object.assign(body, { admin_name: $('#oAdmin', m).value, email: $('#oEmail', m).value, password: $('#oPw', m).value });
+            await api('/api/admin/orgs', { method: 'POST', body });
+            close();
+            modal(`<h2>Company created</h2><p>Send these to the customer:</p><div class="card card-pad small" style="font-family:ui-monospace,monospace;line-height:1.8">Link: ${esc(location.origin)}<br>Email: ${esc(body.email)}<br>Password: ${esc(body.password)}</div>
+              <p class="small muted">They should change the password after the first login (user menu > Change password).</p><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Done</button></div>`);
+          } else {
+            if ($('#oStatus', m)) body.status = $('#oStatus', m).value;
+            await api('/api/admin/orgs/' + o.id, { method: 'PUT', body }); close(); toast('Saved');
+          }
+          admin(el, [tab]);
+        } catch (e) { toast(e.message, true); }
+      };
+    });
+  }
 }

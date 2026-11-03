@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -28,7 +28,7 @@ def auth_me(request: Request):
     u = auth.current(request)
     if not u:
         return JSONResponse({"user": None, "setup": not auth.users_exist()}, status_code=401)
-    return {"user": u}
+    return {"user": u, "org": plans.org_info(u.get("org_id") or 1)}
 
 
 @app.post("/api/auth/setup")
@@ -39,8 +39,9 @@ async def auth_setup(request: Request):
     email, pw = (b.get("email") or "").strip().lower(), b.get("password") or ""
     if "@" not in email or len(pw) < 8:
         raise HTTPException(400, "Enter an email and a password of at least 8 characters")
-    db.run("INSERT INTO users(email,name,pw,role,created) VALUES(?,?,?,?,?)",
-           (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw), "admin", jobs.now()))
+    db.con()  # makes sure company #1 (EstateHawk HQ) exists
+    db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,1)",
+           (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw), "superadmin", jobs.now()))
     u = db.q1("SELECT id FROM users WHERE email=?", (email,))
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, u["id"])
@@ -56,7 +57,11 @@ async def auth_login(request: Request):
     if not u or not u["active"] or not auth.check_pw(b.get("password") or "", u["pw"]):
         auth.failed(ip)
         raise HTTPException(401, "Wrong email or password")
+    o = db.q1("SELECT status FROM orgs WHERE id=?", (u.get("org_id") or 1,))
+    if o and o["status"] == "suspended" and u["role"] != "superadmin":
+        raise HTTPException(403, "Your company account is paused. Contact EstateHawk.")
     db.run("UPDATE users SET last_login=? WHERE id=?", (jobs.now(), u["id"]))
+    auth.audit("login", "", user=u, org=u.get("org_id"), ip=ip)
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, u["id"])
     return resp
@@ -84,9 +89,22 @@ async def auth_password(request: Request):
     return {"ok": True}
 
 
+def _team_org():
+    return ctx.org_id()
+
+
 @app.get("/api/users")
 def users_list():
-    return db.q("SELECT id, email, name, role, active, created, last_login FROM users ORDER BY id")
+    return db.q("SELECT id, email, name, role, active, created, last_login FROM users WHERE org_id=? ORDER BY id", (_team_org(),))
+
+
+def _user_in_my_org(uid):
+    u = db.q1("SELECT * FROM users WHERE id=?", (uid,))
+    if not u or (u["org_id"] != _team_org() and not ctx.get().get("super")):
+        raise HTTPException(404, "User not found")
+    if u["role"] == "superadmin" and not ctx.get().get("super"):
+        raise HTTPException(403, "Not allowed")
+    return u
 
 
 @app.post("/api/users")
@@ -97,8 +115,13 @@ async def users_add(request: Request):
         raise HTTPException(400, "Enter an email and a temporary password of at least 8 characters")
     if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
         raise HTTPException(400, "This email already has an account")
-    db.run("INSERT INTO users(email,name,pw,role,created) VALUES(?,?,?,?,?)",
-           (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw), b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now()))
+    info = ctx.get()["org"]
+    limit = info["limits"]["users"]
+    if limit and info["users"] >= limit and not ctx.get().get("super"):
+        raise HTTPException(402, f"Your {info['label']} plan allows {limit} user(s). Upgrade to add more.")
+    db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
+           (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw),
+            b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now(), _team_org()))
     return {"ok": True}
 
 
@@ -106,6 +129,7 @@ async def users_add(request: Request):
 async def users_edit(uid: int, request: Request):
     b = await request.json()
     me = request.state.user
+    _user_in_my_org(uid)
     if uid == me["id"] and (b.get("active") is False or b.get("role") == "member"):
         raise HTTPException(400, "You cannot remove your own admin access")
     if "active" in b:
@@ -123,6 +147,7 @@ async def users_edit(uid: int, request: Request):
 def users_delete(uid: int, request: Request):
     if uid == request.state.user["id"]:
         raise HTTPException(400, "You cannot delete yourself")
+    _user_in_my_org(uid)
     db.run("DELETE FROM users WHERE id=?", (uid,))
     return {"ok": True}
 
@@ -145,10 +170,46 @@ STAGE_LABEL = {"new": "New lead", "contacted": "Contacted", "replied": "Replied"
                "under_contract": "Under contract", "closed": "Closed"}
 
 
+def OID():
+    return int(ctx.org_id() or 1)
+
+
+def INFO():
+    return ctx.get().get("org") or plans.org_info(OID())
+
+
+def allowed_counties():
+    """None = every county; else the list this company pays for."""
+    return INFO()["counties"]
+
+
 def county_filter(county, alias="p"):
+    allowed = allowed_counties()
+    s, a = "", []
+    if allowed is not None:
+        s = f" AND {alias}.county_id IN ({','.join(str(int(c)) for c in allowed) or '0'})"
     if county and str(county) not in ("all", "0", ""):
-        return f" AND {alias}.county_id=?", [int(county)]
-    return "", []
+        s += f" AND {alias}.county_id=?"; a.append(int(county))
+    return s, a
+
+
+def apply_mask(rows):
+    """Trial: leads not yet revealed show money and score but not owner or address."""
+    info = INFO()
+    if not info["limits"]["reveals"]:
+        return rows
+    seen = plans.revealed_set(info, [r["id"] for r in rows]) or set()
+    return [r if r["id"] in seen else plans.mask(r) for r in rows]
+
+
+def require_unlocked(pid):
+    if plans.is_locked(INFO(), pid):
+        raise HTTPException(403, "Reveal this lead first (free trial).")
+
+
+def require_export():
+    if not INFO()["limits"]["export"]:
+        raise HTTPException(402, "Exports and letters are on paid plans. Upgrade to use them.")
 
 
 def parcel_where(params):
@@ -189,17 +250,31 @@ LIST_COLS = """p.id, p.county_id, p.parcel_number, p.owner_name, p.street, p.cit
  p.is_active, p.demo, p.photo_url, p.beds, p.baths_full, p.living_area, p.year_built, p.contact_status, c.name AS county_name, pl.stage"""
 
 
+def PL():
+    """Join to this company's own pipeline row."""
+    return f"LEFT JOIN pipeline pl ON pl.parcel_id=p.id AND pl.org_id={OID()}"
+
+
 # ------------------------------------------------------------------ meta / stats
 @app.get("/api/meta")
 def meta():
     s = db.all_settings()
-    counts = db.q1("SELECT COUNT(*) n, SUM(is_active) active FROM parcels")
+    cf, _ = county_filter(None)
+    counts = db.q1(f"SELECT COUNT(*) n, SUM(is_active) active FROM parcels p WHERE 1=1{cf}")
+    c = ctx.get()
     return {"settings": s, "integrations": notify.configured(), "gemini_model": ai.model(),
-            "counties": db.q("SELECT id, name, state, enabled FROM counties ORDER BY name"),
+            "counties": db.q(f"SELECT id, name, state, enabled FROM counties p WHERE 1=1{cf.replace('p.county_id', 'p.id')} ORDER BY name"),
             "parcels": counts["n"] or 0, "active": counts["active"] or 0, "sync": jobs.STATUS,
             "stages": [{"key": k, "label": STAGE_LABEL[k]} for k in STAGES],
             "last_sync": (db.q1("SELECT MAX(last_sync) t FROM counties") or {}).get("t"),
-            "unread_alerts": db.q1("SELECT COUNT(*) n FROM alerts WHERE read=0")["n"]}
+            "unread_alerts": unread_alerts(), "org": INFO(), "user": c.get("user"), "super": bool(c.get("super")),
+            "plans": {k: plans.PLANS[k] for k in plans.PUBLIC}}
+
+
+def unread_alerts():
+    cf, _ = county_filter(None, "al")
+    return db.q1(f"""SELECT COUNT(*) n FROM alerts al WHERE 1=1{cf} AND NOT EXISTS
+                     (SELECT 1 FROM alert_reads r WHERE r.org_id={OID()} AND r.alert_id=al.id)""")["n"]
 
 
 @app.get("/api/stats")
@@ -213,7 +288,8 @@ def stats(county: str = "all"):
     hi_wk = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1 AND p.score>=80 AND p.first_seen<?{s}",
                   [(dt.date.today() - dt.timedelta(days=7)).isoformat()] + a)["n"]
     eq = db.q1(f"SELECT AVG(p.est_equity) v FROM parcels p WHERE p.is_active=1 AND p.est_equity>0 AND p.property_type IN ('Single family','Residential'){s}", a)["v"]
-    ct = db.q1("SELECT COUNT(*) n, COUNT(DISTINCT state) st FROM counties WHERE enabled=1")
+    cc, _ = county_filter(None, "counties")
+    ct = db.q1(f"SELECT COUNT(*) n, COUNT(DISTINCT state) st FROM counties WHERE enabled=1{cc.replace('counties.county_id', 'counties.id')}")
     active = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1{s}", a)["n"]
     pct = lambda n, o: (round((n - o) * 100 / o) if o else None)
     return {"new_today": new_today, "new_change": pct(new_today, new_y), "high_score": hi, "high_change": pct(hi, hi_wk),
@@ -229,13 +305,14 @@ def parcels(request: Request):
     per = min(int(params.get("per", 25)), 500)
     page = max(int(params.get("page", 1)), 1)
     total = db.q1(f"SELECT COUNT(*) n FROM parcels p {w}", a)["n"]
-    rows = db.q(f"""SELECT {LIST_COLS} FROM parcels p JOIN counties c ON c.id=p.county_id LEFT JOIN pipeline pl ON pl.parcel_id=p.id
+    rows = db.q(f"""SELECT {LIST_COLS} FROM parcels p JOIN counties c ON c.id=p.county_id {PL()}
                    {w} ORDER BY {order} LIMIT ? OFFSET ?""", a + [per, (page - 1) * per])
-    return {"total": total, "page": page, "per": per, "rows": rows}
+    return {"total": total, "page": page, "per": per, "rows": apply_mask(rows)}
 
 
 @app.get("/api/parcels/export.csv")
 def export_parcels(request: Request):
+    require_export()
     params = dict(request.query_params)
     w, a = parcel_where(params)
     rows = db.q(f"""SELECT c.name county, p.parcel_number, p.owner_name, p.owner_full_name, p.street, p.city, p.state, p.zip,
@@ -250,17 +327,30 @@ def export_parcels(request: Request):
                              headers={"Content-Disposition": f"attachment; filename=estatehawk-leads-{dt.date.today()}.csv"})
 
 
-def get_parcel(pid):
-    p = db.q1("""SELECT p.*, c.name county_name, c.host county_host, c.tax_sale_date, pl.stage, pl.fee
-                 FROM parcels p JOIN counties c ON c.id=p.county_id LEFT JOIN pipeline pl ON pl.parcel_id=p.id WHERE p.id=?""", (pid,))
+def get_parcel(pid, unlocked=False):
+    cf, _ = county_filter(None)
+    p = db.q1(f"""SELECT p.*, c.name county_name, c.host county_host, c.tax_sale_date, pl.stage, pl.fee
+                 FROM parcels p JOIN counties c ON c.id=p.county_id {PL()} WHERE p.id=?{cf}""", (pid,))
     if not p:
         raise HTTPException(404, "Parcel not found")
+    if unlocked:
+        require_unlocked(pid)
     return p
 
 
 @app.get("/api/parcels/{pid:path}/detail")
 def parcel_detail(pid: str):
     p = get_parcel(pid)
+    info = INFO()
+    if plans.is_locked(info, pid):
+        br = json.loads(p.get("score_breakdown") or "{}")
+        p["score_parts"] = br.get("parts", {})
+        p["reasons"] = scoring.reasons(p, br)
+        p = plans.mask(p)
+        p.update(snapshots=[], activities=[], offers=[], tasks=[], contacts=[], offer_defaults=db.get_setting("offer_defaults"),
+                 ai=False, reveals_left=info["reveals_left"], reveals_total=info["limits"]["reveals"])
+        p["reasons"] = [(t, x) for t, x in p["reasons"] if "Tax bills go to" not in x] + ([("Out-of-state owner", "Owner lives in another state.")] if p.get("mail_state") and p.get("mail_state") != p.get("state") else [])
+        return p
     if p.get("lat") is None and (p.get("street") or "")[:1].isdigit() and not p.get("demo"):
         ll = geocode.one(p["street"], p.get("city") or "", p.get("state") or "OH", p.get("zip") or "")
         if ll:
@@ -270,18 +360,31 @@ def parcel_detail(pid: str):
     p["score_parts"] = br.get("parts", {})
     p["reasons"] = scoring.reasons(p, br)
     p["snapshots"] = db.q("SELECT date, amount, owner_name FROM snapshots WHERE parcel_id=? ORDER BY date", (pid,))
-    p["activities"] = db.q("SELECT * FROM activities WHERE parcel_id=? ORDER BY ts DESC", (pid,))
-    p["offers"] = db.q("SELECT * FROM offers WHERE parcel_id=? ORDER BY id DESC", (pid,))
-    p["tasks"] = db.q("SELECT * FROM tasks WHERE parcel_id=? ORDER BY done, due", (pid,))
+    p["activities"] = db.q("SELECT * FROM activities WHERE parcel_id=? AND (org_id=? OR org_id IS NULL) ORDER BY ts DESC", (pid, OID()))
+    p["offers"] = db.q("SELECT * FROM offers WHERE parcel_id=? AND org_id=? ORDER BY id DESC", (pid, OID()))
+    p["tasks"] = db.q("SELECT * FROM tasks WHERE parcel_id=? AND org_id=? ORDER BY done, due", (pid, OID()))
+    p["reveals_left"] = info["reveals_left"]
     p["contacts"] = contacts.list_for(pid)
     p["offer_defaults"] = db.get_setting("offer_defaults")
     p["ai"] = ai.enabled()
     return p
 
 
+@app.post("/api/parcels/{pid:path}/reveal")
+def reveal(pid: str):
+    get_parcel(pid)
+    info = INFO()
+    if not plans.is_locked(info, pid):
+        return {"ok": True, "reveals_left": info["reveals_left"]}
+    if info["reveals_left"] is not None and info["reveals_left"] <= 0:
+        raise HTTPException(402, f"You have opened all {info['limits']['reveals']} free leads. Upgrade to see every lead.")
+    db.run("INSERT INTO reveals(org_id,parcel_id,ts) VALUES(?,?,?)", (OID(), pid, jobs.now()))
+    return {"ok": True, "reveals_left": plans.org_info(OID())["reveals_left"]}
+
+
 @app.post("/api/parcels/{pid:path}/contacts")
 async def add_contacts(pid: str, request: Request):
-    get_parcel(pid)
+    get_parcel(pid, unlocked=True)
     b = await request.json()
     found = contacts.add_text(pid, b.get("text", ""), (b.get("source") or "Manual").strip()[:40])
     if found:
@@ -296,7 +399,7 @@ async def add_contacts(pid: str, request: Request):
 
 @app.post("/api/parcels/{pid:path}/contacts/ai")
 async def ai_contacts(pid: str, request: Request):
-    p = get_parcel(pid)
+    p = get_parcel(pid, unlocked=True)
     if not ai.enabled():
         raise HTTPException(400, "Add a Gemini API key in Settings > Integrations")
     b = await request.json()
@@ -322,7 +425,7 @@ def del_contact(cid: int):
 
 @app.get("/api/parcels/{pid:path}/ai-reasons")
 def parcel_ai_reasons(pid: str):
-    p = get_parcel(pid)
+    p = get_parcel(pid, unlocked=True)
     if not ai.enabled():
         raise HTTPException(400, "Add a Gemini API key in Settings > Integrations")
     br = json.loads(p.get("score_breakdown") or "{}")
@@ -334,74 +437,76 @@ def parcel_ai_reasons(pid: str):
 
 @app.post("/api/parcels/{pid:path}/offer")
 async def make_offer(pid: str, request: Request):
-    p = get_parcel(pid)
+    p = get_parcel(pid, unlocked=True)
     b = await request.json()
     d = db.get_setting("offer_defaults")
     terms = {"price": float(b.get("price") or p.get("suggested_offer") or 0), "financing": b.get("financing") or d["financing"],
              "closing_days": int(b.get("closing_days") or d["closing_days"]), "earnest": float(b.get("earnest") or d["earnest"]),
              "seller_credits": b.get("seller_credits") or d["seller_credits"]}
     subject, text, source = ai.offer(p, terms, db.get_setting("profile"))
-    oid = db.run("""INSERT INTO offers(parcel_id,created,price,financing,closing_days,earnest,seller_credits,subject,body,source)
-                    VALUES(?,?,?,?,?,?,?,?,?,?)""", (pid, jobs.now(), terms["price"], terms["financing"], terms["closing_days"],
-                                                    terms["earnest"], terms["seller_credits"], subject, text, source))
-    if not db.q1("SELECT 1 FROM pipeline WHERE parcel_id=?", (pid,)):
-        db.run("INSERT INTO pipeline(parcel_id,stage,updated_at) VALUES(?,?,?)", (pid, "new", jobs.now()))
+    oid = db.run("""INSERT INTO offers(parcel_id,created,price,financing,closing_days,earnest,seller_credits,subject,body,source,org_id)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (pid, jobs.now(), terms["price"], terms["financing"], terms["closing_days"],
+                                                    terms["earnest"], terms["seller_credits"], subject, text, source, OID()))
+    if not db.q1("SELECT 1 FROM pipeline WHERE parcel_id=? AND org_id=?", (pid, OID())):
+        db.run("INSERT INTO pipeline(org_id,parcel_id,stage,updated_at) VALUES(?,?,?,?)", (OID(), pid, "new", jobs.now()))
     return db.q1("SELECT * FROM offers WHERE id=?", (oid,))
 
 
 @app.put("/api/offers/{oid}")
 async def edit_offer(oid: int, request: Request):
     b = await request.json()
-    db.run("UPDATE offers SET subject=?, body=? WHERE id=?", (b.get("subject", ""), b.get("body", ""), oid))
+    db.run("UPDATE offers SET subject=?, body=? WHERE id=? AND org_id=?", (b.get("subject", ""), b.get("body", ""), oid, OID()))
     return db.q1("SELECT * FROM offers WHERE id=?", (oid,))
 
 
 @app.post("/api/parcels/{pid:path}/stage")
 async def set_stage(pid: str, request: Request):
-    get_parcel(pid)
+    get_parcel(pid, unlocked=True)
     b = await request.json()
     st = b.get("stage")
     if st not in STAGES and st != "remove":
         raise HTTPException(400, "bad stage")
     if st == "remove":
-        db.run("DELETE FROM pipeline WHERE parcel_id=?", (pid,))
+        db.run("DELETE FROM pipeline WHERE parcel_id=? AND org_id=?", (pid, OID()))
         return {"ok": True}
     fee = b.get("fee")
-    db.run("""INSERT INTO pipeline(parcel_id,stage,updated_at,fee,closed_at) VALUES(?,?,?,?,?)
-              ON CONFLICT(parcel_id) DO UPDATE SET stage=excluded.stage, updated_at=excluded.updated_at,
+    db.run("""INSERT INTO pipeline(org_id,parcel_id,stage,updated_at,fee,closed_at) VALUES(?,?,?,?,?,?)
+              ON CONFLICT(org_id,parcel_id) DO UPDATE SET stage=excluded.stage, updated_at=excluded.updated_at,
               fee=COALESCE(excluded.fee, pipeline.fee), closed_at=COALESCE(excluded.closed_at, pipeline.closed_at)""",
-           (pid, st, jobs.now(), fee, dt.date.today().isoformat() if st == "closed" else None))
-    db.run("INSERT INTO activities(parcel_id,ts,kind,text,author) VALUES(?,?,?,?,?)",
-           (pid, jobs.now(), "stage", f"Moved to {STAGE_LABEL[st]}", db.get_setting("profile").get("name")))
+           (OID(), pid, st, jobs.now(), fee, dt.date.today().isoformat() if st == "closed" else None))
+    db.run("INSERT INTO activities(parcel_id,ts,kind,text,author,org_id) VALUES(?,?,?,?,?,?)",
+           (pid, jobs.now(), "stage", f"Moved to {STAGE_LABEL[st]}", me_name(), OID()))
     return {"ok": True}
 
 
 @app.post("/api/parcels/{pid:path}/activity")
 async def add_activity(pid: str, request: Request):
-    get_parcel(pid)
+    get_parcel(pid, unlocked=True)
     b = await request.json()
     kind = b.get("kind", "note")
-    db.run("INSERT INTO activities(parcel_id,ts,kind,text,author) VALUES(?,?,?,?,?)",
-           (pid, jobs.now(), kind, b.get("text", ""), b.get("author") or db.get_setting("profile").get("name")))
-    if kind in ("email", "call", "sms", "letter") and not b.get("no_stage"):
-        cur = db.q1("SELECT stage FROM pipeline WHERE parcel_id=?", (pid,))
-        if not cur or cur["stage"] == "new":
-            db.run("""INSERT INTO pipeline(parcel_id,stage,updated_at) VALUES(?,?,?)
-                      ON CONFLICT(parcel_id) DO UPDATE SET stage='contacted', updated_at=excluded.updated_at""", (pid, "contacted", jobs.now()))
-    if kind == "reply":
-        cur = db.q1("SELECT stage FROM pipeline WHERE parcel_id=?", (pid,))
-        if not cur or cur["stage"] in ("new", "contacted"):
-            db.run("""INSERT INTO pipeline(parcel_id,stage,updated_at) VALUES(?,?,?)
-                      ON CONFLICT(parcel_id) DO UPDATE SET stage='replied', updated_at=excluded.updated_at""", (pid, "replied", jobs.now()))
+    db.run("INSERT INTO activities(parcel_id,ts,kind,text,author,org_id) VALUES(?,?,?,?,?,?)",
+           (pid, jobs.now(), kind, b.get("text", ""), b.get("author") or me_name(), OID()))
+    for want, from_stages in (("contacted", ("new",)), ("replied", ("new", "contacted"))):
+        if (want == "contacted" and kind in ("email", "call", "sms", "letter") and not b.get("no_stage")) or (want == "replied" and kind == "reply"):
+            cur = db.q1("SELECT stage FROM pipeline WHERE parcel_id=? AND org_id=?", (pid, OID()))
+            if not cur or cur["stage"] in from_stages:
+                db.run("""INSERT INTO pipeline(org_id,parcel_id,stage,updated_at) VALUES(?,?,?,?)
+                          ON CONFLICT(org_id,parcel_id) DO UPDATE SET stage=excluded.stage, updated_at=excluded.updated_at""",
+                       (OID(), pid, want, jobs.now()))
     return {"ok": True}
+
+
+def me_name():
+    u = ctx.get().get("user") or {}
+    return u.get("name") or db.get_setting("profile").get("name")
 
 
 @app.get("/api/map")
 def map_points(request: Request):
     params = dict(request.query_params)
     w, a = parcel_where(params)
-    return db.q(f"""SELECT {LIST_COLS} FROM parcels p JOIN counties c ON c.id=p.county_id LEFT JOIN pipeline pl ON pl.parcel_id=p.id
-                   {w} AND p.lat IS NOT NULL ORDER BY p.score DESC LIMIT 3000""", a)
+    return apply_mask(db.q(f"""SELECT {LIST_COLS} FROM parcels p JOIN counties c ON c.id=p.county_id {PL()}
+                   {w} AND p.lat IS NOT NULL ORDER BY p.score DESC LIMIT 3000""", a))
 
 
 # ------------------------------------------------------------------ alerts
@@ -411,7 +516,8 @@ ALERT_TYPES = {"new_delinquent": "New delinquent", "auction": "Auction dates", "
 
 @app.get("/api/alerts")
 def alerts(type: str = "all", county: str = "all", limit: int = 200):
-    w, a = " WHERE 1=1", []
+    cf, _ = county_filter(None, "al")
+    w, a = " WHERE 1=1" + cf, []
     if type != "all":
         if type == "equity":
             w += " AND al.type IN ('amount_up','high_score')"
@@ -419,27 +525,40 @@ def alerts(type: str = "all", county: str = "all", limit: int = 200):
             w += " AND al.type=?"; a.append(type)
     if county not in ("all", ""):
         w += " AND al.county_id=?"; a.append(int(county))
-    rows = db.q(f"""SELECT al.*, c.name county_name, p.street, p.city FROM alerts al LEFT JOIN counties c ON c.id=al.county_id
+    rows = db.q(f"""SELECT al.id, al.ts, al.type, al.county_id, al.parcel_id, al.title, al.body, al.score, al.sent,
+                    CASE WHEN EXISTS (SELECT 1 FROM alert_reads r WHERE r.org_id={OID()} AND r.alert_id=al.id) THEN 1 ELSE 0 END AS read,
+                    c.name county_name, p.street, p.city FROM alerts al LEFT JOIN counties c ON c.id=al.county_id
                     LEFT JOIN parcels p ON p.id=al.parcel_id {w} ORDER BY al.ts DESC LIMIT ?""", a + [limit])
-    counts = {r["type"]: r["n"] for r in db.q("SELECT type, COUNT(*) n FROM alerts GROUP BY type")}
-    return {"rows": rows, "counts": counts, "unread": db.q1("SELECT COUNT(*) n FROM alerts WHERE read=0")["n"]}
+    info = INFO()
+    if info["limits"]["reveals"]:
+        seen = plans.revealed_set(info, [r["parcel_id"] for r in rows if r["parcel_id"]]) or set()
+        for r in rows:
+            if r["parcel_id"] and r["parcel_id"] not in seen:
+                r["street"] = "Address hidden"
+                r["title"] = re.sub(r"\d+ [A-Z0-9 ]+(ST|RD|AVE|DR|LN|CT|PIKE|BLVD|WAY|PL|CIR)\b", "a property", r["title"] or "", flags=re.I)
+    counts = {r["type"]: r["n"] for r in db.q(f"SELECT al.type, COUNT(*) n FROM alerts al WHERE 1=1{cf} GROUP BY al.type")}
+    return {"rows": rows, "counts": counts, "unread": unread_alerts()}
 
 
 @app.post("/api/alerts/read")
 async def alerts_read(request: Request):
     b = await request.json()
     if b.get("all"):
-        db.run("UPDATE alerts SET read=1")
+        cf, _ = county_filter(None, "al")
+        db.run(f"""INSERT INTO alert_reads(org_id, alert_id) SELECT {OID()}, al.id FROM alerts al WHERE 1=1{cf}
+                   AND NOT EXISTS (SELECT 1 FROM alert_reads r WHERE r.org_id={OID()} AND r.alert_id=al.id)""")
     else:
         for i in b.get("ids", []):
-            db.run("UPDATE alerts SET read=1 WHERE id=?", (int(i),))
+            if not db.q1("SELECT 1 FROM alert_reads WHERE org_id=? AND alert_id=?", (OID(), int(i))):
+                db.run("INSERT INTO alert_reads(org_id, alert_id) VALUES(?,?)", (OID(), int(i)))
     return {"ok": True}
 
 
 # ------------------------------------------------------------------ counties + sync
 @app.get("/api/counties")
 def counties():
-    rows = db.q("SELECT * FROM counties ORDER BY name")
+    cf, _ = county_filter(None, "x")
+    rows = db.q(f"SELECT * FROM counties x WHERE 1=1{cf.replace('x.county_id', 'x.id')} ORDER BY name")
     start = (dt.date.today() - dt.timedelta(days=29))
     t = dt.date.today().isoformat()
     for c in rows:
@@ -522,16 +641,17 @@ def pipeline(county: str = "all", q: str = ""):
     s, a = county_filter(county)
     if q:
         s += " AND (p.street LIKE ? OR p.owner_name LIKE ?)"; a += [f"%{q}%"] * 2
+    o = OID()
     rows = db.q(f"""SELECT pl.*, p.street, p.city, p.zip, p.owner_name, p.score, p.lat, p.lng, p.county_id, p.total_due, p.amount_owed,
-                    (SELECT kind||'|'||ts||'|'||text FROM activities x WHERE x.parcel_id=p.id ORDER BY ts DESC LIMIT 1) last
-                    FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE 1=1{s} ORDER BY pl.updated_at DESC""", a)
+                    (SELECT kind||'|'||ts||'|'||text FROM activities x WHERE x.parcel_id=p.id AND x.org_id={o} ORDER BY ts DESC LIMIT 1) last
+                    FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE pl.org_id={o}{s} ORDER BY pl.updated_at DESC""", a)
     cols = {k: [] for k in STAGES}
     for r in rows:
         cols.setdefault(r["stage"], []).append(r)
     wk = (dt.datetime.now() - dt.timedelta(days=7)).isoformat(sep=" ")
-    sent = db.q1("SELECT COUNT(DISTINCT parcel_id) n FROM activities WHERE kind IN ('email','call','sms','letter') AND ts>=?", (wk,))["n"]
-    rep = db.q1("SELECT COUNT(DISTINCT parcel_id) n FROM activities WHERE kind='reply' AND ts>=?", (wk,))["n"]
-    replies = db.q("""SELECT x.*, p.street, p.city FROM activities x JOIN parcels p ON p.id=x.parcel_id WHERE x.kind='reply'
+    sent = db.q1(f"SELECT COUNT(DISTINCT parcel_id) n FROM activities WHERE org_id={o} AND kind IN ('email','call','sms','letter') AND ts>=?", (wk,))["n"]
+    rep = db.q1(f"SELECT COUNT(DISTINCT parcel_id) n FROM activities WHERE org_id={o} AND kind='reply' AND ts>=?", (wk,))["n"]
+    replies = db.q(f"""SELECT x.*, p.street, p.city FROM activities x JOIN parcels p ON p.id=x.parcel_id WHERE x.org_id={o} AND x.kind='reply'
                       ORDER BY x.ts DESC LIMIT 6""")
     return {"columns": [{"key": k, "label": STAGE_LABEL[k], "items": cols.get(k, [])} for k in STAGES],
             "reply_rate": round(rep * 100 / sent) if sent else 0, "replies_week": rep, "contacts_week": sent, "recent_replies": replies}
@@ -539,7 +659,7 @@ def pipeline(county: str = "all", q: str = ""):
 
 @app.get("/api/tasks")
 def tasks(scope: str = "today"):
-    w = "" if scope == "all" else " WHERE t.done=0 OR t.due>=date('now','-1 day')"
+    w = f" WHERE t.org_id={OID()}" + ("" if scope == "all" else " AND (t.done=0 OR t.due>=date('now','-1 day'))")
     return db.q(f"""SELECT t.*, p.street, p.city, p.owner_name FROM tasks t LEFT JOIN parcels p ON p.id=t.parcel_id {w}
                     ORDER BY t.done, t.due LIMIT 50""")
 
@@ -547,33 +667,36 @@ def tasks(scope: str = "today"):
 @app.post("/api/tasks")
 async def add_task(request: Request):
     b = await request.json()
-    tid = db.run("INSERT INTO tasks(parcel_id,due,text,kind) VALUES(?,?,?,?)",
-                 (b.get("parcel_id"), b.get("due") or dt.date.today().isoformat(), b.get("text", ""), b.get("kind", "call")))
+    if b.get("parcel_id"):
+        get_parcel(b["parcel_id"], unlocked=True)
+    tid = db.run("INSERT INTO tasks(parcel_id,due,text,kind,org_id) VALUES(?,?,?,?,?)",
+                 (b.get("parcel_id"), b.get("due") or dt.date.today().isoformat(), b.get("text", ""), b.get("kind", "call"), OID()))
     return db.q1("SELECT * FROM tasks WHERE id=?", (tid,))
 
 
 @app.put("/api/tasks/{tid}")
 async def edit_task(tid: int, request: Request):
     b = await request.json()
-    db.run("UPDATE tasks SET done=? WHERE id=?", (1 if b.get("done") else 0, tid))
+    db.run("UPDATE tasks SET done=? WHERE id=? AND org_id=?", (1 if b.get("done") else 0, tid, OID()))
     return {"ok": True}
 
 
 @app.post("/api/batch-offers")
 async def batch_offers(request: Request):
+    require_export()
     b = await request.json()
-    ids = b.get("ids") or [r["parcel_id"] for r in db.q("SELECT parcel_id FROM pipeline WHERE stage='new'")]
+    ids = b.get("ids") or [r["parcel_id"] for r in db.q("SELECT parcel_id FROM pipeline WHERE stage='new' AND org_id=?", (OID(),))]
     d = db.get_setting("offer_defaults")
     prof = db.get_setting("profile")
     made = 0
     for pid in ids[:200]:
-        p = get_parcel(pid)
+        p = get_parcel(pid, unlocked=True)
         terms = {"price": p.get("suggested_offer") or 0, "financing": d["financing"], "closing_days": d["closing_days"],
                  "earnest": d["earnest"], "seller_credits": d["seller_credits"]}
         s, t, src = ai.offer(p, terms, prof) if b.get("ai") else (*ai.template_offer(p, terms, prof), "template")
-        db.run("""INSERT INTO offers(parcel_id,created,price,financing,closing_days,earnest,seller_credits,subject,body,source)
-                  VALUES(?,?,?,?,?,?,?,?,?,?)""", (pid, jobs.now(), terms["price"], terms["financing"], terms["closing_days"],
-                                                  terms["earnest"], terms["seller_credits"], s, t, src))
+        db.run("""INSERT INTO offers(parcel_id,created,price,financing,closing_days,earnest,seller_credits,subject,body,source,org_id)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (pid, jobs.now(), terms["price"], terms["financing"], terms["closing_days"],
+                                                  terms["earnest"], terms["seller_credits"], s, t, src, OID()))
         made += 1
     return {"ok": True, "count": made, "ids": ids[:200]}
 
@@ -581,13 +704,17 @@ async def batch_offers(request: Request):
 @app.get("/letters", response_class=HTMLResponse)
 def letters(ids: str = ""):
     """Printable mail-merge letters (owner mailing address + latest offer). Print or save as PDF."""
-    pids = [i for i in ids.split(",") if i] or [r["parcel_id"] for r in db.q("SELECT parcel_id FROM pipeline WHERE stage='new'")]
+    require_export()
+    pids = [i for i in ids.split(",") if i] or [r["parcel_id"] for r in db.q("SELECT parcel_id FROM pipeline WHERE stage='new' AND org_id=?", (OID(),))]
     prof = db.get_setting("profile")
     pages = []
     import html as H
     for pid in pids:
-        p = db.q1("SELECT * FROM parcels WHERE id=?", (pid,))
-        o = db.q1("SELECT * FROM offers WHERE parcel_id=? ORDER BY id DESC LIMIT 1", (pid,))
+        try:
+            p = get_parcel(pid)
+        except HTTPException:
+            continue
+        o = db.q1("SELECT * FROM offers WHERE parcel_id=? AND org_id=? ORDER BY id DESC LIMIT 1", (pid, OID()))
         if not p or not o:
             continue
         to = H.escape(p.get("owner_full_name") or p.get("owner_name") or "")
@@ -608,18 +735,20 @@ def reports(days: int = 30, county: str = "all"):
     s, a = county_filter(county)
     found = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.first_seen>=?{s}", [start.isoformat()] + a)["n"]
     found_prev = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.first_seen>=? AND p.first_seen<?{s}", [prev.isoformat(), start.isoformat()] + a)["n"]
-    stage_n = lambda sts: db.q1(f"SELECT COUNT(*) n FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE pl.stage IN ({','.join('?' * len(sts))}){s}", list(sts) + a)["n"]
+    o = OID()
+    stage_n = lambda sts: db.q1(f"SELECT COUNT(*) n FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE pl.org_id={o} AND pl.stage IN ({','.join('?' * len(sts))}){s}", list(sts) + a)["n"]
     contacted = stage_n(STAGES[1:]); replied = stage_n(STAGES[2:]); nego = stage_n(STAGES[3:]); closed = stage_n(["closed"])
-    fees = db.q1(f"SELECT COALESCE(SUM(pl.fee),0) f FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE pl.stage='closed'{s}", a)["f"]
-    cs = db.q("SELECT id, name FROM counties WHERE enabled=1 ORDER BY name")
+    fees = db.q1(f"SELECT COALESCE(SUM(pl.fee),0) f FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE pl.org_id={o} AND pl.stage='closed'{s}", a)["f"]
+    cc, _ = county_filter(None, "x")
+    cs = db.q(f"SELECT id, name FROM counties x WHERE enabled=1{cc.replace('x.county_id', 'x.id')} ORDER BY name")
     per_day = {}
     for c in cs:
         per = {r["d"]: r["n"] for r in db.q("SELECT first_seen d, COUNT(*) n FROM parcels WHERE county_id=? AND first_seen>=? GROUP BY first_seen", (c["id"], start.isoformat()))}
         per_day[c["name"]] = [per.get((start + dt.timedelta(days=i)).isoformat(), 0) for i in range(days)]
-    by_county = db.q("SELECT c.name, COUNT(p.id) n FROM counties c LEFT JOIN parcels p ON p.county_id=c.id AND p.is_active=1 GROUP BY c.id ORDER BY n DESC")
+    by_county = db.q(f"SELECT c.name, COUNT(p.id) n FROM counties c LEFT JOIN parcels p ON p.county_id=c.id AND p.is_active=1 WHERE 1=1{cc.replace('x.county_id', 'c.id')} GROUP BY c.id, c.name ORDER BY n DESC")
     top = db.q(f"""SELECT p.id, p.street, p.city, p.zip, p.owner_name, p.appraised_total, p.est_equity, p.lat, p.lng, c.name county, pl.stage, pl.fee, pl.closed_at, pl.updated_at
                    FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id JOIN counties c ON c.id=p.county_id
-                   WHERE pl.stage IN ('closed','under_contract','negotiating'){s} ORDER BY (pl.stage='closed') DESC, pl.fee DESC, p.score DESC LIMIT 8""", a)
+                   WHERE pl.org_id={o} AND pl.stage IN ('closed','under_contract','negotiating'){s} ORDER BY (pl.stage='closed') DESC, pl.fee DESC, p.score DESC LIMIT 8""", a)
     return {"kpi": {"found": found, "found_change": round((found - found_prev) * 100 / found_prev) if found_prev else None,
                     "contacted": contacted, "replied": replied, "reply_rate": round(replied * 100 / contacted) if contacted else 0,
                     "closed": closed, "fees": fees},
@@ -630,6 +759,7 @@ def reports(days: int = 30, county: str = "all"):
 
 @app.get("/api/reports/export.csv")
 def reports_csv(days: int = 30):
+    require_export()
     r = reports(days)
     buf = io.StringIO(); w = csv.writer(buf)
     w.writerow(["metric", "value"])
@@ -652,8 +782,9 @@ def get_settings():
 async def put_settings(request: Request):
     b = await request.json()
     rescore_needed = False
+    is_super = bool(ctx.get().get("super"))
     for k, v in b.items():
-        if k in db.DEFAULT_SETTINGS:
+        if k in db.DEFAULT_SETTINGS and (is_super or k in db.ORG_KEYS):
             if k in ("weights", "offer_defaults") and v != db.get_setting(k):
                 rescore_needed = True
             db.set_setting(k, v)
@@ -742,6 +873,140 @@ def demo_seed():
 @app.post("/api/demo/clear")
 def demo_clear():
     return {"ok": True, "removed": demo.clear()}
+
+
+# ------------------------------------------------------------------ plans + super admin
+@app.get("/api/plans")
+def plan_list():
+    return {"plans": {k: plans.PLANS[k] for k in plans.PUBLIC}, "org": INFO()}
+
+
+def _org_row(o):
+    info = plans.org_info(o["id"])
+    last = db.q1("SELECT MAX(ts) t FROM audit_log WHERE org_id=?", (o["id"],))["t"]
+    admin = db.q1("SELECT name, email FROM users WHERE org_id=? AND role IN ('admin','superadmin') ORDER BY id LIMIT 1", (o["id"],))
+    names = [r["name"] for r in db.q("SELECT id, name FROM counties ORDER BY name") if info["counties"] is None or r["id"] in info["counties"]]
+    return dict(info, created=o["created"], notes=o.get("notes"), last_activity=last, admin=admin,
+                county_names=names if info["counties"] is not None else ["All counties"])
+
+
+@app.get("/api/admin/orgs")
+def admin_orgs():
+    return [_org_row(o) for o in db.q("SELECT * FROM orgs ORDER BY id")]
+
+
+def _set_counties(org, ids, plan):
+    limit = plans.PLANS[plan]["counties"]
+    ids = [int(i) for i in ids if str(i).isdigit()]
+    if limit and len(ids) > limit:
+        raise HTTPException(400, f"The {plans.PLANS[plan]['label']} plan allows {limit} county(ies).")
+    db.run("DELETE FROM org_counties WHERE org_id=?", (org,))
+    for c in ids:
+        db.run("INSERT INTO org_counties(org_id, county_id) VALUES(?,?)", (org, c))
+
+
+@app.post("/api/admin/orgs")
+async def admin_org_create(request: Request):
+    """New customer company with its first admin login. Trial = 14 days, 1 county."""
+    b = await request.json()
+    name = (b.get("name") or "").strip()
+    email, pw = (b.get("email") or "").strip().lower(), b.get("password") or ""
+    plan = b.get("plan") if b.get("plan") in plans.PLANS else "trial"
+    if not name or "@" not in email or len(pw) < 8:
+        raise HTTPException(400, "Company name, admin email and a temporary password (8+ characters) are needed")
+    if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
+        raise HTTPException(400, "This email already has an account")
+    limit = plans.PLANS[plan]["counties"]
+    if limit and len(b.get("counties") or []) > limit:
+        raise HTTPException(400, f"The {plans.PLANS[plan]['label']} plan allows {limit} county(ies).")
+    days = int(b.get("trial_days") or plans.PLANS["trial"]["days"])
+    ends = (dt.date.today() + dt.timedelta(days=days)).isoformat() if plan == "trial" else None
+    oid = db.run("INSERT INTO orgs(name,plan,status,trial_ends,created,notes) VALUES(?,?,?,?,?,?)",
+                 (name, plan, "active", ends, jobs.now(), b.get("notes") or ""))
+    _set_counties(oid, b.get("counties") or [], plan)
+    db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
+           (email, (b.get("admin_name") or "").strip() or email.split("@")[0], auth.hash_pw(pw), "admin", jobs.now(), oid))
+    auth.audit("company created", f"{name} ({plan}) admin {email}")
+    return _org_row(db.q1("SELECT * FROM orgs WHERE id=?", (oid,)))
+
+
+@app.put("/api/admin/orgs/{oid}")
+async def admin_org_edit(oid: int, request: Request):
+    b = await request.json()
+    o = db.q1("SELECT * FROM orgs WHERE id=?", (oid,))
+    if not o:
+        raise HTTPException(404, "Company not found")
+    plan = b.get("plan") if b.get("plan") in plans.PLANS else o["plan"]
+    if oid == 1 and (plan != "internal" or b.get("status") == "suspended"):
+        raise HTTPException(400, "EstateHawk HQ always stays on the owner plan")
+    changes = []
+    if b.get("name"):
+        db.run("UPDATE orgs SET name=? WHERE id=?", (b["name"].strip(), oid)); changes.append("name")
+    if plan != o["plan"]:
+        ends = (dt.date.today() + dt.timedelta(days=14)).isoformat() if plan == "trial" else None
+        db.run("UPDATE orgs SET plan=?, trial_ends=? WHERE id=?", (plan, ends, oid)); changes.append(f"plan {o['plan']} -> {plan}")
+    if b.get("extend_days"):
+        base = max(dt.date.today(), dt.date.fromisoformat((o.get("trial_ends") or dt.date.today().isoformat())[:10]))
+        db.run("UPDATE orgs SET trial_ends=? WHERE id=?", ((base + dt.timedelta(days=int(b["extend_days"]))).isoformat(), oid))
+        changes.append(f"trial +{b['extend_days']} days")
+    if b.get("status") in ("active", "suspended"):
+        db.run("UPDATE orgs SET status=? WHERE id=?", (b["status"], oid)); changes.append(b["status"])
+    if "counties" in b:
+        _set_counties(oid, b["counties"], plan); changes.append("counties")
+    if "notes" in b:
+        db.run("UPDATE orgs SET notes=? WHERE id=?", (b["notes"], oid))
+    auth.audit("company updated", f"{o['name']}: {', '.join(changes) or 'notes'}")
+    return _org_row(db.q1("SELECT * FROM orgs WHERE id=?", (oid,)))
+
+
+@app.get("/api/admin/users")
+def admin_users():
+    return db.q("""SELECT u.id, u.email, u.name, u.role, u.active, u.created, u.last_login, u.org_id, o.name org_name, o.plan
+                   FROM users u LEFT JOIN orgs o ON o.id=u.org_id ORDER BY u.org_id, u.id""")
+
+
+@app.put("/api/admin/users/{uid}")
+async def admin_user_edit(uid: int, request: Request):
+    b = await request.json()
+    u = db.q1("SELECT * FROM users WHERE id=?", (uid,))
+    if not u:
+        raise HTTPException(404, "User not found")
+    if u["role"] == "superadmin" and (b.get("active") is False):
+        raise HTTPException(400, "The owner account cannot be blocked")
+    if "active" in b:
+        db.run("UPDATE users SET active=? WHERE id=?", (1 if b["active"] else 0, uid))
+    if b.get("password"):
+        db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["password"]), uid))
+    if b.get("role") in ("admin", "member") and u["role"] != "superadmin":
+        db.run("UPDATE users SET role=? WHERE id=?", (b["role"], uid))
+    auth.audit("user updated", f"{u['email']}: {', '.join(k for k in b if k != 'password') or ''}{' password reset' if b.get('password') else ''}")
+    return {"ok": True}
+
+
+@app.get("/api/admin/activity")
+def admin_activity(org: str = "", user: str = "", q: str = "", limit: int = 300):
+    w, a = " WHERE 1=1", []
+    if org.isdigit():
+        w += " AND l.org_id=?"; a.append(int(org))
+    if user.isdigit():
+        w += " AND l.user_id=?"; a.append(int(user))
+    if q:
+        w += " AND (l.action LIKE ? OR l.detail LIKE ? OR l.user_name LIKE ?)"; a += [f"%{q}%"] * 3
+    return db.q(f"""SELECT l.*, o.name org_name FROM audit_log l LEFT JOIN orgs o ON o.id=l.org_id{w}
+                    ORDER BY l.id DESC LIMIT ?""", a + [min(limit, 1000)])
+
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    orgs = db.q("SELECT plan, status, trial_ends FROM orgs WHERE id<>1")
+    today = dt.date.today().isoformat()
+    week = (dt.datetime.now() - dt.timedelta(days=7)).isoformat(sep=" ")
+    return {"companies": len(orgs),
+            "trials": sum(1 for o in orgs if o["plan"] == "trial" and (o["trial_ends"] or "") >= today),
+            "paying": sum(1 for o in orgs if o["plan"] in ("starter", "pro", "agency") and o["status"] == "active"),
+            "mrr": sum(plans.PLANS[o["plan"]]["price"] for o in orgs if o["plan"] in ("starter", "pro", "agency") and o["status"] == "active"),
+            "users": db.q1("SELECT COUNT(*) n FROM users")["n"],
+            "active_week": db.q1("SELECT COUNT(DISTINCT user_id) n FROM audit_log WHERE ts>=?", (week,))["n"]}
 
 
 # ------------------------------------------------------------------ static web app

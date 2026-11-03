@@ -1,9 +1,9 @@
 // EstateHawk screens. Each view(el, params) renders into el and may return a cleanup function.
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb, streetView, gmaps, homeLine,
-  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync,
+  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal,
 } from './app.js';
-export { outreach, reports, settings, welcome, alerts, counties } from './views2.js';
+export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
 
 const GREEN = '#14532D', AMBER = '#E0A030', GREY = '#8C938F';
 export const scoreColor = (s) => s >= 85 ? '#1F7A45' : s >= 65 ? AMBER : GREY;
@@ -93,12 +93,12 @@ export async function deals(el) {
     $('#leadTable tbody').innerHTML = r.rows.map((p) => `<tr data-id="${esc(p.id)}">
       <td><input type="checkbox" class="chk" ${chosen.has(p.id) ? 'checked' : ''}></td>
       <td><div class="prop">${thumb(p)}<div><b>${esc(title(p.street))}</b><span>${esc(place(p))}</span>${homeLine(p) ? `<span style="display:block;color:var(--ink2)">${homeLine(p)}</span>` : ''}</div></div></td>
-      <td class="hide-m"><div style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title(p.owner_name))}">${esc(title(p.owner_name))}</div>${p.contact_status === 'found' ? ` <span class="pill p-green tiny">${ic('phone', 11)} Contact</span>` : p.contact_status === 'private' ? ' <span class="pill tiny" style="background:#EEE;color:#555">Private</span>' : ''}${p.mail_state && p.mail_state !== p.state ? ` <span class="pill p-amber tiny" style="padding:1px 7px">Out of state: ${esc(p.mail_state)}</span>` : ''}</td>
+      <td class="hide-m"><div style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title(p.owner_name))}">${p.locked ? `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Locked</span>` : esc(title(p.owner_name))}</div>${p.contact_status === 'found' ? ` <span class="pill p-green tiny">${ic('phone', 11)} Contact</span>` : p.contact_status === 'private' ? ' <span class="pill tiny" style="background:#EEE;color:#555">Private</span>' : ''}${p.mail_state && p.mail_state !== p.state ? ` <span class="pill p-amber tiny" style="padding:1px 7px">Out of state: ${esc(p.mail_state)}</span>` : ''}</td>
       <td class="r num">${money(p.total_due ?? p.amount_owed)}</td>
       <td class="r num hide-m hide-xl">${yrs(p.years_behind)}</td>
       <td class="r num hide-m">${money(p.appraised_total)}</td>
       <td style="text-align:center">${scorePill(p.score)}</td>
-      <td class="hide-m"><div class="row gap4" style="flex-wrap:nowrap"><a class="btn sm primary" href="#/deal/${encodeURIComponent(p.id)}?offer=1">Draft offer</a><button class="icon-btn more" style="width:30px;height:30px">${ic('dots', 18)}</button></div></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty">No leads match these filters.${S.meta.parcels ? '' : ' Add a county and run a sync, or load demo data in Settings.'}</div></td></tr>`;
+      <td class="hide-m"><div class="row gap4" style="flex-wrap:nowrap">${p.locked ? `<a class="btn sm" href="#/deal/${encodeURIComponent(p.id)}">${ic('lock', 13)} Reveal</a>` : `<a class="btn sm primary" href="#/deal/${encodeURIComponent(p.id)}?offer=1">Draft offer</a>`}<button class="icon-btn more" style="width:30px;height:30px">${ic('dots', 18)}</button></div></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty">No leads match these filters.${S.meta.parcels ? '' : ' Add a county and run a sync, or load demo data in Settings.'}</div></td></tr>`;
   }
   async function loadSide() {
     const [pts, al] = await Promise.all([api(`/api/map?county=${S.county}&ptype=homes&min_score=60`), api('/api/alerts?limit=4&county=' + S.county)]);
@@ -163,6 +163,7 @@ export async function deals(el) {
 export async function deal(el, [rawId]) {
   const [id, query] = (rawId || '').split('?');
   const p = await api(`/api/parcels/${encodeURIComponent(id)}/detail`);
+  if (p.locked) return lockedDeal(el, p, rawId);
   p.contacts = p.contacts || [];
   const due = p.total_due ?? p.amount_owed;
   const outState = p.mail_state && p.mail_state !== p.state;
@@ -420,6 +421,38 @@ export async function deal(el, [rawId]) {
   $('#addTask').onclick = () => taskModal(id, () => deal(el, [rawId]));
   if ((query || '').includes('offer=1') && !offer) setTimeout(() => $('#offerCard').scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
   return () => gm.remove();
+}
+
+// free trial: a lead not yet revealed shows the money and the score, but not who or where
+function lockedDeal(el, p, rawId) {
+  const due = p.total_due ?? p.amount_owed;
+  const left = p.reveals_left ?? 0;
+  el.innerHTML = `<a class="small muted" href="#/deals">${ic('back', 14)} Back to Deals</a>
+  <div class="row between" style="margin:10px 0 16px;flex-wrap:wrap;gap:10px"><div><h1 style="font-size:26px">${ic('lock', 22)} Locked lead</h1>
+    <div class="sub">${esc([title(p.city || ''), p.state, p.zip].filter(Boolean).join(' '))} · ${esc(p.county_name)}</div></div>${scorePill(p.score)}</div>
+  <div class="card card-pad" style="border:2px solid var(--green);margin-bottom:18px">
+    <h3>See the owner, address and contacts</h3>
+    <p class="muted small" style="margin:6px 0 12px">Your free trial can open ${p.reveals_total} leads in full. You have <b>${left}</b> left. Paid plans open every lead and let you draft offers, export and print letters.</p>
+    <div class="row gap6"><button class="btn primary" id="revealBtn" ${left > 0 ? '' : 'disabled'}>${ic('lock', 14)} Reveal this lead${left > 0 ? ` (${left} left)` : ''}</button><button class="btn" id="seePlans">See plans</button></div></div>
+  <div class="grid-2" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">
+    <div class="card card-pad"><h3 style="margin-bottom:10px">What we know</h3><div class="facts">
+      ${fact('dollar', 'Taxes owed', money(due, 2))}
+      ${fact('cal', 'Years behind', `${yrs(p.years_behind)}`)}
+      ${fact('chart', 'Estimated value', money(p.appraised_total))}
+      ${fact('trend', 'Estimated equity', money(p.est_equity))}
+      ${fact('house', 'Property type', esc(p.property_type || '--'))}
+      ${fact('home', 'Beds / built', `${p.beds ?? '--'} bd · ${p.year_built || '--'}`)}
+      ${fact('user', 'Owner', `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Hidden</span>`)}
+      ${fact('pin', 'Address', `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Hidden</span>`)}
+    </div></div>
+    <div class="card card-pad"><h3>Why this score?</h3><div id="reasons" style="margin-top:8px">${reasonsHtml(p.reasons)}</div></div>
+  </div>`;
+  $('#seePlans').onclick = () => plansModal();
+  $('#revealBtn').onclick = async () => {
+    $('#revealBtn').disabled = true;
+    try { await api(`/api/parcels/${encodeURIComponent(p.id)}/reveal`, { method: 'POST' }); await refreshMeta(); deal(el, [rawId]); }
+    catch (e) { toast(e.message, true); plansModal(e.message); }
+  };
 }
 
 export function taskModal(parcelId, done) {
