@@ -370,7 +370,8 @@ async function scoringTab(body) {
 async function integrationsTab(body) {
   const r = await api('/api/integrations');
   const v = r.values, c = r.configured;
-  const f = (k, l, ph = '', type = 'text') => `<div class="field"><label>${l}</label><input class="input" data-env="${k}" type="${type}" placeholder="${esc(v[k] === 'set' ? 'Saved (hidden). Type to replace.' : ph)}" value="${v[k] && v[k] !== 'set' ? esc(v[k]) : ''}"></div>`;
+  // secret fields are masked with CSS, not type=password, so Chrome never autofills the login password into them
+  const f = (k, l, ph = '', type = 'text') => `<div class="field"><label>${l}</label><input class="input" data-env="${k}" type="text" autocomplete="off" data-lpignore="true" data-1p-ignore spellcheck="false"${type === 'password' ? ' style="-webkit-text-security:disc"' : ''} placeholder="${esc(v[k] === 'set' ? 'Saved (hidden). Type to replace.' : ph)}" value="${v[k] && v[k] !== 'set' ? esc(v[k]) : ''}"></div>`;
   const sect = (name, key, on, inner, help) => `<div class="card card-pad" style="margin-bottom:18px"><div class="row between"><h3>${name}</h3><span class="small"><span class="status-dot ${on ? 'on' : ''}"></span>${on ? 'Connected' : 'Not connected'}</span></div>
     <div class="small muted" style="margin:4px 0 14px">${help}</div>${inner}<div class="row"><button class="btn primary sm" data-save>Save</button>${key ? `<button class="btn sm" data-test="${key}">Send test</button>` : ''}</div></div>`;
   body.innerHTML = `
