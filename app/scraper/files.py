@@ -214,7 +214,7 @@ def franklin(c):
     folders = []
     for y in (dt.date.today().year, dt.date.today().year - 1):
         t = c.get(f"{root}/Outside_User_Files/{y}/").text
-        folders += re.findall(r"href=\"(/Outside_User_Files/\d{4}/[^\"]*Tax%20Accounting/)\"", t)
+        folders += re.findall(r"href=\"(/Outside_User_Files/\d{4}/[^\"]*Tax%20Accounting/)\"", t, re.I)
         if folders:
             break
     if not folders:
