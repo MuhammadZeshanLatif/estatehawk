@@ -288,7 +288,7 @@ def stats(county: str = "all"):
     hi = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1 AND p.score>=80{s}", a)["n"]
     hi_wk = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1 AND p.score>=80 AND p.first_seen<?{s}",
                   [(dt.date.today() - dt.timedelta(days=7)).isoformat()] + a)["n"]
-    eq = db.q1(f"SELECT AVG(p.est_equity) v FROM parcels p WHERE p.is_active=1 AND p.est_equity>0 AND p.property_type IN ('Single family','Residential'){s}", a)["v"]
+    eq = db.q1(f"SELECT AVG(p.est_equity) v FROM parcels p WHERE p.is_active=1 AND p.est_equity>0 AND (p.property_type IN ('Single family','Residential') OR p.property_type IS NULL OR p.property_type IN ('Unknown','Other')){s}", a)["v"]
     cc, _ = county_filter(None, "counties")
     ct = db.q1(f"SELECT COUNT(*) n, COUNT(DISTINCT state) st FROM counties WHERE enabled=1{cc.replace('counties.county_id', 'counties.id')}")
     active = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1{s}", a)["n"]
