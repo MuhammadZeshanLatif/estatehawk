@@ -1,14 +1,33 @@
 {
   "manifest_version": 3,
   "name": "EstateHawk Helper",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Lets the EstateHawk dashboard read owner phone/email from a Google search in a hidden window, only when you click 'Click to see contact info'.",
-  "permissions": ["tabs", "scripting", "windows"],
-  "host_permissions": ["https://www.google.com/*", "http://localhost:8000/*", "http://127.0.0.1:8000/*"],
-  "background": { "service_worker": "bg.js" },
-  "content_scripts": [{
-    "matches": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"],
-    "js": ["bridge.js"],
-    "run_at": "document_start"
-  }]
+  "permissions": [
+    "tabs",
+    "scripting",
+    "windows"
+  ],
+  "host_permissions": [
+    "https://www.google.com/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "https://estatehawk.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "bg.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*",
+        "https://estatehawk.onrender.com/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
 }
