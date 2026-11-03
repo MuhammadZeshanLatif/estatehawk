@@ -200,7 +200,7 @@ def sync_county(county_id, enrich_limit=700):
         return {"ok": False, "error": err}
 
 
-def sync_all(ids=None):
+def sync_all(ids=None, enrich_limit=None):
     if not _lock.acquire(blocking=False):
         return {"ok": False, "error": "A sync is already running"}
     try:
@@ -208,7 +208,7 @@ def sync_all(ids=None):
         res = {}
         counties = db.q("SELECT id FROM counties WHERE enabled=1 AND demo=0" + (f" AND id IN ({','.join('?' * len(ids))})" if ids else ""), tuple(ids or ()))
         for c in counties:
-            res[c["id"]] = sync_county(c["id"])
+            res[c["id"]] = sync_county(c["id"], **({"enrich_limit": enrich_limit} if enrich_limit is not None else {}))
         check_auctions()
         send_instant_alerts()
         try:
@@ -223,7 +223,8 @@ def sync_all(ids=None):
 
 
 def sync_in_background(ids=None):
-    threading.Thread(target=sync_all, args=(ids,), daemon=True).start()
+    # started from the website (small server): read only a few property pages, the nightly sync does the rest
+    threading.Thread(target=sync_all, args=(ids, 100), daemon=True).start()
 
 
 def check_auctions():

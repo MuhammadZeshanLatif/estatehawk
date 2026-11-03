@@ -97,8 +97,12 @@ export async function counties(el) {
     <div class="right"><div data-sync-status></div><div class="search" style="width:260px">${ic('search', 16)}<input id="cQ" placeholder="Search counties..."></div>
       ${S.meta.super ? `<button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button>` : `<button class="btn primary" id="moreCounties">${ic('plus', 16)} Add more counties</button>`}</div></div>
   <div class="county-grid" id="cGrid"></div>`;
-  const statusPill = (c) => ({ synced: `<span class="pill p-green">${ic('check', 13)} Synced</span>`, syncing: `<span class="pill p-amber">${ic('refresh', 13)} Syncing</span>`,
-    error: `<span class="pill p-red">${ic('alert', 13)} Error</span>`, never: `<span class="pill p-grey">Not synced</span>` }[c.sync_status] || `<span class="pill p-grey">${esc(c.sync_status)}</span>`);
+  // the status pill is also the "sync this county now" button (owner only); while syncing it spins
+  const statusPill = (c) => {
+    const can = S.meta.super && c.sync_status !== 'syncing';
+    const p = ({ synced: ['p-green', 'check', 'Synced'], syncing: ['p-amber', 'refresh', 'Syncing'], error: ['p-red', 'alert', 'Error'], never: ['p-grey', 'refresh', 'Not synced'] })[c.sync_status] || ['p-grey', 'refresh', c.sync_status];
+    return `<span class="pill ${p[0]} ${can ? 'sync-pill' : ''}" data-id="${c.id}" ${can ? `title="Click to sync ${esc(c.name)} now" style="cursor:pointer"` : ''}><span class="${c.sync_status === 'syncing' ? 'spin' : ''}" style="display:inline-flex">${ic(p[1], 13)}</span> ${esc(p[2])}</span>`;
+  };
   const draw = (q = '') => {
     $('#cGrid').innerHTML = rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => `
       <div class="card county" style="${c.enabled ? '' : 'opacity:.55'}"><div class="row" style="align-items:flex-start">${countyShape(c.name)}
@@ -107,7 +111,8 @@ export async function counties(el) {
         <div class="tiny muted" style="text-align:right;margin-top:4px">${c.sync_status === 'error' ? `<a class="small retry" data-id="${c.id}" style="color:var(--blue);cursor:pointer">${ic('refresh', 13)} Retry sync</a><br>` : ''}Last sync: ${c.last_sync ? fmtDate(c.last_sync, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never'}</div>
         ${c.sync_status === 'error' ? `<div class="small" style="color:var(--red);margin-top:4px">${esc(c.sync_error || '')}</div>` : ''}
         <div class="row between" style="margin-top:8px"><div><div class="big num">${num(c.active)}</div><div class="small muted">Delinquent properties</div></div>
-          <span class="pill ${c.new_today ? 'p-green' : 'p-grey'}">${ic('trend', 13)} +${c.new_today} new today</span></div>
+          <div class="col" style="align-items:flex-end;gap:6px"><span class="pill ${c.new_today ? 'p-green' : 'p-grey'}">${ic('trend', 13)} +${c.new_today} new today</span>
+          <button class="btn xs show-leads" data-id="${c.id}">${ic('home', 13)} View leads</button></div></div>
         <div class="tiny muted" style="margin-top:12px">New delinquent properties (30 days)${c.tax_sale_date ? ` · Tax sale ${fmtDate(c.tax_sale_date)}` : ''}</div>
         ${spark(c.spark, c.sync_status === 'error' ? '#C2410C' : c.sync_status === 'syncing' ? '#D49A2A' : '#1F7A45')}
       </div>`).join('') || `<div class="card empty" style="grid-column:1/-1">No counties yet. Click <b>Add county</b>.</div>`;
@@ -120,6 +125,13 @@ export async function counties(el) {
   if ($('#moreCounties')) $('#moreCounties').onclick = () => plansModal(`Your ${S.meta.org.label} plan includes ${S.meta.org.limits.counties ?? 'all'} county(ies).`);
   $('#cGrid').onclick = (e) => {
     const rt = e.target.closest('.retry'); if (rt) return syncIds([+rt.dataset.id]);
+    const sl = e.target.closest('.show-leads'); if (sl) { setCounty(sl.dataset.id); location.hash = '#/deals'; return; }
+    const sp = e.target.closest('.sync-pill');
+    if (sp) {  // spin right away on the pill, then start the sync for just this county
+      sp.className = 'pill p-amber'; sp.style.cursor = 'default';
+      sp.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 13)}</span> Syncing`;
+      return syncIds([+sp.dataset.id]);
+    }
     const b = e.target.closest('.more'); if (!b) return;
     e.stopPropagation();
     const c = rows.find((x) => x.id === +b.dataset.id);

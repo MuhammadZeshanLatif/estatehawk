@@ -229,7 +229,8 @@ def parcel_where(params):
         w += " AND COALESCE(p.years_behind,1)>=?"; a.append(float(params["min_years"]))
     if params.get("ptype") and params["ptype"] != "all":
         if params["ptype"] == "homes":
-            w += " AND p.property_type IN ('Single family','Residential')"
+            # many county lists do not say what the property is: keep "unknown" ones instead of hiding whole counties
+            w += " AND (p.property_type IN ('Single family','Residential') OR p.property_type IS NULL OR p.property_type IN ('Unknown','Other'))"
         else:
             w += " AND p.property_type=?"; a.append(params["ptype"])
     if params.get("out_of_state") == "1":
