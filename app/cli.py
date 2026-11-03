@@ -9,6 +9,21 @@ import sys
 from . import db, jobs, notify
 
 
+def add_lgbs():
+    """Every county with Linebarger tax-sale listings (Texas + Philadelphia) becomes a county here."""
+    from .scraper.files import FileClient
+    fc = FileClient("lgbs:TX:X")
+    have = {r["host"] for r in db.q("SELECT host FROM counties")}
+    added = []
+    for it in fc.get("https://taxsales.lgbs.com/api/sale_counties/?limit=1000").json().get("results", []):
+        st, cn = it["state"].upper(), it["county"].upper()
+        host = f"lgbs:{st}:{cn}"
+        if host not in have:
+            added.append(db.run("INSERT INTO counties(name,state,host,platform) VALUES(?,?,?,?)", (cn.title(), st, host, "lgbs")))
+            print("added", added[-1], cn.title(), st)
+    return added
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "sync"
     db.con()
@@ -33,9 +48,13 @@ def main(argv):
                              (k["name"], k["state"], k["host"], k["lat"], k["lng"]))
                 print("added", cid, k["name"])
                 added.append(cid)
+        added += add_lgbs()
         print(added)
         return 0
     if cmd == "add-lgbs":
+        print(add_lgbs())
+        return 0
+    if cmd == "_old-add-lgbs":
         # every county with Linebarger tax-sale listings (Texas + Philadelphia) becomes a county here
         from .scraper.files import FileClient
         fc = FileClient("lgbs:TX:X")

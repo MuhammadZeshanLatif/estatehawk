@@ -390,6 +390,7 @@ def lgbs(c, state, county):
                             lat=geo[1], lng=geo[0]))
             out[-1]["state"] = (x.get("prop_state") or state)[:2]
         url = j.get("next")
+        time.sleep(1.5)
         if url and url.startswith("http://"):
             url = "https://" + url[7:]
     return out, None
