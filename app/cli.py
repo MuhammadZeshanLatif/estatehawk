@@ -26,12 +26,14 @@ def main(argv):
     if cmd == "add-known":
         from .counties import KNOWN_ISSG
         have = {r["name"] for r in db.q("SELECT name FROM counties")}
+        added = []
         for k in KNOWN_ISSG:
             if k["host"] and k["name"] not in have:
                 cid = db.run("INSERT INTO counties(name,state,host,lat,lng) VALUES(?,?,?,?,?)",
                              (k["name"], k["state"], k["host"], k["lat"], k["lng"]))
                 print("added", cid, k["name"])
-        print([r["id"] for r in db.q("SELECT id FROM counties WHERE enabled=1 AND demo=0 AND sync_status='never' ORDER BY id")])
+                added.append(cid)
+        print(added)
         return 0
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
