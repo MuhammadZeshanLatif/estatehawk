@@ -96,7 +96,7 @@ EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "im
          "appraised_total", "cert_year", "legal_desc", "year_built", "acres")
 
 
-def sync_county(county_id, enrich_limit=1500):
+def sync_county(county_id, enrich_limit=700):
     county = db.q1("SELECT * FROM counties WHERE id=?", (county_id,))
     run_id = db.run("INSERT INTO sync_runs(county_id, started, status) VALUES(?,?,?)", (county_id, now(), "running"))
     db.run("UPDATE counties SET sync_status='syncing', sync_error=NULL WHERE id=?", (county_id,))
@@ -167,7 +167,10 @@ def sync_county(county_id, enrich_limit=1500):
         STATUS.update(step=f"Reading property details (0/{len(todo)})", progress=45)
         enrich(client, county, todo, step_cb=lambda i, n: STATUS.update(step=f"Reading property details ({i}/{n})", progress=45 + int(50 * i / max(n, 1))))
         # map coordinates for sites without a map link (street number needed for a match)
-        missing = db.q("SELECT id, street, city, state, zip FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NULL AND street GLOB '[0-9]*'", (county_id,))
+        # only parcels that are new or got an address today (or everything on a first sync / every Sunday), so misses are not retried daily
+        recheck = first_sync or dt.date.today().weekday() == 6
+        missing = db.q("SELECT id, street, city, state, zip FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NULL AND street GLOB '[0-9]*'"
+                       + ("" if recheck else " AND (first_seen=? OR enriched_at >= ?)"), (county_id,) if recheck else (county_id, d, d))
         if missing:
             STATUS.update(step=f"Placing {len(missing)} properties on the map", progress=96)
             found = geocode.batch([(m["id"], m["street"], m["city"], m["state"] or "OH", m["zip"]) for m in missing])
