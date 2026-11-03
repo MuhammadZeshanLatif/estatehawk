@@ -93,7 +93,7 @@ def enrich(client, county, parcel_ids, step_cb=None):
 
 
 EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "improvement_value",
-         "appraised_total", "cert_year", "legal_desc")
+         "appraised_total", "cert_year", "legal_desc", "year_built", "acres")
 
 
 def sync_county(county_id, enrich_limit=1500):

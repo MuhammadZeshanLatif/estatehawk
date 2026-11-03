@@ -159,7 +159,46 @@ def summit(c):
     return out, (year - 1 if year else None)
 
 
-SOURCES = {"hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
+def montgomery(c):
+    """Montgomery County (Dayton): the treasurer's monthly delinquent file (zip with one CSV, every field we need)."""
+    import csv, zipfile
+    base = "https://go.mcohio.org/applications/treasurer/search/"
+    links = re.findall(r"data\\Delq\\(Delq_\d{8}\.zip)", c.get(base + "fdpopup.cfm?dtype=DQ").text)
+    if not links:
+        raise RuntimeError("Montgomery delinquent file link not found")
+    z = zipfile.ZipFile(io.BytesIO(c.get(base + "data/Delq/" + sorted(links)[-1]).content))
+    text = z.read(z.namelist()[0]).decode("latin1")
+    rd = csv.reader(io.StringIO(text))
+    head = [h.strip().upper() for h in next(rd)]
+    ix = {h: i for i, h in enumerate(head)}
+    g = lambda row, k: row[ix[k]].strip() if k in ix and ix[k] < len(row) else ""
+    out = []
+    for row in rd:
+        if g(row, "CLS") in ("U", "E") or not g(row, "PARCELID"):
+            continue
+        amt = _num(g(row, "NETDELQ"))
+        if not amt or amt < 1:
+            continue
+        loc = g(row, "PARCELLOCATION")
+        mail1, mail3 = g(row, "PADDR1"), g(row, "PADDR3") or g(row, "PADDR2")
+        mz = re.search(r"\b(\d{5})", mail3)
+        city = ""
+        if loc and mail1 and loc.split()[:2] == mail1.split()[:2]:  # owner lives there: the mailing city is the property city
+            cm = re.match(r"([A-Z .]+?)\s+OH\b", mail3)
+            city = cm.group(1).strip() if cm else ""
+        yb = _num(g(row, "YRBLT"))
+        cy = _num(g(row, "CERTDLQYR"))
+        out.append(_row(g(row, "PARCELID"), " & ".join(x for x in (g(row, "OWNERNAME1"), g(row, "OWNERNAME2")) if x), amt,
+                        loc, city, "", district=g(row, "TXDST"),
+                        mail_address=", ".join(x for x in (mail1, mail3) if x), mail_zip=mz.group(1) if mz else None,
+                        land_use=g(row, "LUC"), land_value=_num(g(row, "ASMTLAND")), improvement_value=_num(g(row, "ASMTBLDG")),
+                        appraised_total=_num(g(row, "ASMTTOTAL")), year_built=int(yb) if yb and yb > 1700 else None,
+                        cert_year=int(cy) if cy and cy > 1900 else None, acres=_num(g(row, "ACRES")) or None,
+                        legal_desc=" ".join(x for x in (g(row, "LEGAL1"), g(row, "LEGAL2"), g(row, "LEGAL3")) if x)))
+    return out, None
+
+
+SOURCES = {"montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
 
 
 # ---- property pages ------------------------------------------------------------
