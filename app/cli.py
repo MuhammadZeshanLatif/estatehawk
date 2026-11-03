@@ -39,6 +39,14 @@ def main(argv):
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)
         return 0 if res.get("ok") else 1
+    if cmd == "status":
+        for r in db.q("""SELECT c.id, c.name, c.sync_status, c.last_sync, c.sync_error,
+                         (SELECT COUNT(*) FROM parcels p WHERE p.county_id=c.id AND p.is_active=1) AS active,
+                         (SELECT COUNT(*) FROM parcels p WHERE p.county_id=c.id AND p.is_active=1 AND p.lat IS NOT NULL) AS mapped,
+                         (SELECT COUNT(*) FROM parcels p WHERE p.county_id=c.id AND p.is_active=1 AND p.enriched_at IS NOT NULL) AS detailed
+                         FROM counties c WHERE c.demo=0 ORDER BY c.id"""):
+            print(f"C {r['id']}|{r['name']}|{r['sync_status']}|{r['last_sync']}|active={r['active']}|mapped={r['mapped']}|detailed={r['detailed']}|{(r['sync_error'] or '')[:120]}")
+        return 0
     print(__doc__)
     return 2
 
