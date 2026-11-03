@@ -1,7 +1,7 @@
 // EstateHawk screens. Each view(el, params) renders into el and may return a cleanup function.
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb, streetView, gmaps, homeLine,
-  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
+  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
 } from './app.js';
 export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
 
@@ -264,7 +264,7 @@ export async function deal(el, [rawId]) {
   ]); };
   async function moveStage(stage) {
     let fee;
-    if (stage === 'closed') { fee = prompt('Assignment fee earned ($)?', '10000'); if (fee == null) return; }
+    if (stage === 'closed') { fee = await askFee(); if (fee == null) return; }
     await api(`/api/parcels/${encodeURIComponent(id)}/stage`, { method: 'POST', body: { stage, fee: fee ? +fee : null } });
     toast(stage === 'remove' ? 'Removed from pipeline' : 'Stage updated'); deal(el, [rawId]);
   }

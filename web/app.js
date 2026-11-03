@@ -128,6 +128,36 @@ export function modal(html, onMount) {
   return close;
 }
 
+// A friendly in-app dialog instead of the browser's alert/confirm/prompt. Resolves to the typed value, true, or null (cancelled).
+export function ask({ title, text = '', icon = 'info', tone = 'green', input = null, ok = 'OK', cancel = 'Cancel', danger = false }) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v, close) => { if (done) return; done = true; document.removeEventListener('keydown', onKey); close(); resolve(v); };
+    let closeFn = () => { };
+    const onKey = (e) => { if (e.key === 'Escape') finish(null, closeFn); };
+    const field = input ? `<div class="ask-field">${input.prefix ? `<span class="ask-prefix">${esc(input.prefix)}</span>` : ''}<input id="askIn" class="input" type="${input.type || 'text'}" inputmode="${input.type === 'number' ? 'decimal' : 'text'}" value="${esc(input.value ?? '')}" placeholder="${esc(input.placeholder || '')}"></div>${input.hint ? `<div class="tiny muted" style="margin-top:6px">${esc(input.hint)}</div>` : ''}` : '';
+    closeFn = modal(`<div class="ask">
+      <div class="ask-ico tone-${danger ? 'red' : tone}">${ic(danger ? 'alert' : icon, 22)}</div>
+      <h2>${esc(title)}</h2>${text ? `<p class="muted">${text}</p>` : ''}${field}
+      <div class="row ask-btns"><button class="btn" id="askNo">${esc(cancel)}</button><button class="btn ${danger ? 'danger' : 'primary'}" id="askOk">${esc(ok)}</button></div></div>`, (m) => {
+      const inp = $('#askIn', m);
+      const val = () => (inp ? inp.value.trim() : true);
+      $('#askOk', m).onclick = () => { if (inp && input.required !== false && !inp.value.trim()) { inp.focus(); inp.classList.add('err'); return; } finish(val(), closeFn); };
+      $('#askNo', m).onclick = () => finish(null, closeFn);
+      if (inp) { inp.onkeydown = (e) => { if (e.key === 'Enter') $('#askOk', m).click(); }; setTimeout(() => { inp.focus(); inp.select(); }, 30); } else setTimeout(() => $('#askOk', m).focus(), 30);
+    });
+    $('#modal').onclick = (e) => { if (e.target === $('#modal')) finish(null, closeFn); };
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+// Asked when a deal moves to Closed
+export async function askFee() {
+  const v = await ask({ title: 'Deal closed! How much did you make?', text: 'Enter the assignment fee for this deal. It shows up in Reports.', icon: 'check',
+    input: { type: 'number', prefix: '$', value: '10000', placeholder: '10000', hint: 'You can change it later on the deal page.' }, ok: 'Save fee', cancel: 'Cancel' });
+  return v == null ? null : String(v).replace(/[^\d.]/g, '') || '0';
+}
+
 export function menu(anchor, items) {
   closeMenus();
   const d = document.createElement('div');

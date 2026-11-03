@@ -351,3 +351,18 @@ input[type=range]{accent-color:var(--green);width:100%}
 .map-filters .select{height:36px}
 .page-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:50vh;color:#667085;font-size:14px}
 .page-loader svg{color:#1F7A45}
+.ask{text-align:center;padding:6px 4px 2px;max-width:380px;margin:0 auto}
+.ask .ask-ico{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;margin:0 auto 12px}
+.ask h2{font-size:19px;margin:0 0 6px}
+.ask p{margin:0 0 14px;font-size:14px;line-height:1.5}
+.ask-field{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden;margin-top:6px}
+.ask-field:focus-within{border-color:#1F7A45;box-shadow:0 0 0 3px rgba(31,122,69,.12)}
+.ask-field .input{border:0;box-shadow:none;height:46px;font-size:18px;font-weight:600;flex:1;min-width:0;outline:none;padding:0 12px}
+.ask-field .input.err{background:#FEF3F2}
+.ask-prefix{padding:0 0 0 14px;font-size:18px;font-weight:600;color:#667085}
+.ask-btns{justify-content:center;gap:10px;margin-top:18px}
+.ask-btns .btn{min-width:120px;justify-content:center}
+.btn.danger{background:#B42318;border-color:#B42318;color:#fff}
+.btn.danger:hover{background:#912018}
+.ask-field input[type=number]::-webkit-inner-spin-button,.ask-field input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.ask-field input[type=number]{-moz-appearance:textfield}
