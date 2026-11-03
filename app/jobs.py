@@ -103,6 +103,20 @@ EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "im
          "appraised_total", "cert_year", "legal_desc", "year_built", "acres", "lat", "lng")
 
 
+def drop_stray_points(county_id):
+    """Remove map points that landed far from the rest of the county (a street name matched in another town or state)."""
+    pts = db.q("SELECT id, lat, lng FROM parcels WHERE county_id=? AND lat IS NOT NULL", (county_id,))
+    if len(pts) < 5:
+        return 0
+    med = lambda xs: sorted(xs)[len(xs) // 2]
+    la, ln = med([p["lat"] for p in pts]), med([p["lng"] for p in pts])
+    bad = [(p["id"],) for p in pts if abs(p["lat"] - la) > 0.9 or abs(p["lng"] - ln) > 1.2]  # ~100 km
+    if bad:
+        with db.tx() as c:
+            c.executemany("UPDATE parcels SET lat=NULL, lng=NULL WHERE id=?", bad)
+    return len(bad)
+
+
 def sync_county(county_id, enrich_limit=700):
     county = db.q1("SELECT * FROM counties WHERE id=?", (county_id,))
     run_id = db.run("INSERT INTO sync_runs(county_id, started, status) VALUES(?,?,?)", (county_id, now(), "running"))
@@ -188,6 +202,7 @@ def sync_county(county_id, enrich_limit=700):
                 for pid, (lat, lng) in found.items():
                     c.execute("UPDATE parcels SET lat=?, lng=? WHERE id=?", (lat, lng, pid))
         rescore([r["id"] for r in db.q("SELECT id FROM parcels WHERE county_id=?", (county_id,))], quiet=first_sync)
+        drop_stray_points(county_id)
         db.run("""UPDATE counties SET lat=(SELECT AVG(lat) FROM parcels WHERE county_id=? AND lat IS NOT NULL),
                   lng=(SELECT AVG(lng) FROM parcels WHERE county_id=? AND lng IS NOT NULL) WHERE id=? AND lat IS NULL""",
                (county_id, county_id, county_id))

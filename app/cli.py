@@ -77,6 +77,13 @@ def main(argv):
         res = jobs.sync_county(cid, enrich_limit=int(argv[3]) if len(argv) > 3 else 5000)
         print(res)
         return 0 if res.get("ok") else 1
+    if cmd == "fix-points":
+        # one-off clean-up of badly placed map points in every county
+        for r in db.q("SELECT id, name FROM counties"):
+            n = jobs.drop_stray_points(r["id"])
+            if n:
+                print(r["name"], "removed", n)
+        return 0
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)

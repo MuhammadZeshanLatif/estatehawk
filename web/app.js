@@ -51,7 +51,7 @@ export const $ = (s, el = document) => el.querySelector(s);
 export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const money = (v, d = 0) => (v == null || isNaN(v)) ? '--' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
-export const kmoney = (v) => v == null ? '--' : Math.abs(v) >= 1000 ? '$' + (v / 1000).toFixed(v >= 100000 ? 0 : 0) + 'K' : money(v);
+export const kmoney = (v) => v == null ? '--' : Math.abs(v) >= 1e6 ? (v < 0 ? '-' : '') + '$' + (Math.abs(v) / 1e6).toFixed(Math.abs(v) >= 1e7 ? 0 : 1) + 'M' : Math.abs(v) >= 1000 ? (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v) / 1000) + 'K' : money(v);
 export const num = (v) => v == null ? '--' : Number(v).toLocaleString('en-US');
 export const title = (s) => String(s || '').toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Oh|Ne|Nw|Se|Sw|Llc|Csd|Lsd)\b/g, (m) => m.toUpperCase());
 export const yrs = (v) => v == null ? '--' : String(Math.round(v));
@@ -158,7 +158,13 @@ export function fitMap(map, pts, county = S.county, note = null) {
   const box = map.getContainer();
   let msg = box.querySelector('.map-note');
   if (!msg) { msg = document.createElement('div'); msg.className = 'map-note'; box.appendChild(msg); }
-  const good = (pts || []).filter((p) => p.lat != null && p.lng != null);
+  let good = (pts || []).filter((p) => p.lat != null && p.lng != null);
+  if (good.length > 4) {  // a few badly placed pins must not zoom the map out to half the country
+    const med = (xs) => { const s = xs.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    const la = med(good.map((p) => p.lat)), ln = med(good.map((p) => p.lng));
+    const near = good.filter((p) => Math.abs(p.lat - la) < 1.2 && Math.abs(p.lng - ln) < 1.6);
+    if (county !== 'all' && near.length) good = near;
+  }
   if (good.length) { msg.style.display = 'none'; map.fitBounds(L.latLngBounds(good.map((p) => [p.lat, p.lng])).pad(0.15), { maxZoom: 15 }); return; }
   const cs = (S.meta?.counties || []).filter((c) => c.lat != null && (county === 'all' || String(c.id) === String(county)));
   if (cs.length === 1) map.setView([cs[0].lat, cs[0].lng], 9);
