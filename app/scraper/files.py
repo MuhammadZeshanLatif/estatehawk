@@ -207,7 +207,62 @@ def montgomery(c):
     return out, None
 
 
-SOURCES = {"montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
+def franklin(c):
+    """Franklin County (Columbus): the auditor's monthly Tax Accounting export. Delinquent = unpaid prior-year balance."""
+    import csv, zipfile
+    root = "https://apps.franklincountyauditor.com"
+    folders = []
+    for y in (dt.date.today().year, dt.date.today().year - 1):
+        t = c.get(f"{root}/Outside_User_Files/{y}/").text
+        folders += re.findall(r"href=\"(/Outside_User_Files/\d{4}/[^\"]*Tax%20Accounting/)\"", t)
+        if folders:
+            break
+    if not folders:
+        raise RuntimeError("Franklin Tax Accounting folder not found")
+    z = zipfile.ZipFile(io.BytesIO(c.get(root + sorted(folders)[-1] + "Tab-Delimited.zip").content))
+
+    def table(name):
+        with z.open(name) as f:
+            rd = csv.reader(io.TextIOWrapper(f, encoding="utf-8-sig", errors="replace"), delimiter="\t")
+            head = next(rd)
+            ix = {h.strip(): i for i, h in enumerate(head)}
+            for row in rd:
+                yield ix, row
+
+    due = {}
+    for ix, row in table("TaxDetail.txt"):
+        prior = _num(row[ix["TotPrior"]]) or 0
+        total = _num(row[ix["TotTotal"]]) or 0
+        if prior > 1 and total > 1:
+            due[row[ix["Parcel Id"]].strip('"')] = total
+    vals = {}
+    for ix, row in table("Value.txt"):
+        pid = row[ix["Parcel Id"]].strip('"')
+        if pid in due and row[ix["ValueType"]].strip('"') == "BASE":
+            vals[pid] = (_num(row[ix["MarketLand"]]), _num(row[ix["MarketImpr"]]))
+    out = []
+    for ix, row in table("Parcel.txt"):
+        g = lambda k: row[ix[k]].strip().strip('"') if k in ix and ix[k] < len(row) else ""
+        pid = g("PARCEL ID")
+        if pid not in due:
+            continue
+        site = g("SiteAddress")
+        street, city, z5 = _split_addr(site.replace(",", " ")) if site else ("", "", "")
+        if not z5:
+            street = site.split(",")[0]
+        land, impr = vals.get(pid, (None, None))
+        cdq = _num(g("CDQ"))
+        out.append(_row(pid, " & ".join(x for x in (g("OwnerName1"), g("OwnerName2")) if x), due[pid], street,
+                        city or g("City").replace(" CITY", "").title().upper(), z5 or g("ZipCode"), district=g("SchoolDistrictDesc"),
+                        url=None, mail_address=", ".join(x for x in (g("TaxpayerAddress1") or g("OwnerAddress1"), g("TaxpayerAddress2") or g("OwnerAddress2")) if x),
+                        land_use=f"{g('LUC')} - {g('LUCDesc')}".strip(" -"), land_value=land, improvement_value=impr,
+                        appraised_total=(land or 0) + (impr or 0) if land is not None else None,
+                        cert_year=int(cdq) if cdq and cdq > 1900 else None, acres=_num(g("Acres")) or None,
+                        legal_desc=" ".join(x for x in (g("Legal1"), g("Legal2"), g("Legal3")) if x)))
+    return out, None
+
+
+SOURCES = {"franklin": franklin, "montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
 
 
 # ---- property pages ------------------------------------------------------------
