@@ -9,4 +9,4 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install requests
-      - run: cd tools && python probe3.py
+      - run: cd tools && python peek.py peek_urls.txt FORM
