@@ -345,3 +345,7 @@ input[type=range]{accent-color:var(--green);width:100%}
 .county-actions .sync-btn:hover:not(:disabled){background:#E3F2E8;border-color:#1F7A45}
 .county-actions .sync-btn.busy{background:#FFF7E6;border-color:#F2D29B;color:#9A6A12;cursor:wait;opacity:1}
 .map-note{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:500;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:12.5px;color:#475467;box-shadow:0 2px 8px rgba(0,0,0,.08);display:none;max-width:90%;text-align:center}
+.map-loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:600;display:none;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.1)}
+.map-loading svg{animation:spin 1s linear infinite}
+.pcard.on{outline:2px solid #1F7A45;outline-offset:-2px;background:#F3FAF5}
+.map-filters .select{height:36px}
