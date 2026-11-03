@@ -349,3 +349,5 @@ input[type=range]{accent-color:var(--green);width:100%}
 .map-loading svg{animation:spin 1s linear infinite}
 .pcard.on{outline:2px solid #1F7A45;outline-offset:-2px;background:#F3FAF5}
 .map-filters .select{height:36px}
+.page-loader{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:50vh;color:#667085;font-size:14px}
+.page-loader svg{color:#1F7A45}

@@ -413,7 +413,8 @@ async function route() {
     S.user = (await r.json()).user;
   }
   ['#sidebar', '#topbar'].forEach((s) => { if ($(s)) $(s).style.display = ''; });
-  if (!S.meta) await refreshMeta();
+  const LOADER = `<div class="page-loader"><span class="spin" style="display:inline-flex">${ic('refresh', 22)}</span><span>Loading...</span></div>`;
+  if (!S.meta) { $('#view').innerHTML = LOADER; await refreshMeta(); }
   if (S.meta.org?.expired && !S.meta.super) { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
   if (!S.meta.settings.onboarded && S.meta.super && name !== 'welcome') { location.hash = '#/welcome'; return; }
   if (name === 'admin' && !S.meta.super) { location.hash = '#/deals'; return; }
@@ -429,6 +430,7 @@ async function route() {
   view.style.padding = name === 'welcome' ? '0' : '';
   view.style.maxWidth = name === 'welcome' ? 'none' : '';
   window.scrollTo(0, 0);
+  view.innerHTML = LOADER;  // shown until the page has its data (never a blank screen)
   try {
     cleanup = await fn(view, rest.map(decodeURIComponent));
   } catch (e) {
