@@ -142,23 +142,28 @@ class _PGConn:
     def execute(self, sql, args=()):
         import psycopg
         q = pg_sql(sql)
+        if self._c.closed or self._c.broken:  # Neon closes idle connections (compute sleeps after 5 min)
+            self._reopen()
         for attempt in (0, 1):
             try:
                 cur = self._c.cursor()
                 cur.execute(q, tuple(args))
                 return _PGCursor(cur, q.endswith("RETURNING id"))
             except psycopg.OperationalError:
-                # Neon closes idle connections; reconnect once (only safe outside a half-done transaction)
-                if attempt or self._c.info.transaction_status not in (0, 3):
+                if attempt:
                     raise
-                try:
-                    self._c.close()
-                except Exception:
-                    pass
-                self._open()
+                self._reopen()
+
+    def _reopen(self):
+        try:
+            self._c.close()
+        except Exception:
+            pass
+        self._open()
 
     def commit(self):
-        self._c.commit()
+        if not self._c.closed:
+            self._c.commit()
 
     def rollback(self):
         try:
