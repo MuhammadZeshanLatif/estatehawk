@@ -136,7 +136,8 @@ class _PGConn:
     def _open(self):
         import psycopg
         from psycopg.rows import dict_row
-        self._c = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False, connect_timeout=20)
+        self._c = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False, connect_timeout=20,
+                                  prepare_threshold=None)  # works with Neon pooled (PgBouncer) URLs too
 
     def execute(self, sql, args=()):
         import psycopg
