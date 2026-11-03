@@ -373,9 +373,9 @@ def lgbs(c, state, county):
     """Linebarger (LGBS) tax-sale listings: Texas counties (and Philadelphia). Properties headed to or struck off at a
     tax foreclosure sale. No owner names in this feed; the county appraisal district has them."""
     import json
-    out, url = [], "https://taxsales.lgbs.com/api/property_sales/?" + urlencode({"state": state, "county": county, "limit": 500})
+    out, url = [], "https://taxsales.lgbs.com/api/property_sales/?" + urlencode({"state": state, "county": county, "limit": 100})
     while url:
-        j = c.get(url).json()
+        j = c.get(url, timeout=300).json()
         for x in j.get("results", []):
             if (x.get("state") or "").upper() != state.upper() or (x.get("county") or "").upper() != county.upper():
                 continue  # the API ignores unknown filters: never mix counties
@@ -410,20 +410,21 @@ class FileClient:
         self.s.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"})
         self.delay, self.timeout = delay, timeout
 
-    def get(self, url):
+    def get(self, url, timeout=None):
         last = None
-        for attempt in range(3):
+        timeout = timeout or self.timeout
+        for attempt in range(4):
             try:
                 try:
-                    r = self.s.get(url, timeout=self.timeout)
+                    r = self.s.get(url, timeout=timeout)
                 except requests.exceptions.SSLError:
-                    r = self.s.get(url, timeout=self.timeout, verify=_aia_bundle(urlparse(url).hostname))
+                    r = self.s.get(url, timeout=timeout, verify=_aia_bundle(urlparse(url).hostname))
                 if r.status_code == 200:
                     return r
                 last = f"HTTP {r.status_code}"
             except requests.RequestException as e:
                 last = type(e).__name__
-            time.sleep(2 * (attempt + 1))
+            time.sleep(5 * (attempt + 1))
         raise RuntimeError(f"GET {url} failed: {last}")
 
     def all_rows(self, progress=None):
