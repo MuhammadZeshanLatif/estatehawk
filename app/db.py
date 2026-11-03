@@ -228,7 +228,8 @@ def con():
         c = _PGConn()
         # an older app instance (still running during a deploy) may hold an open transaction that blocks table changes
         c.execute("""SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database()
-                     AND pid<>pg_backend_pid() AND state LIKE 'idle in transaction%'""").fetchall()
+                     AND pid<>pg_backend_pid() AND state LIKE 'idle in transaction%'
+                     AND now() - state_change > interval '2 minutes'""").fetchall()
         c.commit()
         c.execute("SET lock_timeout = '60s'")
         for st in pg_schema():
