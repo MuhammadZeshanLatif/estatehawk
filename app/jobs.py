@@ -150,8 +150,10 @@ def sync_county(county_id, enrich_limit=700):
         with db.tx() as c:
             c.executemany("""INSERT INTO parcels(id, county_id, parcel_number, owner_name, school_district, street, city, state, zip,
                              amount_owed, property_url, first_seen, last_seen, is_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1)""", ins)
-            c.executemany("""UPDATE parcels SET owner_name=?, amount_owed=?, property_url=?, last_seen=?, is_active=1,
-                             street=?, city=?, zip=? WHERE id=?""", upd)
+            # a list without addresses (Hamilton, Summit) must not wipe the address read from the property page
+            c.executemany("""UPDATE parcels SET owner_name=COALESCE(NULLIF(?, ''), owner_name), amount_owed=?, property_url=COALESCE(?, property_url),
+                             last_seen=?, is_active=1, street=COALESCE(NULLIF(?, ''), street), city=COALESCE(NULLIF(?, ''), city),
+                             zip=COALESCE(NULLIF(?, ''), zip) WHERE id=?""", upd)
             c.executemany("INSERT OR REPLACE INTO snapshots(parcel_id, date, amount, owner_name) VALUES(?,?,?,?)", snap)
             c.executemany("UPDATE parcels SET is_active=0 WHERE id=?", [(pid,) for pid in removed])
             c.executemany(AL, alerts)
