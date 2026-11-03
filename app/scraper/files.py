@@ -262,7 +262,7 @@ def franklin(c):
     return out, None
 
 
-SOURCES = {"lgbs": lgbs, "franklin": franklin, "montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
+SOURCES = {"franklin": franklin, "montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
 
 
 # ---- property pages ------------------------------------------------------------
@@ -393,6 +393,9 @@ def lgbs(c, state, county):
         if url and url.startswith("http://"):
             url = "https://" + url[7:]
     return out, None
+
+
+SOURCES["lgbs"] = lgbs
 
 
 class FileClient:
