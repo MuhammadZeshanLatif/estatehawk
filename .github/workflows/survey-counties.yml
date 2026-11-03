@@ -9,4 +9,4 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install requests openpyxl pdfplumber
-      - run: cd tools && python peek2.py peek_urls.txt
+      - run: cd tools && python peek3.py
