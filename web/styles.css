@@ -344,4 +344,4 @@ input[type=range]{accent-color:var(--green);width:100%}
 .county-actions .sync-btn{border-color:#BFD9C8;color:#1F7A45;background:#F3FAF5}
 .county-actions .sync-btn:hover:not(:disabled){background:#E3F2E8;border-color:#1F7A45}
 .county-actions .sync-btn.busy{background:#FFF7E6;border-color:#F2D29B;color:#9A6A12;cursor:wait;opacity:1}
-.map-note{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:500;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:12.5px;color:#475467;box-shadow:0 2px 8px rgba(0,0,0,.08);display:none;max-width:90%;text-align:center}
+.map-note{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:500;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:12.5px;color:#475467;box-shadow:0 2px 8px rgba(0,0,0,.08);display:none;max-width:90%;text-align:center}

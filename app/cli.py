@@ -70,6 +70,13 @@ def main(argv):
             print("added", cid, cn.title(), st)
         print(added)
         return 0
+    if cmd == "reenrich":
+        # read the property pages of a county again (e.g. address was not saved the first time) and drop bad map points
+        cid = int(argv[2])
+        db.run("UPDATE parcels SET enriched_at=NULL, lat=NULL, lng=NULL WHERE county_id=? AND (street IS NULL OR street NOT GLOB '[0-9]*')", (cid,))
+        res = jobs.sync_county(cid, enrich_limit=int(argv[3]) if len(argv) > 3 else 5000)
+        print(res)
+        return 0 if res.get("ok") else 1
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)

@@ -180,7 +180,8 @@ def sync_county(county_id, enrich_limit=700):
                        + ("" if recheck else " AND (first_seen=? OR enriched_at >= ?)"), (county_id,) if recheck else (county_id, d, d))
         if missing:
             STATUS.update(step=f"Placing {len(missing)} properties on the map", progress=96)
-            found = geocode.batch([(m["id"], m["street"], m["city"], m["state"] or "OH", m["zip"]) for m in missing])
+            # without a city or zip the geocoder matches the same street name anywhere in the state: skip those
+            found = geocode.batch([(m["id"], m["street"], m["city"], m["state"] or "OH", m["zip"]) for m in missing if m["city"] or m["zip"]])
             with db.tx() as c:
                 for pid, (lat, lng) in found.items():
                     c.execute("UPDATE parcels SET lat=?, lng=? WHERE id=?", (lat, lng, pid))
