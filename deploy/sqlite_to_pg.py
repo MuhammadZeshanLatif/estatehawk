@@ -22,7 +22,11 @@ def main(path):
     for t in TABLES:
         pg_cols[t] = {r["column_name"] for r in pg.execute(
             "SELECT column_name::text AS column_name FROM information_schema.columns WHERE table_name=?", (t,)).fetchall()}
+    online_users = pg.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
     for t in TABLES:
+        if t == "users" and online_users:
+            print("users: skipped (the online site already has its own logins)")
+            continue
         try:
             rows = src.execute(f"SELECT * FROM {t}").fetchall()
         except sqlite3.OperationalError:
