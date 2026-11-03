@@ -76,6 +76,8 @@ def enrich(client, county, parcel_ids, step_cb=None):
         cur2 = db.q1("SELECT street, school_district FROM parcels WHERE id=?", (pid,)) or {}
         if info.get("street") and not re.match(r"\d", cur2.get("street") or ""):
             fields["street"] = info["street"]
+        if info.get("owner_name"):
+            fields["owner_name"] = info["owner_name"]
         if info.get("school_district") and not cur2.get("school_district"):
             fields["school_district"] = info["school_district"]
         if info.get("loc_city") and not (cur or {}).get("city"):
@@ -91,7 +93,7 @@ def enrich(client, county, parcel_ids, step_cb=None):
 
 
 EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "improvement_value",
-         "appraised_total", "cert_year")
+         "appraised_total", "cert_year", "legal_desc")
 
 
 def sync_county(county_id, enrich_limit=1500):

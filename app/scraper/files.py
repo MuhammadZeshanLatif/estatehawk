@@ -133,7 +133,33 @@ def allen(c):
     return out, None
 
 
-SOURCES = {"hamilton": hamilton, "stark": stark, "allen": allen}
+def summit(c):
+    """Summit County: the published delinquent notice on akronlegalnews.com, one page per taxing district."""
+    idx = c.get("https://akronlegalnews.com/notices/delinquent_taxes")
+    pages = sorted(set(re.findall(r"/notices/delinquent_taxes_detail/(\d+)", idx.text)))
+    if not pages:
+        raise RuntimeError("Summit notice index has no district pages")
+    year = None
+    m = re.search(r"Published in newspapers on \w+, (\w+ \d+)\w*, (\d{4})", idx.text)
+    out = []
+    for i, pid in enumerate(pages):
+        t = htmllib.unescape(re.sub(r"<[^>]+>", " ", c.get(f"https://akronlegalnews.com/notices/delinquent_taxes_detail/{pid}").text))
+        hm = re.search(r"Published in newspapers on \w+, \w+ \d+\w*, (\d{4})", t)
+        year = year or (int(hm.group(1)) if hm else None)
+        for e in re.split(r"\s*\u2022\s*", re.sub(r"\s+", " ", t)):
+            em = re.match(r".*?\b(\d{7})\s+(\*\s+)?([\d,]+\.\d{1,2})\s+(.+)$", e)
+            if not em:
+                continue
+            pn, contract, amt, rest = em.group(1), em.group(2), em.group(3), em.group(4).strip()
+            rest = re.split(r"\s(?:Notice is hereby|KRISTEN|The Akron Legal News)", rest)[0][:300]
+            out.append(_row(pn, rest, amt,
+                            url=f"https://propertyaccess.summitoh.net/Datalets/Datalet.aspx?sIndex=0&idx=1&UseSearch=no&pin={pn}&jur=077&taxyr={(year or dt.date.today().year) }&LMparent=20",
+                            legal_desc=rest))
+        time.sleep(0.3)
+    return out, (year - 1 if year else None)
+
+
+SOURCES = {"hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
 
 
 # ---- property pages ------------------------------------------------------------
@@ -167,6 +193,47 @@ def parse_wedge(html):
     if sd:
         out["school_district"] = sd
     return {k: v for k, v in out.items() if v not in (None, "")}
+
+
+def parse_iasworld(html):
+    """Tyler iasWorld Public Access datalet (Summit and other iasWorld counties)."""
+    body = re.sub(r"<script.*?</script>|<style.*?</style>", " ", html, flags=re.S | re.I)
+    toks = [re.sub(r"\s+", " ", htmllib.unescape(t)).strip() for t in re.split(r"<[^>]+>", body)]
+    toks = [t for t in toks if t]
+    val = {}
+    for i, t in enumerate(toks[:-1]):
+        val.setdefault(t, toks[i + 1])
+    out = {}
+    sa = val.get("Site Address")
+    if sa and re.match(r"\d", sa):
+        parts = [p.strip() for p in sa.split(",")]
+        out["street"] = parts[0].upper()
+        cz = re.match(r"([A-Z .]+?)\s+(\d{5})", parts[-1] or "")
+        if cz:
+            out["loc_city"], out["loc_zip"] = cz.group(1).strip(), cz.group(2)
+    if "Owner 2" in toks:
+        k = toks.index("Owner 2")
+        owners = []
+        for t in toks[k + 1:k + 4]:
+            if re.search(r"Homestead|Land Summary|Owner Occupancy", t):
+                break
+            owners.append(t)
+        if owners:
+            out["owner_name"] = " & ".join(owners[:2])
+            out["owner_full_name"] = out["owner_name"]
+    num = lambda k: _num(val.get(k))
+    out.update({"land_use": val.get("Land Use Code"), "year_built": int(num("Year Built")) if num("Year Built") else None,
+                "beds": int(num("Bedrooms")) if num("Bedrooms") else None,
+                "baths_full": int(num("Full Baths")) if num("Full Baths") else None,
+                "baths_half": int(num("Half Baths")) if num("Half Baths") else None,
+                "living_area": int(num("Square Feet")) if num("Square Feet") else None,
+                "stories": num("Stories"), "style": val.get("Style"), "condition": val.get("CDU")})
+    occ = val.get("Owner Occupancy Credit")
+    if occ in ("YES", "NO"):
+        out["owner_occupied"] = 1 if occ == "YES" else 0
+    if val.get("Taxing District"):
+        out["school_district"] = val["Taxing District"]
+    return {k: v for k, v in out.items() if v not in (None, "", "-")}
 
 
 class FileClient:
@@ -205,4 +272,6 @@ class FileClient:
         time.sleep(self.delay)
         if "hcauditor.org" in url or "wedge" in url:
             return parse_wedge(r.text)
+        if "Datalet" in url:
+            return parse_iasworld(r.text)
         return {}
