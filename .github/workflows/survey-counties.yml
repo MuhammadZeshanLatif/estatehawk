@@ -8,5 +8,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install requests
-      - run: cd tools && python peek.py peek_urls.txt FORM
+      - run: pip install requests openpyxl pdfplumber
+      - run: cd tools && python peekfile.py peek_urls.txt
