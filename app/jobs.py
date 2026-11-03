@@ -7,6 +7,8 @@ from . import db, scoring, notify, geocode, contacts
 from .scraper.issg import IssgClient
 from .scraper.files import FileClient
 
+FILE_PREFIXES = ("file", "lgbs")
+
 ENRICH_V = 2  # bump when the property reader learns new fields: parcels are read again once
 STATUS = {"running": False, "county": None, "step": "", "progress": 0}
 _lock = threading.Lock()
@@ -98,7 +100,7 @@ def enrich(client, county, parcel_ids, step_cb=None):
 
 
 EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "improvement_value",
-         "appraised_total", "cert_year", "legal_desc", "year_built", "acres")
+         "appraised_total", "cert_year", "legal_desc", "year_built", "acres", "lat", "lng")
 
 
 def sync_county(county_id, enrich_limit=700):
@@ -109,7 +111,7 @@ def sync_county(county_id, enrich_limit=700):
     try:
         if not county["host"]:
             raise RuntimeError("No website set for this county")
-        client = FileClient(county["host"]) if county["host"].startswith("file:") else IssgClient(county["host"])
+        client = FileClient(county["host"]) if county["host"].split(":")[0] in FILE_PREFIXES else IssgClient(county["host"])
         rows, year = client.all_rows(progress=lambda i, n, name: STATUS.update(step=f"Township {i}/{n}: {name}", progress=int(40 * i / n)))
         if not rows:
             raise RuntimeError("County site returned 0 parcels (format change or list not published)")
@@ -183,6 +185,9 @@ def sync_county(county_id, enrich_limit=700):
                 for pid, (lat, lng) in found.items():
                     c.execute("UPDATE parcels SET lat=?, lng=? WHERE id=?", (lat, lng, pid))
         rescore([r["id"] for r in db.q("SELECT id FROM parcels WHERE county_id=?", (county_id,))], quiet=first_sync)
+        db.run("""UPDATE counties SET lat=(SELECT AVG(lat) FROM parcels WHERE county_id=? AND lat IS NOT NULL),
+                  lng=(SELECT AVG(lng) FROM parcels WHERE county_id=? AND lng IS NOT NULL) WHERE id=? AND lat IS NULL""",
+               (county_id, county_id, county_id))
         db.run("UPDATE counties SET sync_status='synced', last_sync=?, sync_error=NULL WHERE id=?", (now(), county_id))
         db.run("UPDATE sync_runs SET finished=?, status='ok', found=?, new_count=?, removed_count=? WHERE id=?",
                (now(), len(rows), len(new_ids), len(removed), run_id))

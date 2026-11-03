@@ -10,7 +10,7 @@ import html as htmllib
 import io
 import re
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlencode, urlparse
 
 import requests
 
@@ -262,7 +262,7 @@ def franklin(c):
     return out, None
 
 
-SOURCES = {"franklin": franklin, "montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
+SOURCES = {"lgbs": lgbs, "franklin": franklin, "montgomery": montgomery, "hamilton": hamilton, "stark": stark, "allen": allen, "summit": summit}
 
 
 # ---- property pages ------------------------------------------------------------
@@ -339,9 +339,67 @@ def parse_iasworld(html):
     return {k: v for k, v in out.items() if v not in (None, "", "-")}
 
 
+_BUNDLES = {}
+
+
+def _aia_bundle(hostname):
+    """Some county/vendor servers send their certificate without the intermediate one. Browsers fetch it from
+    the certificate's AIA 'CA Issuers' link; we do the same and keep full verification on."""
+    if hostname in _BUNDLES:
+        return _BUNDLES[hostname]
+    import socket, ssl, tempfile, certifi
+    from cryptography import x509
+    from cryptography.x509.oid import AuthorityInformationAccessOID
+    from cryptography.hazmat.primitives.serialization import Encoding
+    ctx = ssl.create_default_context()
+    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE  # only to read the certificate; requests verifies below
+    with socket.create_connection((hostname, 443), timeout=20) as sk, ctx.wrap_socket(sk, server_hostname=hostname) as ss:
+        leaf = x509.load_der_x509_certificate(ss.getpeercert(True))
+    aia = leaf.extensions.get_extension_for_class(x509.AuthorityInformationAccess).value
+    url = next(d.access_location.value for d in aia if d.access_method == AuthorityInformationAccessOID.CA_ISSUERS)
+    raw = requests.get(url, timeout=30).content
+    try:
+        inter = x509.load_der_x509_certificate(raw)
+    except ValueError:
+        inter = x509.load_pem_x509_certificate(raw)
+    f = tempfile.NamedTemporaryFile("wb", suffix=".pem", delete=False)
+    f.write(open(certifi.where(), "rb").read() + b"\n" + inter.public_bytes(Encoding.PEM))
+    f.close()
+    _BUNDLES[hostname] = f.name
+    return f.name
+
+
+def lgbs(c, state, county):
+    """Linebarger (LGBS) tax-sale listings: Texas counties (and Philadelphia). Properties headed to or struck off at a
+    tax foreclosure sale. No owner names in this feed; the county appraisal district has them."""
+    import json
+    out, url = [], "https://taxsales.lgbs.com/api/property_sales/?" + urlencode({"state": state, "county": county, "limit": 500})
+    while url:
+        j = c.get(url).json()
+        for x in j.get("results", []):
+            if (x.get("state") or "").upper() != state.upper() or (x.get("county") or "").upper() != county.upper():
+                continue  # the API ignores unknown filters: never mix counties
+            geo = (x.get("geometry") or {}).get("coordinates") or [None, None]
+            sale = x.get("sale_date_only") or x.get("sale_date") or ""
+            note = ", ".join(v for v in (f"Tax sale: {x.get('sale_type') or ''}".strip(": "), x.get("status") or "",
+                                             f"sale date {sale[:10]}" if sale else "", f"cause {x['cause_nbr']}" if x.get("cause_nbr") else "") if v)
+            out.append(_row(x.get("account_nbr") or x.get("uid"), "", x.get("minimum_bid"),
+                            " ".join(v for v in (x.get("prop_address_one"), x.get("prop_address_two")) if v),
+                            x.get("prop_city"), x.get("prop_zipcode"), url=None,
+                            appraised_total=_num(x.get("value")), legal_desc=note,
+                            lat=geo[1], lng=geo[0]))
+            out[-1]["state"] = (x.get("prop_state") or state)[:2]
+        url = j.get("next")
+        if url and url.startswith("http://"):
+            url = "https://" + url[7:]
+    return out, None
+
+
 class FileClient:
     def __init__(self, host, delay=0.5, timeout=120):
-        self.key = host.split(":", 1)[1] if ":" in host else host
+        parts = host.split(":")
+        # "file:hamilton" -> hamilton(); "lgbs:TX:HARDIN COUNTY" -> lgbs("TX", "HARDIN COUNTY")
+        self.key, self.args = (parts[1], parts[2:]) if parts[0] == "file" else (parts[0], parts[1:])
         if self.key not in SOURCES:
             raise RuntimeError(f"Unknown file source '{self.key}'")
         self.s = requests.Session()
@@ -352,7 +410,10 @@ class FileClient:
         last = None
         for attempt in range(3):
             try:
-                r = self.s.get(url, timeout=self.timeout)
+                try:
+                    r = self.s.get(url, timeout=self.timeout)
+                except requests.exceptions.SSLError:
+                    r = self.s.get(url, timeout=self.timeout, verify=_aia_bundle(urlparse(url).hostname))
                 if r.status_code == 200:
                     return r
                 last = f"HTTP {r.status_code}"
@@ -362,7 +423,7 @@ class FileClient:
         raise RuntimeError(f"GET {url} failed: {last}")
 
     def all_rows(self, progress=None):
-        rows, year = SOURCES[self.key](self)
+        rows, year = SOURCES[self.key](self, *self.args)
         seen = {}
         for r in rows:
             seen.setdefault(r["parcel_number"], r)

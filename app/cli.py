@@ -35,6 +35,22 @@ def main(argv):
                 added.append(cid)
         print(added)
         return 0
+    if cmd == "add-lgbs":
+        # every county with Linebarger tax-sale listings (Texas + Philadelphia) becomes a county here
+        from .scraper.files import FileClient
+        fc = FileClient("lgbs:TX:X")
+        have = {r["host"] for r in db.q("SELECT host FROM counties")}
+        added = []
+        for it in fc.get("https://taxsales.lgbs.com/api/sale_counties/?limit=1000").json().get("results", []):
+            st, cn = it["state"].upper(), it["county"].upper()
+            host = f"lgbs:{st}:{cn}"
+            if host in have:
+                continue
+            cid = db.run("INSERT INTO counties(name,state,host,platform) VALUES(?,?,?,?)", (cn.title(), st, host, "lgbs"))
+            added.append(cid)
+            print("added", cid, cn.title(), st)
+        print(added)
+        return 0
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)

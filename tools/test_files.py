@@ -2,7 +2,7 @@ import sys, json
 sys.path.insert(0, ".")
 from app.scraper.files import FileClient
 for key in sys.argv[1:]:
-    c = FileClient("file:" + key)
+    c = FileClient(key if ":" in key else "file:" + key)
     try:
         rows, year = c.all_rows()
     except Exception as e:
