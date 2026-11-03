@@ -264,7 +264,7 @@ def meta():
     counts = db.q1(f"SELECT COUNT(*) n, SUM(is_active) active FROM parcels p WHERE 1=1{cf}")
     c = ctx.get()
     return {"settings": s, "integrations": notify.configured(), "gemini_model": ai.model(),
-            "counties": db.q(f"SELECT id, name, state, enabled FROM counties p WHERE 1=1{cf.replace('p.county_id', 'p.id')} ORDER BY name"),
+            "counties": db.q(f"SELECT id, name, state, enabled, lat, lng FROM counties p WHERE 1=1{cf.replace('p.county_id', 'p.id')} ORDER BY name"),
             "parcels": counts["n"] or 0, "active": counts["active"] or 0, "sync": jobs.STATUS,
             "stages": [{"key": k, "label": STAGE_LABEL[k]} for k in STAGES],
             "last_sync": (db.q1("SELECT MAX(last_sync) t FROM counties") or {}).get("t"),

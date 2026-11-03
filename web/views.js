@@ -1,7 +1,7 @@
 // EstateHawk screens. Each view(el, params) renders into el and may return a cleanup function.
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb, streetView, gmaps, homeLine,
-  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal,
+  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
 } from './app.js';
 export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
 
@@ -101,13 +101,14 @@ export async function deals(el) {
       <td class="hide-m"><div class="row gap4" style="flex-wrap:nowrap">${p.locked ? `<a class="btn sm" href="#/deal/${encodeURIComponent(p.id)}">${ic('lock', 13)} Reveal</a>` : `<a class="btn sm primary" href="#/deal/${encodeURIComponent(p.id)}?offer=1">Draft offer</a>`}<button class="icon-btn more" style="width:30px;height:30px">${ic('dots', 18)}</button></div></td></tr>`).join('') || `<tr><td colspan="8"><div class="empty">No leads match these filters.${S.meta.parcels ? '' : ' Add a county and run a sync, or load demo data in Settings.'}</div></td></tr>`;
   }
   async function loadSide() {
-    const [pts, al] = await Promise.all([api(`/api/map?county=${S.county}&ptype=homes&min_score=60`), api('/api/alerts?limit=4&county=' + S.county)]);
+    const [pts, al] = await Promise.all([api(`/api/map?county=${S.county}&ptype=homes`), api('/api/alerts?limit=4&county=' + S.county)]);
     const L = window.L, mm = $('#miniMap');
     if (!mm._map) { mm._map = L.map(mm, { zoomControl: true, attributionControl: false, scrollWheelZoom: false }); baseTiles(mm._map); mm._layer = L.layerGroup().addTo(mm._map); }
     mm._layer.clearLayers();
     const top = pts.slice(0, 120);
     top.forEach((p) => pin(p).bindPopup(popupHtml(p)).addTo(mm._layer));
-    if (top.length) mm._map.fitBounds(L.latLngBounds(top.map((p) => [p.lat, p.lng])).pad(.15)); else mm._map.setView([40.3, -82.8], 7);
+    mm._map.invalidateSize();
+    fitMap(mm._map, top, S.county, top.length ? null : `No mapped properties in ${S.county === 'all' ? 'your counties' : countyName(S.county)} yet.`);
     $('#todayAlerts').innerHTML = al.rows.map((a) => `<a class="alert-row" href="${a.parcel_id ? '#/deal/' + encodeURIComponent(a.parcel_id) : '#/alerts'}">${alertIcon(a.type)}<div class="grow"><b>${esc(a.title)}</b><div class="tiny muted">${esc(a.county_name || '')}</div></div><span class="tiny muted">${ago(a.ts)}</span></a>`).join('') || '<div class="empty small">No alerts yet</div>';
   }
   const reload = () => { st.page = 1; loadLeads(); };
@@ -558,7 +559,7 @@ export async function mapView(el) {
     if (st.sort !== 'score') { const key = { owed: (p) => -(p.total_due ?? p.amount_owed), equity: (p) => -(p.est_equity || 0), newest: (p) => -new Date(p.first_seen) }[st.sort]; pts.sort((a, b) => key(a) - key(b)); }
     layer.clearLayers(); markers = {};
     pts.forEach((p) => { markers[p.id] = pin(p).bindPopup(popupHtml(p), { maxWidth: 320 }).addTo(layer); });
-    if (fit && pts.length) map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng])).pad(.1));
+    if (fit) fitMap(map, pts, S.county, pts.length ? null : 'No properties match these filters here. Try Clear.');
     $('#mapCount').textContent = `Properties (${num(pts.length)})`;
     $('#resN').textContent = `${num(pts.length)} results`;
     page = 1; list();

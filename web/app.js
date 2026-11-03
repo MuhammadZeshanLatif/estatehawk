@@ -152,6 +152,21 @@ export async function refreshMeta() {
   renderChrome();
   return S.meta;
 }
+// Move a Leaflet map to the given points; with none, go to the chosen county (or all counties) and say why it is empty.
+export function fitMap(map, pts, county = S.county, note = null) {
+  const L = window.L;
+  const box = map.getContainer();
+  let msg = box.querySelector('.map-note');
+  if (!msg) { msg = document.createElement('div'); msg.className = 'map-note'; box.appendChild(msg); }
+  const good = (pts || []).filter((p) => p.lat != null && p.lng != null);
+  if (good.length) { msg.style.display = 'none'; map.fitBounds(L.latLngBounds(good.map((p) => [p.lat, p.lng])).pad(0.15), { maxZoom: 15 }); return; }
+  const cs = (S.meta?.counties || []).filter((c) => c.lat != null && (county === 'all' || String(c.id) === String(county)));
+  if (cs.length === 1) map.setView([cs[0].lat, cs[0].lng], 9);
+  else if (cs.length) map.fitBounds(L.latLngBounds(cs.map((c) => [c.lat, c.lng])).pad(0.2));
+  const name = county === 'all' ? 'these counties' : countyName(county) || 'this county';
+  msg.textContent = note || `No properties with a map location in ${name} for these filters.`;
+  msg.style.display = 'block';
+}
 export const countyName = (id) => (S.meta?.counties.find((c) => String(c.id) === String(id)) || {}).name;
 export function countySelect(id = 'countySel', withAll = true, val = S.county) {
   const opts = (withAll ? [`<option value="all">All counties</option>`] : []).concat(
