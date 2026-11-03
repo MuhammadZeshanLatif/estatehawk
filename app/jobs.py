@@ -58,14 +58,19 @@ def rescore(parcel_ids=None, quiet=False):
 
 
 def enrich(client, county, parcel_ids, step_cb=None):
-    done = 0
+    done = fails = 0
     for i, pid in enumerate(parcel_ids):
         p = db.q1("SELECT id, property_url FROM parcels WHERE id=?", (pid,))
         if not p or not p["property_url"]:
             continue
         try:
             info = client.property(p["property_url"])
-        except Exception:
+            fails = 0
+        except Exception as e:
+            fails += 1
+            if fails >= 5 or (type(e).__name__ == "Blocked" and fails >= 2):
+                print(f"{county['name']}: property pages not available from here ({e}); skipping details this run")
+                break
             continue
         fields = {k: info.get(k) for k in ("legal_desc", "acres", "owner_full_name", "mail_address", "mail_state", "mail_zip",
                                           "land_use", "land_value", "improvement_value", "appraised_total", "owner_occupied",

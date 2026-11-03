@@ -16,6 +16,10 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
 
 
+class Blocked(RuntimeError):
+    """The site refused the request (403 and the like). Retrying will not help."""
+
+
 class IssgClient:
     def __init__(self, host, delay=0.6, timeout=40):
         self.base = host if host.startswith("http") else f"https://{host}"
@@ -33,6 +37,8 @@ class IssgClient:
                     time.sleep(self.delay)
                     return r
                 last = f"HTTP {r.status_code}"
+                if r.status_code in (401, 403, 404):  # the site refuses this page: do not retry
+                    raise Blocked(f"GET {url} failed: {last}")
             except requests.ConnectionError:
                 last = "could not connect (site down, wrong address, or no internet)"
             except requests.Timeout:
