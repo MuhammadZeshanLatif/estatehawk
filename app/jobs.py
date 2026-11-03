@@ -170,7 +170,7 @@ def sync_county(county_id, enrich_limit=700):
             alert("new_delinquent", f"{county['name']}: first sync found {len(new_ids)} delinquent properties",
                   "Scores are ready in Deals.", county_id)
         # enrich new + previously unenriched (cap per run so a big county finishes over a few nights)
-        todo = [r["id"] for r in db.q("""SELECT id FROM parcels WHERE county_id=? AND is_active=1
+        todo = [r["id"] for r in db.q("""SELECT id FROM parcels WHERE county_id=? AND is_active=1 AND property_url IS NOT NULL
                                          AND (enriched_at IS NULL OR COALESCE(enrich_v,0) < ?) ORDER BY enriched_at IS NOT NULL LIMIT ?""",
                                        (county_id, ENRICH_V, enrich_limit))]
         STATUS.update(step=f"Reading property details (0/{len(todo)})", progress=45)

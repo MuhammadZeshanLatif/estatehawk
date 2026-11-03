@@ -99,7 +99,9 @@ export async function counties(el) {
   <div class="county-grid" id="cGrid"></div>`;
   const statusPill = (c) => ({ synced: `<span class="pill p-green">${ic('check', 13)} Synced</span>`, syncing: `<span class="pill p-amber"><span class="spin" style="display:inline-flex">${ic('refresh', 13)}</span> Syncing</span>`,
     error: `<span class="pill p-red">${ic('alert', 13)} Error</span>`, never: `<span class="pill p-grey">Not synced</span>` }[c.sync_status] || `<span class="pill p-grey">${esc(c.sync_status)}</span>`);
-  const syncBtn = (c) => S.meta.super ? `<button class="btn sm sync-btn" data-id="${c.id}" title="Download the latest list for ${esc(c.name)} now">${ic('refresh', 15)} Sync now</button>` : '';
+  const syncBtn = (c) => !S.meta.super ? '' : c.sync_status === 'syncing'
+    ? `<button class="btn sm sync-btn busy" disabled><span class="spin" style="display:inline-flex">${ic('refresh', 15)}</span> Syncing...</button>`
+    : `<button class="btn sm sync-btn" data-id="${c.id}" title="Download the latest list for ${esc(c.name)} now">${ic('refresh', 15)} Sync now</button>`;
   const draw = (q = '') => {
     $('#cGrid').innerHTML = rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => `
       <div class="card county" style="${c.enabled ? '' : 'opacity:.55'}"><div class="row" style="align-items:flex-start">${countyShape(c.name)}
