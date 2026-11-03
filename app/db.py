@@ -170,6 +170,16 @@ class _PGConn:
                     raise
                 self._reopen()
 
+    def executemany(self, sql, seq):
+        """Many rows in one go (pipelined), instead of one network round trip per row."""
+        seq = [tuple(a) for a in seq]
+        if not seq:
+            return
+        if self._c.closed or self._c.broken:
+            self._reopen()
+        with self._c.cursor() as cur:
+            cur.executemany(pg_sql(sql), seq)
+
     def _reopen(self):
         try:
             self._c.close()

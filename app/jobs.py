@@ -31,23 +31,28 @@ def rescore(parcel_ids=None, quiet=False):
     if parcel_ids is None:
         rows = db.q("SELECT * FROM parcels")
     else:
-        rows = [r for pid in parcel_ids for r in db.q("SELECT * FROM parcels WHERE id=?", (pid,))]
+        ids = list(parcel_ids)
+        rows = []
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            rows += db.q(f"SELECT * FROM parcels WHERE id IN ({','.join('?' * len(chunk))})", chunk)
+    upd, alerts = [], []
     with db.tx() as c:
         for p in rows:
             old = p.get("score")
             scoring.derive(p)
             s, br = scoring.score(p, weights)
             off = scoring.suggested_offer(p, disc)
-            c.execute("""UPDATE parcels SET property_type=?, years_behind=?, est_equity=?, rent_est=?, suggested_offer=?,
-                         score=?, score_breakdown=? WHERE id=?""",
-                      (p["property_type"], p["years_behind"], p["est_equity"], p["rent_est"], off, s, json.dumps(br), p["id"]))
+            upd.append((p["property_type"], p["years_behind"], p["est_equity"], p["rent_est"], off, s, json.dumps(br), p["id"]))
             if not quiet and rules.get("score_above") and s >= rules.get("score_min", 85) and (old is None or old < rules.get("score_min", 85)) \
                     and p.get("is_active"):
                 eq_ok = (not rules.get("equity_above")) or (p.get("est_equity") or 0) >= rules.get("equity_min", 0)
                 if eq_ok:
-                    c.execute("INSERT INTO alerts(ts,type,county_id,parcel_id,title,body,score) VALUES(?,?,?,?,?,?,?)",
-                              (now(), "high_score", p["county_id"], p["id"], f"New high-score deal: {p['street'].title()}",
-                               f"Deal score {s}. Est. equity ${p.get('est_equity') or 0:,.0f}.", s))
+                    alerts.append((now(), "high_score", p["county_id"], p["id"], f"New high-score deal: {p['street'].title()}",
+                                   f"Deal score {s}. Est. equity ${p.get('est_equity') or 0:,.0f}.", s))
+        c.executemany("""UPDATE parcels SET property_type=?, years_behind=?, est_equity=?, rent_est=?, suggested_offer=?,
+                         score=?, score_breakdown=? WHERE id=?""", upd)
+        c.executemany("INSERT INTO alerts(ts,type,county_id,parcel_id,title,body,score) VALUES(?,?,?,?,?,?,?)", alerts)
 
 
 def enrich(client, county, parcel_ids, step_cb=None):
@@ -94,40 +99,42 @@ def sync_county(county_id, enrich_limit=1500):
         prev_active = {r["id"]: r for r in db.q("SELECT id, owner_name, amount_owed FROM parcels WHERE county_id=? AND is_active=1 AND demo=0", (county_id,))}
         first_sync = not db.q1("SELECT 1 FROM sync_runs WHERE county_id=? AND status='ok'", (county_id,))
         new_ids, seen = [], set()
-        with db.tx() as c:
-            for r in rows:
-                pid = f"{county_id}:{r['parcel_number']}"
-                seen.add(pid)
-                exists = c.execute("SELECT owner_name, amount_owed, is_active FROM parcels WHERE id=?", (pid,)).fetchone()
-                if exists is None:
-                    c.execute("""INSERT INTO parcels(id, county_id, parcel_number, owner_name, school_district, street, city, state, zip,
-                                 amount_owed, property_url, first_seen, last_seen, is_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1)""",
-                              (pid, county_id, r["parcel_number"], r["owner_name"], r["school_district"], r["street"], r["city"],
-                               r["state"], r["zip"], r["amount_owed"], r["property_url"], d, d))
-                    new_ids.append(pid)
-                    if not first_sync:
-                        c.execute("INSERT INTO alerts(ts,type,county_id,parcel_id,title,body) VALUES(?,?,?,?,?,?)",
-                                  (now(), "new_delinquent", county_id, pid, f"New delinquent: {r['street'].title()}, {r['city'].title()}",
+        AL = "INSERT INTO alerts(ts,type,county_id,parcel_id,title,body) VALUES(?,?,?,?,?,?)"
+        have = {r["id"]: r for r in db.q("SELECT id, owner_name, amount_owed, is_active FROM parcels WHERE county_id=?", (county_id,))}
+        ins, upd, snap, alerts = [], [], [], []
+        for r in rows:
+            pid = f"{county_id}:{r['parcel_number']}"
+            if pid in seen:
+                continue
+            seen.add(pid)
+            exists = have.get(pid)
+            if exists is None:
+                ins.append((pid, county_id, r["parcel_number"], r["owner_name"], r["school_district"], r["street"], r["city"],
+                            r["state"], r["zip"], r["amount_owed"], r["property_url"], d, d))
+                new_ids.append(pid)
+                if not first_sync:
+                    alerts.append((now(), "new_delinquent", county_id, pid, f"New delinquent: {r['street'].title()}, {r['city'].title()}",
                                    f"${r['amount_owed'] or 0:,.0f} owed. Owner {r['owner_name']}."))
-                else:
-                    if exists["owner_name"] and r["owner_name"] and exists["owner_name"] != r["owner_name"]:
-                        c.execute("INSERT INTO alerts(ts,type,county_id,parcel_id,title,body) VALUES(?,?,?,?,?,?)",
-                                  (now(), "owner_change", county_id, pid, f"Owner change: {r['street'].title()}",
+            else:
+                if exists["owner_name"] and r["owner_name"] and exists["owner_name"] != r["owner_name"]:
+                    alerts.append((now(), "owner_change", county_id, pid, f"Owner change: {r['street'].title()}",
                                    f"{exists['owner_name']} -> {r['owner_name']}"))
-                    if exists["amount_owed"] and r["amount_owed"] and r["amount_owed"] > exists["amount_owed"] * 1.05:
-                        c.execute("INSERT INTO alerts(ts,type,county_id,parcel_id,title,body) VALUES(?,?,?,?,?,?)",
-                                  (now(), "amount_up", county_id, pid, f"Delinquency grew: {r['street'].title()}",
+                if exists["amount_owed"] and r["amount_owed"] and r["amount_owed"] > exists["amount_owed"] * 1.05:
+                    alerts.append((now(), "amount_up", county_id, pid, f"Delinquency grew: {r['street'].title()}",
                                    f"${exists['amount_owed']:,.0f} -> ${r['amount_owed']:,.0f}"))
-                    c.execute("""UPDATE parcels SET owner_name=?, amount_owed=?, property_url=?, last_seen=?, is_active=1,
-                                 street=?, city=?, zip=? WHERE id=?""",
-                              (r["owner_name"], r["amount_owed"], r["property_url"], d, r["street"], r["city"], r["zip"], pid))
-                c.execute("INSERT OR REPLACE INTO snapshots(parcel_id, date, amount, owner_name) VALUES(?,?,?,?)",
-                          (pid, d, r["amount_owed"], r["owner_name"]))
-            removed = [pid for pid in prev_active if pid not in seen]
-            for pid in removed:
-                c.execute("UPDATE parcels SET is_active=0 WHERE id=?", (pid,))
-                c.execute("INSERT INTO alerts(ts,type,county_id,parcel_id,title,body) VALUES(?,?,?,?,?,?)",
-                          (now(), "paid_off", county_id, pid, "Taxes paid / removed from list", pid.split(":", 1)[1]))
+                upd.append((r["owner_name"], r["amount_owed"], r["property_url"], d, r["street"], r["city"], r["zip"], pid))
+            snap.append((pid, d, r["amount_owed"], r["owner_name"]))
+        removed = [pid for pid in prev_active if pid not in seen]
+        for pid in removed:
+            alerts.append((now(), "paid_off", county_id, pid, "Taxes paid / removed from list", pid.split(":", 1)[1]))
+        with db.tx() as c:
+            c.executemany("""INSERT INTO parcels(id, county_id, parcel_number, owner_name, school_district, street, city, state, zip,
+                             amount_owed, property_url, first_seen, last_seen, is_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1)""", ins)
+            c.executemany("""UPDATE parcels SET owner_name=?, amount_owed=?, property_url=?, last_seen=?, is_active=1,
+                             street=?, city=?, zip=? WHERE id=?""", upd)
+            c.executemany("INSERT OR REPLACE INTO snapshots(parcel_id, date, amount, owner_name) VALUES(?,?,?,?)", snap)
+            c.executemany("UPDATE parcels SET is_active=0 WHERE id=?", [(pid,) for pid in removed])
+            c.executemany(AL, alerts)
             c.execute("UPDATE counties SET tax_year=COALESCE(?, tax_year), delinquent_count=? WHERE id=?", (year, len(rows), county_id))
         if new_ids and first_sync:
             alert("new_delinquent", f"{county['name']}: first sync found {len(new_ids)} delinquent properties",

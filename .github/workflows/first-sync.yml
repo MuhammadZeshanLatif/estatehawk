@@ -1,0 +1,40 @@
+name: Add new counties (first download)
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: "County ids as JSON list, e.g. [6,7,8]. Leave empty to add known counties first."
+        required: false
+        default: ""
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    outputs:
+      ids: ${{ steps.add.outputs.ids }}
+    env: { DATABASE_URL: "${{ secrets.DATABASE_URL }}", TZ: Asia/Karachi }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - id: add
+        run: |
+          if [ -n "${{ inputs.ids }}" ]; then echo 'ids=${{ inputs.ids }}' >> $GITHUB_OUTPUT
+          else echo "ids=$(python -m app.cli add-known | tail -1)" >> $GITHUB_OUTPUT; fi
+  sync:
+    needs: add
+    if: needs.add.outputs.ids != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        id: ${{ fromJSON(needs.add.outputs.ids) }}
+    env: { DATABASE_URL: "${{ secrets.DATABASE_URL }}", TZ: Asia/Karachi }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: python -m app.cli county ${{ matrix.id }}
