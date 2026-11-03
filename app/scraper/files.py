@@ -195,6 +195,15 @@ def montgomery(c):
                         appraised_total=_num(g(row, "ASMTTOTAL")), year_built=int(yb) if yb and yb > 1700 else None,
                         cert_year=int(cy) if cy and cy > 1900 else None, acres=_num(g(row, "ACRES")) or None,
                         legal_desc=" ".join(x for x in (g(row, "LEGAL1"), g(row, "LEGAL2"), g(row, "LEGAL3")) if x)))
+    # each taxing district is one city/township: borrow the most common known city for the rest
+    from collections import Counter
+    best = {}
+    for r in out:
+        if r["city"]:
+            best.setdefault(r["school_district"], Counter())[r["city"]] += 1
+    for r in out:
+        if not r["city"] and r["school_district"] in best:
+            r["city"] = best[r["school_district"]].most_common(1)[0][0]
     return out, None
 
 
