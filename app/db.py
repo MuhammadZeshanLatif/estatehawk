@@ -216,6 +216,11 @@ def con():
     global _con
     if _con is None and PG:
         c = _PGConn()
+        # an older app instance (still running during a deploy) may hold an open transaction that blocks table changes
+        c.execute("""SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database()
+                     AND pid<>pg_backend_pid() AND state LIKE 'idle in transaction%'""").fetchall()
+        c.commit()
+        c.execute("SET lock_timeout = '60s'")
         for st in pg_schema():
             c.execute(st)
         for k, t in NEW_PARCEL_COLS.items():
@@ -320,12 +325,6 @@ def columns(c, table):
 
 def migrate(c):
     """One-time upgrade of a single-team database to companies. Existing data becomes company #1 (EstateHawk HQ)."""
-    if PG and ("org_id" not in columns(c, "pipeline") or "org_id" not in columns(c, "users")):
-        # the previous app version may still hold an open read transaction; close it so the table changes can run
-        c.execute("""SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database()
-                     AND pid<>pg_backend_pid() AND state LIKE 'idle in transaction%'""").fetchall()
-        c.commit()
-        c.execute("SET lock_timeout = '60s'")
     for t in ("activities", "tasks", "offers", "users"):
         if "org_id" not in columns(c, t):
             c.execute(f"ALTER TABLE {t} ADD COLUMN org_id INTEGER")
