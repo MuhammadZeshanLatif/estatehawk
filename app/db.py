@@ -1,5 +1,10 @@
-"""SQLite storage for EstateHawk. One file: data/estatehawk.db"""
-import json, os, sqlite3, threading
+"""Storage for EstateHawk.
+
+Default: SQLite, one file data/estatehawk.db (your own computer, Oracle server).
+If DATABASE_URL=postgres://... is set (hosted: Render + Neon), the same SQL runs on PostgreSQL:
+the small SQLite-only bits are translated in pg_sql() below, so the rest of the app stays unchanged.
+"""
+import json, os, re, sqlite3, threading
 from contextlib import contextmanager
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,6 +79,99 @@ CREATE TABLE IF NOT EXISTS users (
 """
 
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+
+# tables whose INSERT should hand back the new id, and the conflict keys used for INSERT OR REPLACE
+_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users"}
+_PK = {"parcels": ["id"], "snapshots": ["parcel_id", "date"], "pipeline": ["parcel_id"], "settings": ["key"]}
+
+
+def pg_sql(sql):
+    """Translate the SQLite dialect used in this app to PostgreSQL."""
+    s = sql.replace("%", "%%")
+    s = re.sub(r"(\w+(?:\.\w+)?) GLOB '\[0-9\]\*'", r"\1 ~ '^[0-9]'", s)
+    s = s.replace("date('now','-1 day')", "to_char(CURRENT_DATE - 1, 'YYYY-MM-DD')")
+    s = re.sub(r"\bLIKE\b", "ILIKE", s)
+    s = re.sub(r"\bDESC\b(?!\s+NULLS)", "DESC NULLS LAST", s)
+    m = re.match(r"\s*INSERT OR REPLACE INTO (\w+)\s*\(([^)]*)\)", s, re.I)
+    if m:
+        table, cols = m.group(1), [c.strip() for c in m.group(2).split(",")]
+        keys = _PK[table]
+        upd = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in keys)
+        s = re.sub(r"INSERT OR REPLACE INTO", "INSERT INTO", s, count=1, flags=re.I).rstrip().rstrip(";")
+        s += f" ON CONFLICT ({', '.join(keys)}) DO " + (f"UPDATE SET {upd}" if upd else "NOTHING")
+    s = s.replace("?", "%s")
+    m = re.match(r"\s*INSERT INTO (\w+)", s, re.I)
+    if m and m.group(1) in _SERIAL and "RETURNING" not in s.upper():
+        s = s.rstrip().rstrip(";") + " RETURNING id"
+    return s
+
+
+class _PGCursor:
+    def __init__(self, cur, returning):
+        self._cur, self._ret, self._rows = cur, returning, None
+
+    def fetchall(self):
+        return self._cur.fetchall() if self._cur.description else []
+
+    def fetchone(self):
+        return self._cur.fetchone() if self._cur.description else None
+
+    @property
+    def lastrowid(self):
+        if not self._ret:
+            return None
+        r = self.fetchone()
+        return r["id"] if r else None
+
+
+class _PGConn:
+    """Looks like the sqlite3 connection the app already uses (execute / commit / rollback)."""
+
+    def __init__(self):
+        self._c = None
+        self._open()
+
+    def _open(self):
+        import psycopg
+        from psycopg.rows import dict_row
+        self._c = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False, connect_timeout=20)
+
+    def execute(self, sql, args=()):
+        import psycopg
+        q = pg_sql(sql)
+        for attempt in (0, 1):
+            try:
+                cur = self._c.cursor()
+                cur.execute(q, tuple(args))
+                return _PGCursor(cur, q.endswith("RETURNING id"))
+            except psycopg.OperationalError:
+                # Neon closes idle connections; reconnect once (only safe outside a half-done transaction)
+                if attempt or self._c.info.transaction_status not in (0, 3):
+                    raise
+                try:
+                    self._c.close()
+                except Exception:
+                    pass
+                self._open()
+
+    def commit(self):
+        self._c.commit()
+
+    def rollback(self):
+        try:
+            self._c.rollback()
+        except Exception:
+            self._open()
+
+
+def pg_schema():
+    out = SCHEMA.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY").replace(" COLLATE NOCASE", "")
+    out = re.sub(r"\bREAL\b", "DOUBLE PRECISION", out)
+    return [st.strip() for st in out.split(";") if st.strip()]
+
+
 def connect():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     con = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
@@ -94,6 +192,14 @@ NEW_PARCEL_COLS = {"cert_year": "INTEGER", "beds": "INTEGER", "baths_full": "INT
 
 def con():
     global _con
+    if _con is None and PG:
+        c = _PGConn()
+        for st in pg_schema():
+            c.execute(st)
+        for k, t in NEW_PARCEL_COLS.items():
+            c.execute(f"ALTER TABLE parcels ADD COLUMN IF NOT EXISTS {k} {t.replace('REAL', 'DOUBLE PRECISION')}")
+        c.commit()
+        _con = c
     if _con is None:
         _con = connect()
         _con.executescript(SCHEMA)
@@ -166,3 +272,11 @@ def set_setting(key, value):
 def all_settings():
     out = {k: get_setting(k) for k in DEFAULT_SETTINGS}
     return out
+
+
+def load_env():
+    """Hosted mode: API keys saved from Settings > Integrations live in the database (disk is not kept)."""
+    if PG:
+        for k, v in (get_setting("_env") or {}).items():
+            if v and not os.environ.get(k):
+                os.environ[k] = v

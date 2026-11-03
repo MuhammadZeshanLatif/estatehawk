@@ -1,0 +1,24 @@
+name: Daily county sync
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # 08:17 Pakistan time, after Ohio sites update overnight
+  workflow_dispatch: {}      # "Run workflow" button for a manual sync
+
+concurrency: daily-sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TZ: Asia/Karachi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m app.cli sync

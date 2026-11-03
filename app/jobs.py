@@ -214,10 +214,10 @@ def send_instant_alerts():
 def digest_text():
     since = (dt.datetime.now() - dt.timedelta(days=1)).isoformat(sep=" ")
     new = db.q1("SELECT COUNT(*) n FROM parcels WHERE first_seen>=? AND demo=0", (since[:10],))["n"]
-    top = db.q("SELECT street, city, score, total_due, amount_owed FROM parcels WHERE is_active=1 ORDER BY score DESC LIMIT 5")
+    top = db.q("SELECT street, city, score, total_due, amount_owed FROM parcels WHERE is_active=1 AND score IS NOT NULL ORDER BY score DESC LIMIT 5")
     lines = [f"New delinquent properties since yesterday: {new}", "", "Top deals right now:"]
     for t in top:
-        lines.append(f"- {t['street'].title()}, {t['city'].title()}: score {t['score']:.0f}, ${(t['total_due'] or t['amount_owed'] or 0):,.0f} owed")
+        lines.append(f"- {(t['street'] or '').title()}, {(t['city'] or '').title()}: score {t['score']:.0f}, ${(t['total_due'] or t['amount_owed'] or 0):,.0f} owed")
     return "EstateHawk daily digest", "\n".join(lines)
 
 

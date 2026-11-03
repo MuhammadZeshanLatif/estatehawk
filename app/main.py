@@ -130,6 +130,7 @@ def users_delete(uid: int, request: Request):
 @app.on_event("startup")
 def _startup():
     db.con()
+    db.load_env()
     if os.environ.get("ESTATEHAWK_NO_SCHEDULER") != "1":
         jobs.start_scheduler()
 
@@ -702,8 +703,15 @@ async def save_integrations(request: Request):
             lines[cur[k]] = f"{k}={v}"
         else:
             lines.append(f"{k}={v}")
-    with open(ENV_PATH, "w") as f:
-        f.write("\n".join(lines) + "\n")
+    try:
+        with open(ENV_PATH, "w") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
+    if db.PG:  # hosted: the server's disk is wiped on restart, so keep keys in the database too
+        saved = db.get_setting("_env") or {}
+        saved.update({k: os.environ[k] for k in ENV_KEYS if os.environ.get(k)})
+        db.set_setting("_env", saved)
     return integrations()
 
 
