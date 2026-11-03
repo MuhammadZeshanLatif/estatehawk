@@ -1,9 +1,11 @@
 """Daily sync: download each county's delinquent list, compare with yesterday, enrich new parcels,
 score everything, create alerts, and send the daily digest."""
+import re
 import datetime as dt, json, threading, time, traceback
 
 from . import db, scoring, notify, geocode, contacts
 from .scraper.issg import IssgClient
+from .scraper.files import FileClient
 
 ENRICH_V = 2  # bump when the property reader learns new fields: parcels are read again once
 STATUS = {"running": False, "county": None, "step": "", "progress": 0}
@@ -71,6 +73,11 @@ def enrich(client, county, parcel_ids, step_cb=None):
                                           "baths_half", "year_built", "living_area", "style", "condition", "stories", "photo_url")
                   if info.get(k) is not None}
         cur = db.q1("SELECT city, zip FROM parcels WHERE id=?", (pid,))
+        cur2 = db.q1("SELECT street, school_district FROM parcels WHERE id=?", (pid,)) or {}
+        if info.get("street") and not re.match(r"\d", cur2.get("street") or ""):
+            fields["street"] = info["street"]
+        if info.get("school_district") and not cur2.get("school_district"):
+            fields["school_district"] = info["school_district"]
         if info.get("loc_city") and not (cur or {}).get("city"):
             fields["city"], fields["zip"] = info["loc_city"], info.get("loc_zip") or (cur or {}).get("zip")
         fields["enriched_at"] = now()
@@ -83,6 +90,10 @@ def enrich(client, county, parcel_ids, step_cb=None):
     return done
 
 
+EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "improvement_value",
+         "appraised_total", "cert_year")
+
+
 def sync_county(county_id, enrich_limit=1500):
     county = db.q1("SELECT * FROM counties WHERE id=?", (county_id,))
     run_id = db.run("INSERT INTO sync_runs(county_id, started, status) VALUES(?,?,?)", (county_id, now(), "running"))
@@ -91,7 +102,7 @@ def sync_county(county_id, enrich_limit=1500):
     try:
         if not county["host"]:
             raise RuntimeError("No website set for this county")
-        client = IssgClient(county["host"])
+        client = FileClient(county["host"]) if county["host"].startswith("file:") else IssgClient(county["host"])
         rows, year = client.all_rows(progress=lambda i, n, name: STATUS.update(step=f"Township {i}/{n}: {name}", progress=int(40 * i / n)))
         if not rows:
             raise RuntimeError("County site returned 0 parcels (format change or list not published)")
@@ -135,6 +146,14 @@ def sync_county(county_id, enrich_limit=1500):
             c.executemany("INSERT OR REPLACE INTO snapshots(parcel_id, date, amount, owner_name) VALUES(?,?,?,?)", snap)
             c.executemany("UPDATE parcels SET is_active=0 WHERE id=?", [(pid,) for pid in removed])
             c.executemany(AL, alerts)
+            # extra columns some sources give straight from the list (values, mailing address, land use)
+            groups = {}
+            for r in rows:
+                ks = tuple(k for k in EXTRA if r.get(k) not in (None, ""))
+                if ks:
+                    groups.setdefault(ks, []).append((*[r[k] for k in ks], f"{county_id}:{r['parcel_number']}"))
+            for ks, vals in groups.items():
+                c.executemany(f"UPDATE parcels SET {', '.join(k + '=?' for k in ks)} WHERE id=?", vals)
             c.execute("UPDATE counties SET tax_year=COALESCE(?, tax_year), delinquent_count=? WHERE id=?", (year, len(rows), county_id))
         if new_ids and first_sync:
             alert("new_delinquent", f"{county['name']}: first sync found {len(new_ids)} delinquent properties",
