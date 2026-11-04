@@ -193,7 +193,7 @@ def faqs():
         ("Can I collaborate with my team?", "Yes. Pro and Agency plans let you invite team members, assign leads and track every call, letter and offer in a shared pipeline."),
         ("Where does the data come from?", "From public records published by county treasurers, auditors and their tax-sale attorneys. We collect, clean, score and map it so you do not have to."),
         ("What is a deal score?", "A 0 to 100 score that weighs how many years the taxes are behind, the estimated equity, the amount owed, out-of-state ownership and vacancy signals. Higher means a more motivated seller and a better margin."),
-        ("Can I cancel anytime?", "Yes. Plans are month to month. You can cancel or change your plan whenever you want."),
+        ("Can I cancel anytime?", "Yes. Plans are month to month. You can cancel or change your plan whenever you want, and your plan runs until the end of the month you paid for. Payments are not refunded, which is why every plan starts with a 14-day free trial."),
     ]
 
 
@@ -433,10 +433,10 @@ def legal(request, kind):
 <h2>Your choices</h2><p>You can update or delete your account at any time by contacting us at """ + CONTACT_EMAIL + """.</p>"""
     elif kind == "refund":
         t, d = "Refund policy", "How cancellations and refunds work for EstateHawk plans."
-        txt = """<p>We want you to be happy with EstateHawk. Every plan starts with a 14-day free trial, so you can try the data before you pay.</p>
-<h2>Cancel anytime</h2><p>Plans are billed monthly. You can cancel at any time from Manage billing in the app or by emailing us. Your plan stays active until the end of the period you paid for, and you are not charged again.</p>
-<h2>Refunds</h2><ul><li>First payment: if EstateHawk is not right for you, email us within 7 days of your first payment and we refund it in full.</li><li>Renewals: monthly renewals are not refunded, but you can cancel before the next renewal.</li><li>Billing mistakes, such as a double charge, are always refunded.</li></ul>
-<h2>How refunds are paid</h2><p>Payments are processed by our payment partner Creem, who acts as the merchant of record. Refunds go back to the card you paid with, usually within 5 to 10 business days.</p>
+        txt = """<p>Every plan starts with a 14-day free trial, so you can try EstateHawk and see the data for your county before you pay anything.</p>
+<h2>No refunds, cancel anytime</h2><p>Because paid plans give instant access to lead data, payments are not refunded. You can cancel at any time from Manage billing in the app or by emailing us. Your plan stays active until the end of the month you paid for, and you are not charged again.</p>
+<h2>Billing mistakes</h2><p>If you were charged by mistake, for example twice for the same month, tell us within 30 days and we refund the extra charge in full.</p>
+<h2>How payments work</h2><p>Payments are processed by our payment partner Creem, who acts as the merchant of record and sends your receipts.</p>
 <h2>Contact</h2><p>Email """ + CONTACT_EMAIL + """ with your account email and we will reply within one business day.</p>"""
     else:
         t, d = "Terms of service", "The terms for using EstateHawk."

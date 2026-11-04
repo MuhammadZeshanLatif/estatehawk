@@ -394,12 +394,24 @@ def export_parcels(request: Request):
                    p.mail_address, p.mail_state, p.amount_owed, p.total_due, p.prior_due, p.annual_tax, p.years_behind,
                    p.appraised_total, p.est_equity, p.rent_est, p.suggested_offer, p.score, p.property_type, p.land_use,
                    p.first_seen, p.lat, p.lng FROM parcels p JOIN counties c ON c.id=p.county_id {w} ORDER BY p.score DESC""", a)
+    allow = plans.export_allowance(INFO())
+    name = f"estatehawk-leads-{dt.date.today()}"
+    if allow is not None:
+        left, lim = allow
+        if left <= 0:
+            return HTMLResponse(f"<p style='font:16px sans-serif;padding:40px'>Your plan's daily export limit ({lim} leads) is used up for today. "
+                                "It resets tomorrow. Every lead stays open in the app.</p><p style='font:16px sans-serif;padding:0 40px'><a href='/app'>Back to EstateHawk</a></p>", status_code=429)
+        if len(rows) > left:
+            name += f"-top-{left}-of-{len(rows)}"
+            rows = rows[:left]
+        plans.export_used(INFO(), len(rows))
+    auth.audit("export", f"{len(rows)} leads")
     buf = io.StringIO()
     if rows:
         wr = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
         wr.writeheader(); wr.writerows(rows)
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
-                             headers={"Content-Disposition": f"attachment; filename=estatehawk-leads-{dt.date.today()}.csv"})
+                             headers={"Content-Disposition": f"attachment; filename={name}.csv"})
 
 
 def get_parcel(pid, unlocked=False):

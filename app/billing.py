@@ -121,7 +121,7 @@ def set_plan(org, plan, status, sub_id=None, customer_id=None, period_end=None, 
         elif o["status"] != "active":
             db.run("UPDATE orgs SET status='active' WHERE id=?", (org,))
         save(org, plan=plan or o["plan"], status="active", subscription_id=sub_id, customer_id=customer_id, period_end=period_end,
-             pending_plan="")
+             pending_plan="", paid_since=get(org).get("paid_since") or time.strftime("%Y-%m-%d"))
     elif status in ("scheduled_cancel",):
         save(org, status="canceling", subscription_id=sub_id, period_end=period_end)
     elif status in ("canceled", "expired", "unpaid", "past_due", "paused"):

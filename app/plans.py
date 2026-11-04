@@ -6,9 +6,9 @@ from . import db
 # counties/users: None = no limit. reveals: how many leads a trial may open in full (None = all).
 PLANS = {
     "trial":    {"label": "Free trial", "price": 0,   "counties": 1,    "users": 1,  "reveals": 10,   "export": False, "days": 14},
-    "starter":  {"label": "Starter",    "price": 49,  "counties": 1,    "users": 1,  "reveals": None, "export": True},
-    "pro":      {"label": "Pro",        "price": 99,  "counties": 3,    "users": 3,  "reveals": None, "export": True},
-    "agency":   {"label": "Agency",     "price": 249, "counties": None, "users": 10, "reveals": None, "export": True},
+    "starter":  {"label": "Starter",    "price": 49,  "counties": 1,    "users": 1,  "reveals": None, "export": True, "export_day": 300},
+    "pro":      {"label": "Pro",        "price": 99,  "counties": 3,    "users": 3,  "reveals": None, "export": True, "export_day": 1000},
+    "agency":   {"label": "Agency",     "price": 249, "counties": None, "users": 10, "reveals": None, "export": True, "export_day": 3000},
     "internal": {"label": "Owner",      "price": 0,   "counties": None, "users": None, "reveals": None, "export": True},
 }
 PUBLIC = ["trial", "starter", "pro", "agency"]
@@ -69,3 +69,27 @@ def mask(row):
         row["lat"], row["lng"] = round(row["lat"], 2), round(row["lng"], 2)
     row["locked"] = True
     return row
+
+
+def export_allowance(info):
+    """How many CSV rows this company may still export today. None = no limit (owner).
+    The first 7 days after the first payment get half the daily limit, so nobody can pay, copy everything and leave."""
+    lim = info["limits"].get("export_day")
+    if not lim:
+        return None
+    from . import billing
+    since = (billing.get(info["id"]).get("paid_since") or "")[:10]
+    if since and (dt.date.today() - dt.date.fromisoformat(since)).days < 7:
+        lim //= 2
+    r = db.q1("SELECT value FROM org_settings WHERE org_id=? AND key=?", (info["id"], "export:" + today()))
+    used = int(r["value"]) if r and str(r["value"]).isdigit() else 0
+    return max(0, lim - used), lim
+
+
+def export_used(info, n):
+    key = "export:" + today()
+    r = db.q1("SELECT value FROM org_settings WHERE org_id=? AND key=?", (info["id"], key))
+    if r:
+        db.run("UPDATE org_settings SET value=? WHERE org_id=? AND key=?", (str(int(r["value"] or 0) + n), info["id"], key))
+    else:
+        db.run("INSERT INTO org_settings(org_id,key,value) VALUES(?,?,?)", (info["id"], key, str(n)))

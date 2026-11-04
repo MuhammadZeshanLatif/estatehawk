@@ -370,7 +370,7 @@ export async function plansModal(note = '') {
   const feat = (k, p) => [p.counties == null ? 'All counties' : `${p.counties} ${p.counties > 1 ? 'counties' : 'county'}`,
     p.users == null ? 'Unlimited users' : `${p.users} ${p.users > 1 ? 'users' : 'user'}`,
     p.reveals ? `${p.reveals} leads in full` : 'Every lead in full: owner, address, contacts',
-    p.export ? 'CSV export + mail-merge letters' : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
+    p.export ? (p.export_day ? `CSV export (${p.export_day.toLocaleString()} leads a day) + letters` : 'CSV export + mail-merge letters') : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
   const intro = canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
     : bill.online ? 'Ask your company admin to upgrade the plan.' : 'Online payment is coming soon. To upgrade now, contact us and we switch your plan the same day.';
   modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
