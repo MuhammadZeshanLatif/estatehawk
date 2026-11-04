@@ -518,7 +518,7 @@ export async function admin(el, [tab = 'companies']) {
   const planPill = (o) => `<span class="pill tiny ${o.plan === 'trial' ? 'p-amber' : o.plan === 'internal' ? 'p-grey' : 'p-green'}">${esc(o.label)}</span>`;
   if (tab === 'companies') {
     body.innerHTML = `<div class="card" style="overflow:auto"><table class="table"><thead><tr><th>Company</th><th>Plan</th><th>Status</th><th>Counties</th><th class="r">Users</th><th class="r">Leads opened</th><th>Last activity</th><th></th></tr></thead><tbody>
-      ${orgs.map((o) => `<tr><td><b>${esc(o.name)}</b><div class="tiny muted">${o.admin ? esc(o.admin.email) : ''}</div></td><td>${planPill(o)}${o.plan === 'trial' ? `<div class="tiny ${o.days_left < 0 ? '' : 'muted'}" style="${o.days_left < 0 ? 'color:#B42318' : ''}">${o.days_left < 0 ? 'ended' : o.days_left + ' days left'}</div>` : ''}</td>
+      ${orgs.map((o) => `<tr><td><b class="ellip" style="display:block;max-width:420px" title="${esc(o.name)}">${esc(o.name)}</b><div class="tiny muted">${o.admin ? esc(o.admin.email) : ''}</div></td><td>${planPill(o)}${o.plan === 'trial' ? `<div class="tiny ${o.days_left < 0 ? '' : 'muted'}" style="${o.days_left < 0 ? 'color:#B42318' : ''}">${o.days_left < 0 ? 'ended' : o.days_left + ' days left'}</div>` : ''}</td>
         <td>${o.suspended ? '<span class="pill tiny p-red">Paused</span>' : '<span class="pill tiny p-green">Active</span>'}</td>
         <td class="small">${esc(o.county_names.join(', ') || 'none chosen')}</td><td class="r">${o.users}</td><td class="r">${o.limits.reveals ? `${o.reveals_used}/${o.limits.reveals}` : '--'}</td>
         <td class="small muted">${o.last_activity ? ago(o.last_activity) : 'never'}</td>

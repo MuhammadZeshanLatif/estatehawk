@@ -456,9 +456,32 @@ def login(request):
             f'<h1>Welcome back</h1><p class="sub">Sign in to your EstateHawk account.</p><div class="msg" role="alert"></div>'
             f'<div class="field"><label for="l-email">Email</label><input id="l-email" name="email" type="email" autocomplete="email" required></div>'
             f'<div class="field"><label for="l-pw">Password</label><input id="l-pw" name="password" type="password" autocomplete="current-password" required></div>'
+            f'<p class="alt" style="margin:-6px 0 14px;text-align:right"><a href="/forgot-password">Forgot password?</a></p>'
             f'<button class="btn btn-green btn-block" type="submit">Sign in {ic("arrow")}</button>'
             f'<p class="alt">New to EstateHawk? <a href="/signup">Start a free trial</a></p></form></div></section>')
     return page(request, "/login", "Sign in | EstateHawk", "Sign in to your EstateHawk account.", body, noindex=True)
+
+
+def forgot(request):
+    body = (f'<section class="sec" style="padding-top:56px"><div class="wrap"><form class="form" data-api="/api/auth/forgot" '
+            f'data-ok="If that email has an account, a reset link is on its way. Check your inbox and spam folder." novalidate>'
+            f'<h1>Reset your password</h1><p class="sub">Enter your account email and we will send you a link to choose a new password.</p><div class="msg" role="alert"></div>'
+            f'<div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" required></div>'
+            f'<button class="btn btn-green btn-block" type="submit">Send reset link {ic("arrow")}</button>'
+            f'<p class="alt"><a href="/login">Back to sign in</a></p></form></div></section>')
+    return page(request, "/forgot-password", "Reset password | EstateHawk", "Reset the password of your EstateHawk account.", body, noindex=True)
+
+
+def reset(request):
+    invite = request.query_params.get("invite") == "1"
+    title = "Choose your password" if invite else "Choose a new password"
+    body = (f'<section class="sec" style="padding-top:56px"><div class="wrap"><form class="form" data-api="/api/auth/reset" data-next="/app" novalidate>'
+            f'<h1>{title}</h1><p class="sub">{"Welcome to EstateHawk. Pick a password to finish setting up your login." if invite else "Pick a new password for your EstateHawk account."}</p><div class="msg" role="alert"></div>'
+            f'<input type="hidden" name="token" value="{esc(request.query_params.get("token", ""))}">'
+            f'<div class="field"><label for="r-pw">New password</label><input id="r-pw" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>'
+            f'<button class="btn btn-green btn-block" type="submit">Save password and sign in {ic("arrow")}</button>'
+            f'<p class="alt"><a href="/forgot-password">Need a new link?</a></p></form></div></section>')
+    return page(request, "/reset-password", f"{title} | EstateHawk", "Choose a password for your EstateHawk account.", body, noindex=True)
 
 
 def signup(request):
@@ -486,7 +509,7 @@ def not_found(request):
 
 # ------------------------------------------------------------------ routing, sitemap, robots
 STATIC_PAGES = {"": home, "features": features, "how-it-works": how, "pricing": pricing, "counties": counties, "guides": guides,
-                "about": about, "contact": contact, "faq": faq_page, "login": login, "signup": signup,
+                "about": about, "contact": contact, "faq": faq_page, "login": login, "signup": signup, "forgot-password": forgot, "reset-password": reset,
                 "privacy": lambda r: legal(r, "privacy"), "terms": lambda r: legal(r, "terms"), "refund-policy": lambda r: legal(r, "refund")}
 
 

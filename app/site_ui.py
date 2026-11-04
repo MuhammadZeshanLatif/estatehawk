@@ -5,7 +5,7 @@ CSS = r"""
 @font-face{font-family:Fraunces;src:url(/site/fonts/fraunces.woff2) format('woff2');font-weight:300 900;font-style:normal;font-display:swap}
 @font-face{font-family:Fraunces;src:url(/site/fonts/fraunces-italic.woff2) format('woff2');font-weight:300 900;font-style:italic;font-display:swap}
 @font-face{font-family:Inter;src:url(/site/fonts/inter.woff2) format('woff2');font-weight:100 900;font-style:normal;font-display:swap}
-:root{--bg:#FAF7F0;--band:#F2ECE1;--card:#FFFDF9;--line:#E7DFD0;--ink:#17301F;--text:#3D4A41;--muted:#6E776F;--green:#1A4A30;--green2:#215A3B;--leaf:#2E7D4F;--mint:#E3EFE4;--sand:#EFE7D8;--amber:#E2A13A;--amber2:#F6E3BE;--r:14px;--max:1320px;
+:root{--bg:#FAF7F0;--band:#F2ECE1;--card:#FFFDF9;--line:#E7DFD0;--ink:#17301F;--text:#3D4A41;--muted:#5E675F;--green:#1A4A30;--green2:#215A3B;--leaf:#2E7D4F;--mint:#E3EFE4;--sand:#EFE7D8;--amber:#E2A13A;--amber2:#F6E3BE;--r:14px;--max:1320px;
 --serif:Fraunces,ui-serif,Georgia,serif;--sans:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -47,7 +47,7 @@ p{margin:0}.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
 .browser{position:relative;background:#fff;border-radius:14px;box-shadow:0 30px 70px -20px rgba(23,48,31,.28),0 0 0 1px rgba(23,48,31,.08);overflow:hidden;font-family:var(--sans)}
 .browser .bar{height:34px;display:flex;align-items:center;gap:7px;padding:0 14px;background:#F4F1EB;border-bottom:1px solid #E8E2D6}
 .browser .bar i{width:10px;height:10px;border-radius:50%;display:block}.browser .bar i:nth-child(1){background:#F26B5F}.browser .bar i:nth-child(2){background:#F5BE4F}.browser .bar i:nth-child(3){background:#5FC454}
-.browser .url{margin:0 auto;font-size:11px;color:#7d7a72;background:#fff;border-radius:6px;padding:3px 60px;display:flex;align-items:center;gap:5px}
+.browser .url{margin:0 auto;font-size:11px;color:#5E675F;background:#fff;border-radius:6px;padding:3px 60px;display:flex;align-items:center;gap:5px}
 .app{display:grid;grid-template-columns:160px 1fr;min-height:340px}
 .app .side{background:var(--green);color:#E3EDE6;padding:16px 11px;font-size:12.5px}
 .app .side .lg{display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px;color:#fff;padding:2px 6px 18px}

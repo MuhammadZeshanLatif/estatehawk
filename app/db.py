@@ -336,6 +336,8 @@ def columns(c, table):
 
 def migrate(c):
     """One-time upgrade of a single-team database to companies. Existing data becomes company #1 (EstateHawk HQ)."""
+    if "token_ver" not in columns(c, "users"):  # session version: logout / password change ends old sessions
+        c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
     for t in ("activities", "tasks", "offers", "users"):
         if "org_id" not in columns(c, t):
             c.execute(f"ALTER TABLE {t} ADD COLUMN org_id INTEGER")
