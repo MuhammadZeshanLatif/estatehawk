@@ -19,9 +19,9 @@ PUBLIC = ("/api/auth/", "/api/public/", "/static/", "/site/", "/manifest.webmani
 SUPER = [("*", "/api/integrations"), ("POST", "/api/counties"), ("PUT", "/api/counties"), ("DELETE", "/api/counties"),
          ("POST", "/api/sync"), ("*", "/api/demo"), ("*", "/api/admin"), ("POST", "/api/settings/preview-score")]
 # company admin (or super admin): their own team
-ADMIN = [("*", "/api/users")]
+ADMIN = [("*", "/api/users"), ("POST", "/api/billing")]
 # still open when a trial has ended / company is suspended
-WHEN_EXPIRED = ("/api/meta", "/api/plans", "/api/auth/")
+WHEN_EXPIRED = ("/api/meta", "/api/plans", "/api/auth/", "/api/billing")
 
 
 def _secret():

@@ -89,7 +89,7 @@ def footer():
     return (f'<footer class="ftr"><div class="wrap"><div class="about">{logo()}<p>Official county data. Real estate opportunities.</p></div>'
             + col("Product", [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties")])
             + col("Resources", [("/guides", "Guides"), ("/faq", "Help center"), ("/counties/ohio", "Ohio tax-delinquent lists"), ("/counties/texas", "Texas tax sales")])
-            + col("Company", [("/about", "About"), ("/contact", "Contact"), ("/terms", "Terms of service"), ("/privacy", "Privacy policy")])
+            + col("Company", [("/about", "About"), ("/contact", "Contact"), ("/terms", "Terms of service"), ("/privacy", "Privacy policy"), ("/refund-policy", "Refund policy")])
             + f'<div class="legal"><p>Powered by official county treasurer records.</p><p style="margin-top:4px">&copy; {year} EstateHawk. All rights reserved.</p></div></div></footer>')
 
 
@@ -431,16 +431,24 @@ def legal(request, kind):
 <h2>Property data</h2><p>Property and owner information in EstateHawk comes from public records published by county governments and from public contact lookups. You are responsible for using it lawfully, including do-not-call and anti-spam rules.</p>
 <h2>How we use your information</h2><p>To run your account, send alerts you ask for, provide support and keep the service secure. We do not sell your personal information.</p>
 <h2>Your choices</h2><p>You can update or delete your account at any time by contacting us at """ + CONTACT_EMAIL + """.</p>"""
+    elif kind == "refund":
+        t, d = "Refund policy", "How cancellations and refunds work for EstateHawk plans."
+        txt = """<p>We want you to be happy with EstateHawk. Every plan starts with a 14-day free trial, so you can try the data before you pay.</p>
+<h2>Cancel anytime</h2><p>Plans are billed monthly. You can cancel at any time from Manage billing in the app or by emailing us. Your plan stays active until the end of the period you paid for, and you are not charged again.</p>
+<h2>Refunds</h2><ul><li>First payment: if EstateHawk is not right for you, email us within 7 days of your first payment and we refund it in full.</li><li>Renewals: monthly renewals are not refunded, but you can cancel before the next renewal.</li><li>Billing mistakes, such as a double charge, are always refunded.</li></ul>
+<h2>How refunds are paid</h2><p>Payments are processed by our payment partner Creem, who acts as the merchant of record. Refunds go back to the card you paid with, usually within 5 to 10 business days.</p>
+<h2>Contact</h2><p>Email """ + CONTACT_EMAIL + """ with your account email and we will reply within one business day.</p>"""
     else:
         t, d = "Terms of service", "The terms for using EstateHawk."
         txt = """<p>By creating an account you agree to these terms.</p><h2>The service</h2><p>EstateHawk organizes public property tax records, scores them and helps you contact owners. Data comes from official sources but can contain errors or be out of date; always verify before you act.</p>
-<h2>Your account</h2><p>Keep your login safe. Plans are billed monthly and you may cancel anytime. Free trials last 14 days.</p>
+<h2>Your account</h2><p>Keep your login safe. Plans are billed monthly and you may cancel anytime. Free trials last 14 days.</p><h2>Payments</h2><p>Payments are processed by our payment partner Creem, the merchant of record, who handles card payments, receipts and sales tax. See our <a href="/refund-policy">refund policy</a>.</p>
 <h2>Acceptable use</h2><p>Use the data lawfully. Follow do-not-call, telemarketing, anti-spam and fair-housing laws. Do not resell raw data or scrape the service.</p>
 <h2>Liability</h2><p>The service is provided as is. We are not liable for investment decisions you make with it.</p><h2>Contact</h2><p>Questions: """ + CONTACT_EMAIL + """</p>"""
-    bc, bs = crumbs(request, [(f"/{kind}", t)])
+    slug = "refund-policy" if kind == "refund" else kind
+    bc, bs = crumbs(request, [(f"/{slug}", t)])
     body = (f'<section class="phero" style="text-align:left"><div class="wrap prose">{bc}<h1 style="font-size:46px">{t}</h1><p style="margin:12px 0 0">Last updated November 2026</p></div></section>'
             f'<section class="sec-tight"><div class="wrap prose">{txt}</div></section>')
-    return page(request, f"/{kind}", f"{t} | EstateHawk", d, body, [bs])
+    return page(request, f"/{slug}", f"{t} | EstateHawk", d, body, [bs])
 
 
 def login(request):
@@ -479,7 +487,7 @@ def not_found(request):
 # ------------------------------------------------------------------ routing, sitemap, robots
 STATIC_PAGES = {"": home, "features": features, "how-it-works": how, "pricing": pricing, "counties": counties, "guides": guides,
                 "about": about, "contact": contact, "faq": faq_page, "login": login, "signup": signup,
-                "privacy": lambda r: legal(r, "privacy"), "terms": lambda r: legal(r, "terms")}
+                "privacy": lambda r: legal(r, "privacy"), "terms": lambda r: legal(r, "terms"), "refund-policy": lambda r: legal(r, "refund")}
 
 
 def render(request, path):
@@ -500,7 +508,7 @@ def sitemap(request):
     today = dt.date.today().isoformat()
     urls = [("", "1.0", "daily"), ("features", "0.9", "monthly"), ("how-it-works", "0.8", "monthly"), ("pricing", "0.9", "monthly"),
             ("counties", "0.9", "daily"), ("guides", "0.7", "weekly"), ("about", "0.5", "yearly"), ("contact", "0.5", "yearly"),
-            ("faq", "0.6", "monthly"), ("signup", "0.7", "yearly"), ("privacy", "0.2", "yearly"), ("terms", "0.2", "yearly")]
+            ("faq", "0.6", "monthly"), ("signup", "0.7", "yearly"), ("privacy", "0.2", "yearly"), ("terms", "0.2", "yearly"), ("refund-policy", "0.2", "yearly")]
     urls += [(f"counties/{slug(STATE_NAMES.get(st, st))}", "0.8", "daily") for st in stats()["states"]]
     urls += [(f"guides/{g[0]}", "0.6", "monthly") for g in GUIDES]
     body = "".join(f"<url><loc>{b}/{u}</loc><lastmod>{today}</lastmod><changefreq>{f}</changefreq><priority>{p}</priority></url>" for u, p, f in urls)

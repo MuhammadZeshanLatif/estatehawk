@@ -360,21 +360,60 @@ export async function showLogin() {
 }
 
 const CONTACT = 'support@getestatehawk.com';
-export function plansModal(note = '') {
+export async function plansModal(note = '') {
   const P = (S.meta && S.meta.plans) || {};
   const cur = S.meta?.org?.plan;
+  let bill = { online: false };
+  try { bill = await api('/api/billing'); } catch (e) { }
+  const isAdmin = ['admin', 'superadmin'].includes(S.meta?.user?.role) && !S.viewOrg && S.meta?.org?.id !== 1;
+  const canBuy = bill.online && isAdmin;
   const feat = (k, p) => [p.counties == null ? 'All counties' : `${p.counties} ${p.counties > 1 ? 'counties' : 'county'}`,
     p.users == null ? 'Unlimited users' : `${p.users} ${p.users > 1 ? 'users' : 'user'}`,
     p.reveals ? `${p.reveals} leads in full` : 'Every lead in full: owner, address, contacts',
     p.export ? 'CSV export + mail-merge letters' : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
-  modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">Online payment is coming soon. To upgrade now, contact us and we switch your plan the same day.</p>
+  const intro = canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
+    : bill.online ? 'Ask your company admin to upgrade the plan.' : 'Online payment is coming soon. To upgrade now, contact us and we switch your plan the same day.';
+  modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0">${Object.entries(P).map(([k, p]) => `
-      <div class="card card-pad" style="${k === cur ? 'border:2px solid var(--green)' : ''}"><b>${esc(p.label)}</b>
+      <div class="card card-pad" style="display:flex;flex-direction:column;${k === cur ? 'border:2px solid var(--green)' : ''}"><b>${esc(p.label)}</b>
         <div style="font-size:24px;font-weight:700;margin:6px 0">${p.price ? '$' + p.price : 'Free'}<span class="small muted" style="font-weight:400">${p.price ? ' / month' : ''}</span></div>
-        <ul class="small" style="padding-left:16px;margin:0;line-height:1.7">${feat(k, p).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
-        ${k === cur ? '<div class="pill p-green tiny" style="margin-top:8px">Current plan</div>' : ''}</div>`).join('')}</div>
-    <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Close</button>
-      <a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade: ' + (S.meta?.org?.name || ''))}">Contact us to upgrade</a></div>`);
+        <ul class="small" style="padding-left:16px;margin:0 0 10px;line-height:1.7;flex:1">${feat(k, p).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+        ${k === cur ? '<div class="pill p-green tiny">Current plan</div>' : (canBuy && p.price ? `<button class="btn primary sm" data-buy="${k}" style="width:100%">Choose ${esc(p.label)}</button>` : '')}</div>`).join('')}</div>
+    <div class="row" style="justify-content:flex-end;gap:8px">${bill.has_portal && isAdmin ? '<button class="btn" id="mBill">Manage billing</button>' : ''}<button class="btn" data-close>Close</button>
+      ${canBuy ? '' : `<a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade: ' + (S.meta?.org?.name || ''))}">Contact us to upgrade</a>`}</div>`, (el) => {
+    $$('[data-buy]', el).forEach((b) => b.onclick = async () => {
+      const label = b.textContent; b.disabled = true; b.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 14)}</span> Opening checkout...`;
+      try { const r = await api('/api/billing/checkout', { method: 'POST', body: { plan: b.dataset.buy } }); location.href = r.url; }
+      catch (e) { toast(e.message, true); b.disabled = false; b.textContent = label; }
+    });
+    if ($('#mBill', el)) $('#mBill', el).onclick = openPortal;
+  });
+}
+
+async function openPortal() {
+  try { const r = await api('/api/billing/portal', { method: 'POST' }); location.href = r.url; } catch (e) { toast(e.message, true); }
+}
+
+// Back from the payment page: ask the server to check the payment, then show the result.
+async function billingView(el) {
+  el.innerHTML = `<div class="card card-pad" style="max-width:520px;margin:40px auto;text-align:center"><span class="spin" style="display:inline-flex">${ic('refresh', 26)}</span><h2>Checking your payment...</h2><p class="muted small">This takes a few seconds.</p></div>`;
+  let r = null;
+  for (let i = 0; i < 5; i++) {
+    try { r = await api('/api/billing/confirm', { method: 'POST' }); } catch (e) { r = { error: e.message }; }
+    if (r && r.status === 'active') break;
+    await new Promise((ok) => setTimeout(ok, 2000));
+  }
+  await refreshMeta();
+  const o = S.meta.org || {};
+  const paid = r && r.status === 'active';
+  el.innerHTML = `<div class="card card-pad" style="max-width:520px;margin:40px auto;text-align:center">
+    <div style="margin-bottom:8px">${ic(paid ? 'check' : 'clock', 32)}</div>
+    <h2>${paid ? `You are on the ${esc(o.label || o.plan)} plan` : 'Payment not confirmed yet'}</h2>
+    <p class="muted">${paid ? 'Thank you. Every lead, owner and contact in your plan is now open. A receipt is on its way to your email.'
+      : esc((r && r.error) || 'If you finished paying, give it a minute and refresh this page. If you closed the payment page, nothing was charged.')}</p>
+    <div class="row" style="justify-content:center;gap:8px">${paid ? '<a class="btn primary" href="#/deals">Go to my leads</a>' : '<button class="btn" id="bAgain">Check again</button><button class="btn primary" id="bPlans">See plans</button>'}</div></div>`;
+  if ($('#bAgain')) $('#bAgain').onclick = () => billingView(el);
+  if ($('#bPlans')) $('#bPlans').onclick = () => plansModal();
 }
 
 export function showExpired(msg) {
@@ -430,7 +469,7 @@ export async function teamModal() {
 // ---------- router ----------
 const routes = {
   deals: V.deals, deal: V.deal, map: V.mapView, alerts: V.alerts, counties: V.counties, outreach: V.outreach,
-  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin,
+  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView,
 };
 let cleanup = null;
 async function route() {
@@ -445,7 +484,7 @@ async function route() {
   ['#sidebar', '#topbar'].forEach((s) => { if ($(s)) $(s).style.display = ''; });
   const LOADER = `<div class="page-loader"><span class="spin" style="display:inline-flex">${ic('refresh', 22)}</span><span>Loading...</span></div>`;
   if (!S.meta) { $('#view').innerHTML = LOADER; await refreshMeta(); }
-  if (S.meta.org?.expired && !S.meta.super) { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
+  if (S.meta.org?.expired && !S.meta.super && name !== 'billing') { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
   if (!S.meta.settings.onboarded && S.meta.super && name !== 'welcome') { location.hash = '#/welcome'; return; }
   if (name === 'admin' && !S.meta.super) { location.hash = '#/deals'; return; }
   const fn = routes[name] || V.deals;

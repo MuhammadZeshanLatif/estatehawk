@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -954,6 +954,61 @@ def demo_clear():
 @app.get("/api/plans")
 def plan_list():
     return {"plans": {k: plans.PLANS[k] for k in plans.PUBLIC}, "org": INFO()}
+
+
+# ------------------------------------------------------------------ online payment (Creem)
+@app.get("/api/billing")
+def billing_status():
+    b = billing.get(OID())
+    return {"online": billing.configured(), "mode": billing.mode(), "plan": INFO()["plan"], "status": b.get("status"),
+            "period_end": b.get("period_end"), "has_portal": bool(b.get("customer_id")), "pending_plan": b.get("pending_plan") or None}
+
+
+@app.post("/api/billing/checkout")
+async def billing_checkout(request: Request):
+    b = await request.json()
+    plan = b.get("plan")
+    if plan not in billing.PLAN_PRODUCTS:
+        raise HTTPException(400, "Pick a plan")
+    if OID() == 1:
+        raise HTTPException(400, "The owner company does not need a plan")
+    u = ctx.get().get("user") or {}
+    try:
+        url = billing.start_checkout(OID(), plan, u.get("email"), site.base_url(request))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    auth.audit("checkout started", plan)
+    return {"url": url}
+
+
+@app.post("/api/billing/confirm")
+def billing_confirm():
+    try:
+        b = billing.confirm(OID())
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    return {"plan": plans.org_info(OID())["plan"], "status": b.get("status")}
+
+
+@app.post("/api/billing/portal")
+def billing_portal():
+    try:
+        return {"url": billing.portal(OID())}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/public/creem/webhook")
+async def creem_webhook(request: Request):
+    raw = await request.body()
+    if not billing.verify(raw, request.headers.get("creem-signature", "")):
+        raise HTTPException(401, "Bad signature")
+    try:
+        note = billing.handle_event(json.loads(raw))
+    except Exception as e:
+        note = f"error {e}"
+    auth.audit("payment webhook", note, org=1)
+    return {"ok": True}
 
 
 def _org_row(o):
