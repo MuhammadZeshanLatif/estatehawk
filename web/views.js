@@ -39,7 +39,7 @@ export async function deals(el) {
     <div class="right">
       <div class="row">${ic('pin', 18)}${countySelect('countySel')}</div>
       <div class="updated-box">${ic('cal', 18)}<div><div class="small" style="font-weight:600">${fmtDate(new Date())}</div><div class="tiny muted">Last updated ${ago(S.meta.last_sync)}</div></div>
-        <button class="icon-btn" id="syncBtn" title="Sync now">${ic('refresh', 17)}</button></div>
+        <button class="icon-btn" id="syncBtn" title="Sync now" aria-label="Sync now">${ic('refresh', 17)}</button></div>
       <div data-sync-status></div>
     </div>
   </div>
@@ -49,17 +49,17 @@ export async function deals(el) {
       <div class="card-head" style="padding-top:20px"><div><h2>Property Leads</h2><div class="small muted" id="leadSub"></div></div>
         <div class="right row"><div class="search" style="width:260px;height:36px">${ic('search', 16)}<input id="leadQ" placeholder="Search properties..."></div></div></div>
       <div class="filters">
-        <select class="select" id="fScore"><option value="">Deal Score</option><option value="85">85+ (High)</option><option value="80">80+</option><option value="65">65+</option></select>
+        <select class="select" id="fScore" aria-label="Minimum deal score"><option value="">Deal Score</option><option value="85">85+ (High)</option><option value="80">80+</option><option value="65">65+</option></select>
         <select class="select" id="fOwed"><option value="">Taxes Owed</option><option value="0-2000">Under $2,000</option><option value="2000-10000">$2,000 to $10,000</option><option value="10000-">Over $10,000</option></select>
         <select class="select" id="fYears"><option value="">Years Behind</option><option value="2">2+ years</option><option value="3">3+ years</option><option value="5">5+ years</option></select>
         <button class="chip-btn" id="fMore">${ic('filter', 15)} More Filters</button>
         <span class="grow"></span>
         <span class="small muted" id="pageInfo"></span>
-        <div class="pager"><button class="btn sm" id="prev">${ic('left', 16)}</button><button class="btn sm" id="next">${ic('right', 16)}</button></div>
+        <div class="pager"><button class="btn sm" id="prev" aria-label="Previous page">${ic('left', 16)}</button><button class="btn sm" id="next" aria-label="Next page">${ic('right', 16)}</button></div>
       </div>
       <div id="bulk" class="row hide" style="padding:0 20px 12px"><b class="small" id="bulkN"></b><button class="btn xs" id="bulkPipe">${ic('plus', 14)} Add to pipeline</button><button class="btn xs" id="bulkOffer">${ic('letter', 14)} Draft offers</button><a class="btn xs" id="bulkCsv">${ic('download', 14)} Export CSV</a></div>
       <div style="overflow-x:auto"><table class="table" id="leadTable"><thead><tr>
-        <th style="width:32px"><input type="checkbox" id="allChk"></th><th>Property</th><th class="hide-m">Owner</th><th class="r">Taxes Owed</th>
+        <th style="width:32px"><input type="checkbox" id="allChk" aria-label="Select all leads on this page"></th><th>Property</th><th class="hide-m">Owner</th><th class="r">Taxes Owed</th>
         <th class="r hide-m hide-xl">Years Behind</th><th class="r hide-m">Est. Value</th><th style="text-align:center">Deal Score</th><th class="hide-m">Actions</th>
       </tr></thead><tbody></tbody></table></div>
     </div>
@@ -79,7 +79,7 @@ export async function deals(el) {
     const chg = (v, txt) => v == null ? `<div class="foot">${txt}</div>` : `<div class="foot"><span class="chg ${v < 0 ? 'down' : ''}" style="margin:0">${v < 0 ? '' : '+'}${v}%</span> ${txt}</div>`;
     $('#stats').innerHTML = [
       ['doc', 'tone-green', 'New leads today', num(s.new_today), chg(s.new_change, 'vs. yesterday'), '#/deals'],
-      ['star', 'tone-amber', 'High-score deals', num(s.high_score), chg(s.high_change, 'Score 80+'), '#/map'],
+      ['star', 'tone-amber', 'High-score deals', num(s.high_score), chg(s.high_change, '80+ vs. last week'), '#/map'],
       ['house', 'tone-green', 'Avg equity', kmoney(s.avg_equity), '<div class="foot">Estimated per deal</div>', ''],
       ['map', 'tone-green', 'Counties tracked', num(s.counties), `<div class="foot">Across ${s.states} state${s.states === 1 ? '' : 's'}</div>`, '#/counties'],
     ].map(([i, t, l, v, f, href]) => `<a class="card stat" ${href ? `href="${href}"` : ''}><span class="ico ${t}">${ic(i, 21)}</span><div><div class="lbl">${l}</div><div class="val num">${v}</div>${f}</div></a>`).join('');
@@ -91,7 +91,7 @@ export async function deals(el) {
     $('#pageInfo').textContent = r.total ? `${(r.page - 1) * r.per + 1} - ${Math.min(r.page * r.per, r.total)} of ${num(r.total)} leads` : '0 leads';
     $('#prev').disabled = r.page <= 1; $('#next').disabled = r.page * r.per >= r.total;
     $('#leadTable tbody').innerHTML = r.rows.map((p) => `<tr data-id="${esc(p.id)}">
-      <td><input type="checkbox" class="chk" ${chosen.has(p.id) ? 'checked' : ''}></td>
+      <td><input type="checkbox" class="chk" aria-label="Select ${esc(p.street || p.parcel_number || 'this lead')}" ${chosen.has(p.id) ? 'checked' : ''}></td>
       <td><div class="prop">${thumb(p)}<div><b>${esc(title(p.street))}</b><span>${esc(place(p))}</span>${homeLine(p) ? `<span style="display:block;color:var(--ink2)">${homeLine(p)}</span>` : ''}</div></div></td>
       <td class="hide-m"><div style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title(p.owner_name))}">${p.locked ? `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Locked</span>` : esc(title(p.owner_name))}</div>${p.contact_status === 'found' ? ` <span class="pill p-green tiny">${ic('phone', 11)} Contact</span>` : p.contact_status === 'private' ? ' <span class="pill tiny" style="background:#EEE;color:#555">Private</span>' : ''}${p.mail_state && p.mail_state !== p.state ? ` <span class="pill p-amber tiny" style="padding:1px 7px">Out of state: ${esc(p.mail_state)}</span>` : ''}</td>
       <td class="r num">${money(p.total_due ?? p.amount_owed)}</td>
@@ -289,7 +289,7 @@ export async function deal(el, [rawId]) {
           <div class="field"><label>Earnest money</label><input class="input" id="oEarnest" value="${offer?.earnest || d.earnest}"></div>
         </div>
         <div class="field"><label>Seller credits</label><input class="input" id="oCredits" value="${esc(offer?.seller_credits || d.seller_credits)}"></div>
-        <button class="btn sm" id="oGen">${ic('sparkle', 14)} ${offer ? 'Re-draft' : 'Draft offer'}${p.ai ? ' with Gemini' : ''}</button>
+        <button class="btn sm" id="oGen">${ic('sparkle', 14)} ${offer ? 'Re-draft' : 'Draft offer'}${p.ai ? ' with AI' : ''}</button>
       </details>
       ${offer ? `<div class="small" style="margin:12px 0 8px"><b>Subject:</b> <span id="oSubj">${esc(offer.subject)}</span></div>
         ${editing ? `<input class="input" id="eSubj" style="width:100%;margin-bottom:8px" value="${esc(offer.subject)}"><textarea class="input" id="eBody" rows="14" style="width:100%">${esc(offer.body)}</textarea>`
@@ -342,7 +342,7 @@ export async function deal(el, [rawId]) {
       <div class="grow" style="min-width:0"><a href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}"><b>${esc(c.value)}</b></a>${c.note ? `<div class="tiny muted ellip">${esc(c.note)}</div>` : ''}
       <div class="row wrap gap6" style="margin-top:4px">${c.sources.length > 1 ? `<span class="pill p-green tiny">${c.sources.length} sources</span>` : ''}${c.sources.map((x) => `<span class="pill tiny">${esc(x)}</span>`).join('')}</div></div>
       <button class="btn xs ghost" data-cdel="${c.id}" title="Remove">${ic('x', 13)}</button></div>`;
-    $('#contactsCard').innerHTML = `<div class="row between" style="margin-bottom:4px"><h3>Owner Contacts</h3>${p.ai ? `<button class="btn xs" id="cAi">${ic('sparkle', 13)} Find with Gemini</button>` : ''}</div>
+    $('#contactsCard').innerHTML = `<div class="row between" style="margin-bottom:4px"><h3>Owner Contacts</h3>${p.ai ? `<button class="btn xs" id="cAi">${ic('sparkle', 13)} Find with AI</button>` : ''}</div>
       <button class="btn primary" id="cSee" style="width:100%;margin:6px 0 10px">${ic('phone', 15)} Click to see contact info</button>
       <div class="tiny muted" style="margin-bottom:10px">${esc(o.name)} · lives in ${esc(o.city)}, ${esc(o.st)}. Same number from several sources shows once.</div>
       ${msg ? `<div class="small" style="background:var(--bg2,#F4F5F1);border-radius:8px;padding:8px 10px;margin-bottom:10px">${msg}</div>` : ''}
@@ -389,7 +389,7 @@ export async function deal(el, [rawId]) {
     };
     $$('[data-cdel]').forEach((b) => b.onclick = async () => { await api('/api/contacts/' + b.dataset.cdel, { method: 'DELETE' }); p.contacts = p.contacts.filter((c) => c.id != b.dataset.cdel); renderContacts(p.contacts); });
     $('#cPaste').onclick = () => modal(`<h2>Paste found info</h2><p class="muted small">Copy the phone numbers and emails from the people-search page and paste them here. Every number and email in the text is saved; duplicates are merged.</p>
-      <div class="field"><label>Found on</label><select class="select" id="cSrc"><option>Google</option><option>TruePeopleSearch</option><option>FastPeopleSearch</option><option>Whitepages</option><option>Facebook</option><option>Ohio SOS</option><option>Other</option></select></div>
+      <div class="field"><label>Found on</label><select class="select" id="cSrc"><option>Google</option><option>Facebook</option><option>County records</option><option>Phone call</option><option>Other</option></select></div>
       <textarea class="input" id="cText" rows="6" style="width:100%" placeholder="(330) 555-0142 Wireless&#10;jdoe@example.com"></textarea>
       <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="cSave">Save</button></div>`, (m, close) => {
       $('#cSave', m).onclick = async () => {
@@ -402,8 +402,8 @@ export async function deal(el, [rawId]) {
       try {
         const r = await api(`/api/parcels/${encodeURIComponent(id)}/contacts/ai`, { method: 'POST', body: o });
         p.contacts = r.contacts; if (!r.contacts.length) { p.contact_status = 'private'; p.contact_checked = new Date().toISOString(); }
-        renderContacts(p.contacts, `${r.added ? `Gemini found ${r.added} item(s). Check them before calling.` : 'Gemini found no public phone or email for this owner.'}${r.notes ? '<br>' + esc(r.notes) : ''}`);
-      } catch (e) { toast(e.message || 'Gemini search failed'); b.disabled = false; b.innerHTML = 'Find with Gemini'; }
+        renderContacts(p.contacts, `${r.added ? `AI found ${r.added} item(s). Check them before calling.` : 'AI found no public phone or email for this owner.'}${r.notes ? '<br>' + esc(r.notes) : ''}`);
+      } catch (e) { toast(e.message || 'AI search failed'); b.disabled = false; b.innerHTML = 'Find with AI'; }
     };
   };
   renderContacts(p.contacts);
@@ -482,8 +482,6 @@ function lookupLinks(p) {
   const { name, city, st } = ownerInfo(p);
   const q = encodeURIComponent;
   return [
-    ['TruePeopleSearch', `https://www.truepeoplesearch.com/results?name=${q(name)}&citystatezip=${q(city + ', ' + st)}`],
-    ['FastPeopleSearch', `https://www.fastpeoplesearch.com/name/${name.toLowerCase().replace(/[^a-z ]/g, '').trim().replace(/\s+/g, '-')}_${city.toLowerCase().replace(/\s+/g, '-')}-${st.toLowerCase()}`],
     ['Google', `https://www.google.com/search?q=${q('"' + name + '" ' + city + ' ' + st + ' phone')}`],
   ];
 }
@@ -494,7 +492,7 @@ function contactFact(p) {
     <span class="tiny muted" style="font-weight:400">${c.sources.length > 1 ? c.sources.length + ' sources' : esc((c.sources[0] || '').replace('Gemini: ', ''))}${(/\b(cell|landline)\b/.exec(c.note || '') || [])[1] ? ' · ' + /\b(cell|landline)\b/.exec(c.note)[1] : ''}${/old/.test(c.note || '') ? ' · old' : ''}</span></div>`).join('')
     + (list.length > 6 ? `<div class="tiny muted">+${list.length - 6} more in Owner Contacts</div>` : '');
   if (p.contact_status === 'private') return `<span class="pill tiny" style="background:#EEE;color:#555">Private</span><div class="small muted" style="font-weight:400;margin-top:4px">No public phone or email found${p.contact_checked ? ' (searched ' + esc(fmtDate(p.contact_checked)) + ')' : ''}.</div>`;
-  return '<span class="small muted" style="font-weight:400">Not searched yet. The next sync searches it (best scores first), or use Find with Gemini below.</span>';
+  return '<span class="small muted" style="font-weight:400">Not searched yet. The next sync searches it (best scores first), or use Find with AI below.</span>';
 }
 
 function fact(i, k, v) { return `<div class="fact">${ic(i, 17)}<div><div class="k">${k}</div><div class="v">${v}</div></div></div>`; }

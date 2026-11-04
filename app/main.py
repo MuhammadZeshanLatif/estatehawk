@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -26,7 +26,22 @@ async def cache_headers(request, call_next):
     if request.url.path.startswith("/site/"):  # website images and fonts: change rarely
         resp.headers["Cache-Control"] = "public, max-age=604800"
         resp.headers["Access-Control-Allow-Origin"] = "*"  # public brand assets, usable from social profiles
+    # browser security headers: no framing by other sites, no MIME sniffing, no plugins, HTTPS only
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "SAMEORIGIN")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+    h.setdefault("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+    if request.headers.get("x-forwarded-proto", request.url.scheme) == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return resp
+
+
+@app.exception_handler(ValueError)
+async def bad_value(request, exc):
+    """A filter or form value that is not a number: a clear 400 instead of a server error."""
+    return JSONResponse({"detail": "One of the values is not valid. Check numbers and try again."}, status_code=400)
 
 
 @app.middleware("http")
@@ -42,7 +57,7 @@ async def canonical_host(request, call_next):
 
 # ------------------------------------------------------------------ login + team
 def _client_ip(request):
-    return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")
+    return auth.client_ip(request)
 
 
 @app.get("/api/auth/me")
@@ -73,11 +88,12 @@ async def auth_setup(request: Request):
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
     ip = _client_ip(request)
-    auth.throttle(ip)
     b = await request.json()
-    u = db.q1("SELECT * FROM users WHERE email=?", ((b.get("email") or "").strip().lower(),))
+    acct = (b.get("email") or "").strip().lower()
+    auth.throttle(ip, acct)
+    u = db.q1("SELECT * FROM users WHERE email=?", (acct,))
     if not u or not u["active"] or not auth.check_pw(b.get("password") or "", u["pw"]):
-        auth.failed(ip)
+        auth.failed(ip, acct)
         raise HTTPException(401, "Wrong email or password")
     o = db.q1("SELECT status FROM orgs WHERE id=?", (u.get("org_id") or 1,))
     if o and o["status"] == "suspended" and u["role"] != "superadmin":
@@ -121,6 +137,12 @@ async def auth_signup(request: Request):
                  (email, name, auth.hash_pw(pw), "admin", jobs.now(), oid))
     u = db.q1("SELECT * FROM users WHERE email=?", (email,))
     auth.audit("signed up", f"{company} ({email}) trial", user=u, org=oid, ip=ip)
+    cname = (db.q1("SELECT name FROM counties WHERE id=?", (cid,)) or {}).get("name", "your county")
+    site_url = site.base_url(request)
+    mailer.send(email, "Welcome to EstateHawk: your 14-day trial is on", f"Welcome, {name.split(' ')[0]}",
+                [f"Your free trial is ready. You have 14 days and {plans.PLANS['trial']['reveals']} full leads to open in <b>{mailer.esc(cname)}</b>.",
+                 "Start with the highest deal scores: they owe the most for the longest and have the most equity.",
+                 "If you need anything, just reply to this email."], ("Open my leads", f"{site_url}/app"))
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, u["id"] if u else uid)
     return resp
@@ -136,13 +158,23 @@ async def public_contact(request: Request):
     email, msg = (b.get("email") or "").strip()[:120], (b.get("message") or "").strip()[:2000]
     if "@" not in email or len(msg) < 3:
         raise HTTPException(400, "Enter your email and a message.")
-    auth.audit("website message", f"{(b.get('name') or '').strip()[:80]} <{email}>: {msg}", org=1, ip=ip)
+    nm = (b.get('name') or '').strip()[:80]
+    auth.audit("website message", f"{nm} <{email}>: {msg}", org=1, ip=ip)
     auth.failed(ip)  # counts toward the hourly limit, stops floods
+    mailer.send(os.environ.get("SUPPORT_EMAIL") or "support@getestatehawk.com", f"Website message from {nm or email}", "New website message",
+                [f"<b>From:</b> {mailer.esc(nm)} &lt;{mailer.esc(email)}&gt;", mailer.esc(msg).replace("\n", "<br>")], reply_to=email,
+                foot="Sent from the contact form on getestatehawk.com.")
+    mailer.send(email, "We got your message", "Thanks for writing to EstateHawk",
+                ["We got your message and will reply within one business day.", f"<i>{mailer.esc(msg[:600])}</i>"],
+                foot="You get this email because you used the contact form on getestatehawk.com.")
     return {"ok": True}
 
 
 @app.post("/api/auth/logout")
-def auth_logout():
+def auth_logout(request: Request):
+    u = auth.current(request)
+    if u:
+        auth.end_sessions(u["id"])  # the cookie is now useless everywhere, even if someone copied it
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(auth.COOKIE)
     return resp
@@ -160,7 +192,48 @@ async def auth_password(request: Request):
     if len(b.get("new") or "") < 8:
         raise HTTPException(400, "New password needs at least 8 characters")
     db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["new"]), u["id"]))
+    auth.end_sessions(u["id"])  # other devices are logged out; this one gets a fresh session
+    resp = JSONResponse({"ok": True})
+    auth.set_cookie(resp, request, u["id"])
+    return resp
+
+
+@app.post("/api/auth/forgot")
+async def auth_forgot(request: Request):
+    """Email a one-time reset link. Same answer whether or not the email exists."""
+    ip = _client_ip(request)
+    auth.throttle(ip)
+    auth.failed(ip)  # every request counts, stops floods
+    b = await request.json()
+    email = (b.get("email") or "").strip().lower()[:120]
+    u = db.q1("SELECT id, name, active FROM users WHERE email=?", (email,))
+    if u and u["active"]:
+        link = f"{site.base_url(request)}/reset-password?token={auth.make_reset(u['id'])}"
+        mailer.send(email, "Reset your EstateHawk password", "Reset your password",
+                    ["Someone (hopefully you) asked to reset the password for this EstateHawk account.",
+                     f"The link works once and expires in {auth.RESET_MINUTES} minutes. If you did not ask, ignore this email."],
+                    ("Choose a new password", link))
+        auth.audit("password reset requested", email, user=u, org=None, ip=ip)
     return {"ok": True}
+
+
+@app.post("/api/auth/reset")
+async def auth_reset(request: Request):
+    ip = _client_ip(request)
+    auth.throttle(ip)
+    b = await request.json()
+    uid = auth.read_reset(b.get("token") or "")
+    if not uid:
+        auth.failed(ip)
+        raise HTTPException(400, "This link has expired or was already used. Ask for a new one.")
+    if len(b.get("password") or "") < 8:
+        raise HTTPException(400, "Choose a password of at least 8 characters.")
+    db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["password"]), uid))
+    auth.end_sessions(uid)
+    auth.audit("password reset", "", user={"id": uid}, org=None, ip=ip)
+    resp = JSONResponse({"ok": True})
+    auth.set_cookie(resp, request, uid)
+    return resp
 
 
 def _team_org():
@@ -185,18 +258,26 @@ def _user_in_my_org(uid):
 async def users_add(request: Request):
     b = await request.json()
     email, pw = (b.get("email") or "").strip().lower(), b.get("password") or ""
-    if "@" not in email or len(pw) < 8:
-        raise HTTPException(400, "Enter an email and a temporary password of at least 8 characters")
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(400, "Enter a valid email")
+    if pw and len(pw) < 8:
+        raise HTTPException(400, "A temporary password needs at least 8 characters (or leave it empty to send an invite link)")
     if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
         raise HTTPException(400, "This email already has an account")
     info = ctx.get()["org"]
     limit = info["limits"]["users"]
     if limit and info["users"] >= limit and not ctx.get().get("super"):
         raise HTTPException(402, f"Your {info['label']} plan allows {limit} user(s). Upgrade to add more.")
-    db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
-           (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw),
-            b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now(), _team_org()))
-    return {"ok": True}
+    import secrets as _s
+    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
+                 (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw or _s.token_urlsafe(24)),
+                  b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now(), _team_org()))
+    me = ctx.get().get("user") or {}
+    link = f"{site.base_url(request)}/reset-password?invite=1&token={auth.make_reset(uid, 'invite')}"
+    sent = mailer.send(email, f"{me.get('name') or 'Your team'} invited you to EstateHawk", "You are invited to EstateHawk",
+                       [f"{mailer.esc(me.get('name') or 'A teammate')} added you to <b>{mailer.esc(info['name'])}</b> on EstateHawk, where your team finds and works tax-delinquent property leads.",
+                        "Choose your password to get started. The link works for 7 days."], ("Set my password", link))
+    return {"ok": True, "invite_sent": sent}
 
 
 @app.put("/api/users/{uid}")
@@ -214,6 +295,7 @@ async def users_edit(uid: int, request: Request):
         if len(b["password"]) < 8:
             raise HTTPException(400, "Password needs at least 8 characters")
         db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["password"]), uid))
+        auth.end_sessions(uid)
     return {"ok": True}
 
 
@@ -530,6 +612,8 @@ async def make_offer(pid: str, request: Request):
     terms = {"price": float(b.get("price") or p.get("suggested_offer") or 0), "financing": b.get("financing") or d["financing"],
              "closing_days": int(b.get("closing_days") or d["closing_days"]), "earnest": float(b.get("earnest") or d["earnest"]),
              "seller_credits": b.get("seller_credits") or d["seller_credits"]}
+    if terms["price"] <= 0 or terms["earnest"] < 0 or terms["closing_days"] <= 0:
+        raise HTTPException(400, "Offer price and closing days must be more than zero")
     subject, text, source = ai.offer(p, terms, db.get_setting("profile"))
     oid = db.run("""INSERT INTO offers(parcel_id,created,price,financing,closing_days,earnest,seller_credits,subject,body,source,org_id)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (pid, jobs.now(), terms["price"], terms["financing"], terms["closing_days"],
@@ -571,6 +655,8 @@ async def add_activity(pid: str, request: Request):
     get_parcel(pid, unlocked=True)
     b = await request.json()
     kind = b.get("kind", "note")
+    if len(b.get("text") or "") > 10000:
+        raise HTTPException(400, "Notes can be up to 10,000 characters")
     db.run("INSERT INTO activities(parcel_id,ts,kind,text,author,org_id) VALUES(?,?,?,?,?,?)",
            (pid, jobs.now(), kind, b.get("text", ""), b.get("author") or me_name(), OID()))
     for want, from_stages in (("contacted", ("new",)), ("replied", ("new", "contacted"))):
@@ -754,6 +840,9 @@ def tasks(scope: str = "today"):
 @app.post("/api/tasks")
 async def add_task(request: Request):
     b = await request.json()
+    if not (b.get("text") or "").strip():
+        raise HTTPException(400, "Write what the task is")
+    b["text"] = b["text"].strip()[:500]
     if b.get("parcel_id"):
         get_parcel(b["parcel_id"], unlocked=True)
     tid = db.run("INSERT INTO tasks(parcel_id,due,text,kind,org_id) VALUES(?,?,?,?,?)",

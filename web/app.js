@@ -44,7 +44,7 @@ const P = {
   download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5z"/>', menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
   letter: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 13h6"/>', note: '<path d="M4 4h16v12l-4 4H4z"/><path d="M16 20v-4h4"/>',
 };
-export const ic = (n, s = 18) => `<svg class="ic" viewBox="0 0 24 24" style="width:${s}px;height:${s}px">${P[n] || ''}</svg>`;
+export const ic = (n, s = 18) => `<svg class="ic" data-i="${n}" aria-hidden="true" focusable="false" viewBox="0 0 24 24" style="width:${s}px;height:${s}px">${P[n] || ''}</svg>`;
 
 // ---------- helpers ----------
 export const $ = (s, el = document) => el.querySelector(s);
@@ -119,9 +119,16 @@ export function toast(msg, err = false) {
 
 export function modal(html, onMount) {
   const m = $('#modal');
-  $('#modalCard').innerHTML = html;
+  const opener = document.activeElement;
+  const card = $('#modalCard');
+  card.innerHTML = html;
+  card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
+  const h = card.querySelector('h2'); if (h) { h.id = h.id || 'modalTitle'; card.setAttribute('aria-labelledby', h.id); }
   m.hidden = false;
-  const close = () => { m.hidden = true; $('#modalCard').innerHTML = ''; };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  const close = () => { m.hidden = true; card.innerHTML = ''; document.removeEventListener('keydown', onKey); if (opener && opener.focus) opener.focus(); };
+  document.addEventListener('keydown', onKey);
+  setTimeout(() => { const f = card.querySelector('input,select,textarea,button:not([data-close])'); if (f) f.focus(); }, 0);
   m.onclick = (e) => { if (e.target === m) close(); };
   $$('[data-close]', m).forEach((b) => b.onclick = close);
   onMount && onMount($('#modalCard'), close);
@@ -207,7 +214,7 @@ export const countyName = (id) => (S.meta?.counties.find((c) => String(c.id) ===
 export function countySelect(id = 'countySel', withAll = true, val = S.county) {
   const opts = (withAll ? [`<option value="all">All counties</option>`] : []).concat(
     (S.meta?.counties || []).map((c) => `<option value="${c.id}" ${String(val) === String(c.id) ? 'selected' : ''}>${esc(c.name)}, ${esc(c.state)}</option>`));
-  return `<select class="select" id="${id}">${opts.join('')}</select>`;
+  return `<select class="select" id="${id}" aria-label="County">${opts.join('')}</select>`;
 }
 
 // ---------- chrome ----------
@@ -243,7 +250,7 @@ function renderChrome() {
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
   const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
   const trial = o.plan === 'trial' && !viewing ? `<div class="demo-banner">${ic('lock', 16)}<span><b>Free trial:</b> ${o.days_left >= 0 ? o.days_left + ' days left' : 'ended'}. You can open ${o.reveals_left} more leads in full. Paid plans show every lead, owner and contact.</span><button class="btn xs primary" style="margin-left:auto" id="bannerUp">See plans</button></div>` : '';
-  $('#banner').innerHTML = viewing + trial + (m.settings.demo ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
+  $('#banner').innerHTML = viewing + trial + (m.settings.demo && m.super ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
     <a class="btn xs" style="margin-left:auto" href="#/settings/profile">Manage</a></div>` : '');
   if ($('#exitView')) $('#exitView').onclick = () => setViewOrg(null);
   if ($('#bannerUp')) $('#bannerUp').onclick = () => plansModal();
@@ -347,7 +354,7 @@ export async function showLogin() {
     <div class="field"><label>Password</label><input class="input" id="lPw" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required minlength="${setup ? 8 : 1}"></div>
     <div class="small" id="lErr" style="color:#B42318;min-height:18px"></div>
     <button class="btn primary" style="width:100%;margin-top:6px">${setup ? 'Create admin account' : 'Log in'}</button>
-    ${setup ? '' : '<p class="tiny muted" style="margin:12px 0 0">Forgot your password? Ask your EstateHawk admin to reset it.</p>'}
+    ${setup ? '' : '<p class="small" style="margin:12px 0 0"><a href="/forgot-password">Forgot password?</a></p>'}
   </form></div>`;
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -448,14 +455,15 @@ export async function teamModal() {
       <div class="grow" style="min-width:0"><b>${esc(u.name)}</b> <span class="pill tiny">${u.role}</span>${u.active ? '' : ' <span class="pill tiny" style="background:#FEE4E2;color:#B42318">blocked</span>'}<div class="tiny muted ellip">${esc(u.email)} · last login ${u.last_login ? esc(fmtDate(u.last_login)) : 'never'}</div></div>
       ${u.id === S.user.id ? '' : `<button class="btn xs" data-reset="${u.id}">Reset password</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button>`}</div>`).join('')}</div>
     <h3 style="margin:16px 0 8px">Add a person</h3>
-    <div class="terms"><div class="field"><label>Name</label><input class="input" id="uName"></div><div class="field"><label>Email</label><input class="input" id="uEmail" type="email"></div></div>
-    <div class="terms"><div class="field"><label>Temporary password</label><input class="input" id="uPw" value="${Math.random().toString(36).slice(2, 8)}Eh!${Math.floor(Math.random() * 90 + 10)}"></div>
-      <div class="field"><label>Role</label><select class="select" id="uRole"><option value="member">Member</option><option value="admin">Admin</option></select></div></div>
+    <div class="terms"><div class="field"><label for="uName">Name</label><input class="input" id="uName"></div><div class="field"><label for="uEmail">Email</label><input class="input" id="uEmail" type="email"></div></div>
+    <div class="terms"><div class="field"><label for="uPw">Temporary password (optional)</label><input class="input" id="uPw" placeholder="Empty = we email them an invite link"></div>
+      <div class="field"><label for="uRole">Role</label><select class="select" id="uRole"><option value="member">Member</option><option value="admin">Admin</option></select></div></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Close</button><button class="btn primary" id="uAdd">Add</button></div>`, (m, close) => {
     $('#uAdd', m).onclick = async () => {
       try {
-        await api('/api/users', { method: 'POST', body: { name: $('#uName', m).value, email: $('#uEmail', m).value, password: $('#uPw', m).value, role: $('#uRole', m).value } });
-        toast(`Added. Send them the link, their email and password: ${$('#uPw', m).value}`); close(); teamModal();
+        const pw = $('#uPw', m).value.trim();
+        const r = await api('/api/users', { method: 'POST', body: { name: $('#uName', m).value, email: $('#uEmail', m).value, password: pw, role: $('#uRole', m).value } });
+        toast(r.invite_sent ? `Added. We emailed ${$('#uEmail', m).value} a link to set their password.` : (pw ? `Added. Send them the link, their email and password: ${pw}` : 'Added, but the invite email could not be sent. Use Reset password and share it.'), !r.invite_sent && !pw); close(); teamModal();
       } catch (e) { toast(e.message, true); }
     };
     $$('[data-act]', m).forEach((b) => b.onclick = async () => { await api('/api/users/' + b.dataset.act, { method: 'PUT', body: { active: b.dataset.on === '1' } }); close(); teamModal(); });
@@ -465,6 +473,25 @@ export async function teamModal() {
     });
   });
 }
+
+// ---------- accessibility: every control gets a name a screen reader can read ----------
+const NAMES = { dots: 'More actions', left: 'Previous', right: 'Next', x: 'Close', refresh: 'Refresh', search: 'Search', bell: 'Alerts', help: 'Help' };
+function labelControls(root = document) {
+  root.querySelectorAll('button, a.btn, a.icon-btn').forEach((b) => {
+    if (b.getAttribute('aria-label') || b.textContent.trim()) return;
+    const use = b.querySelector('svg[data-i]');
+    b.setAttribute('aria-label', b.title || (use && NAMES[use.dataset.i]) || 'More actions');
+  });
+  root.querySelectorAll('select, input:not([type=hidden]), textarea').forEach((el) => {
+    if (el.getAttribute('aria-label') || el.labels?.length || el.closest('label')) return;
+    const lab = el.closest('.field')?.querySelector('label');
+    if (lab) { if (!el.id) el.id = 'f' + Math.random().toString(36).slice(2, 8); lab.htmlFor = el.id; return; }
+    const first = el.tagName === 'SELECT' ? el.options[0]?.text : '';
+    el.setAttribute('aria-label', el.placeholder || first || (el.type === 'checkbox' ? 'Select' : el.name || 'Field'));
+  });
+}
+new MutationObserver(() => { clearTimeout(labelControls.t); labelControls.t = setTimeout(() => labelControls(), 120); })
+  .observe(document.documentElement, { childList: true, subtree: true });
 
 // ---------- router ----------
 const routes = {

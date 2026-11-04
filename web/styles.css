@@ -3,7 +3,7 @@
 @font-face{font-family:Inter;font-style:normal;font-weight:600;font-display:swap;src:url(/static/vendor/fonts/inter-latin-600-normal.woff2) format('woff2')}
 @font-face{font-family:Inter;font-style:normal;font-weight:700;font-display:swap;src:url(/static/vendor/fonts/inter-latin-700-normal.woff2) format('woff2')}
 :root{
-  --bg:#F7F7F4; --panel:#FFFFFF; --line:#ECEBE6; --line2:#E2E1DB; --ink:#111816; --ink2:#3F4A45; --mute:#7A847F; --mute2:#9AA29E;
+  --bg:#F7F7F4; --panel:#FFFFFF; --line:#ECEBE6; --line2:#E2E1DB; --ink:#111816; --ink2:#3F4A45; --mute:#5F6A65; --mute2:#6B7570;
   --green:#14532D; --green2:#1E5E3B; --green-50:#EAF4EC; --green-100:#DCEFE1; --green-ink:#1F6B3A;
   --amber:#B7791F; --amber-50:#FDF3DC; --amber-ink:#8A5A10; --red:#C2410C; --red-50:#FDECE4; --blue-50:#E8F0FB; --blue:#2F6FBF;
   --violet-50:#F1ECFB; --violet:#6D4FC2; --grey-50:#F1F1EE;
@@ -321,6 +321,10 @@ input[type=range]{accent-color:var(--green);width:100%}
   .county-grid,.deal-types,.offer-top{grid-template-columns:1fr}
   .stats,.kpis{grid-template-columns:1fr 1fr;gap:10px}
   .stat{padding:14px}.stat .val{font-size:22px}
+  #stats.stats{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:8px;padding-bottom:4px}
+  #stats.stats>.stat{flex:0 0 44%;min-width:140px;scroll-snap-align:start;padding:10px 12px;gap:8px}
+  #stats.stats>.stat>.ico{display:none}
+  .page-head .sub,.page-head .updated-box{display:none}
   .hide-m{display:none!important}
   .table td,.table th{padding:9px 8px}
   #tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);z-index:1400;padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
