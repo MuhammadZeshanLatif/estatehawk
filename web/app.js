@@ -359,7 +359,7 @@ export async function showLogin() {
   };
 }
 
-const CONTACT = 'zeeshanlatif.tech@gmail.com';
+const CONTACT = 'support@getestatehawk.com';
 export function plansModal(note = '') {
   const P = (S.meta && S.meta.plans) || {};
   const cur = S.meta?.org?.plan;

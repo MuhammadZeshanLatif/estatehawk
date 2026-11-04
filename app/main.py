@@ -28,6 +28,17 @@ async def cache_headers(request, call_next):
     return resp
 
 
+@app.middleware("http")
+async def canonical_host(request, call_next):
+    """Pages on the old onrender address move to the real domain, so Google sees one site. The API stays on both."""
+    host = (request.url.hostname or "").lower()
+    if host.endswith(".onrender.com") and request.method in ("GET", "HEAD") and not request.url.path.startswith("/api/"):
+        from fastapi.responses import RedirectResponse
+        q = ("?" + request.url.query) if request.url.query else ""
+        return RedirectResponse(site.CANONICAL + request.url.path + q, status_code=301)
+    return await call_next(request)
+
+
 # ------------------------------------------------------------------ login + team
 def _client_ip(request):
     return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "?")

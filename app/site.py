@@ -12,7 +12,8 @@ from .site_ui import ILL_DB, ILL_HOUSE, ILL_MAP, alerts_mock, browser, ic, leads
 from . import site_ui
 
 SITE_NAME = "EstateHawk"
-CONTACT_EMAIL = "zeeshanlatif.tech@gmail.com"
+CONTACT_EMAIL = "support@getestatehawk.com"
+CANONICAL = "https://getestatehawk.com"
 STATE_NAMES = {"OH": "Ohio", "TX": "Texas", "PA": "Pennsylvania", "FL": "Florida", "IN": "Indiana", "GA": "Georgia", "MI": "Michigan"}
 esc = html.escape
 
@@ -22,8 +23,10 @@ def base_url(request=None):
     if url:
         return url.rstrip("/")
     if request is not None:
-        return str(request.base_url).rstrip("/").replace("http://", "https://") if "onrender.com" in str(request.base_url) else str(request.base_url).rstrip("/")
-    return "https://estatehawk.onrender.com"
+        host = request.url.hostname or ""
+        if host in ("localhost", "127.0.0.1") or host.endswith(".local"):
+            return str(request.base_url).rstrip("/")
+    return CANONICAL
 
 
 # ------------------------------------------------------------------ live numbers (cached)
