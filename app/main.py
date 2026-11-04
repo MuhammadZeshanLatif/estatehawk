@@ -25,6 +25,7 @@ async def cache_headers(request, call_next):
     resp = await call_next(request)
     if request.url.path.startswith("/site/"):  # website images and fonts: change rarely
         resp.headers["Cache-Control"] = "public, max-age=604800"
+        resp.headers["Access-Control-Allow-Origin"] = "*"  # public brand assets, usable from social profiles
     return resp
 
 
