@@ -51,7 +51,7 @@ export const $ = (s, el = document) => el.querySelector(s);
 export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const money = (v, d = 0) => (v == null || isNaN(v)) ? '--' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
-export const kmoney = (v) => v == null ? '--' : Math.abs(v) >= 1000 ? '$' + (v / 1000).toFixed(v >= 100000 ? 0 : 0) + 'K' : money(v);
+export const kmoney = (v) => v == null ? '--' : Math.abs(v) >= 1e6 ? (v < 0 ? '-' : '') + '$' + (Math.abs(v) / 1e6).toFixed(Math.abs(v) >= 1e7 ? 0 : 1) + 'M' : Math.abs(v) >= 1000 ? (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v) / 1000) + 'K' : money(v);
 export const num = (v) => v == null ? '--' : Number(v).toLocaleString('en-US');
 export const title = (s) => String(s || '').toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Oh|Ne|Nw|Se|Sw|Llc|Csd|Lsd)\b/g, (m) => m.toUpperCase());
 export const yrs = (v) => v == null ? '--' : String(Math.round(v));
@@ -128,6 +128,36 @@ export function modal(html, onMount) {
   return close;
 }
 
+// A friendly in-app dialog instead of the browser's alert/confirm/prompt. Resolves to the typed value, true, or null (cancelled).
+export function ask({ title, text = '', icon = 'info', tone = 'green', input = null, ok = 'OK', cancel = 'Cancel', danger = false }) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v, close) => { if (done) return; done = true; document.removeEventListener('keydown', onKey); close(); resolve(v); };
+    let closeFn = () => { };
+    const onKey = (e) => { if (e.key === 'Escape') finish(null, closeFn); };
+    const field = input ? `<div class="ask-field">${input.prefix ? `<span class="ask-prefix">${esc(input.prefix)}</span>` : ''}<input id="askIn" class="input" type="${input.type || 'text'}" inputmode="${input.type === 'number' ? 'decimal' : 'text'}" value="${esc(input.value ?? '')}" placeholder="${esc(input.placeholder || '')}"></div>${input.hint ? `<div class="tiny muted" style="margin-top:6px">${esc(input.hint)}</div>` : ''}` : '';
+    closeFn = modal(`<div class="ask">
+      <div class="ask-ico tone-${danger ? 'red' : tone}">${ic(danger ? 'alert' : icon, 22)}</div>
+      <h2>${esc(title)}</h2>${text ? `<p class="muted">${text}</p>` : ''}${field}
+      <div class="row ask-btns"><button class="btn" id="askNo">${esc(cancel)}</button><button class="btn ${danger ? 'danger' : 'primary'}" id="askOk">${esc(ok)}</button></div></div>`, (m) => {
+      const inp = $('#askIn', m);
+      const val = () => (inp ? inp.value.trim() : true);
+      $('#askOk', m).onclick = () => { if (inp && input.required !== false && !inp.value.trim()) { inp.focus(); inp.classList.add('err'); return; } finish(val(), closeFn); };
+      $('#askNo', m).onclick = () => finish(null, closeFn);
+      if (inp) { inp.onkeydown = (e) => { if (e.key === 'Enter') $('#askOk', m).click(); }; setTimeout(() => { inp.focus(); inp.select(); }, 30); } else setTimeout(() => $('#askOk', m).focus(), 30);
+    });
+    $('#modal').onclick = (e) => { if (e.target === $('#modal')) finish(null, closeFn); };
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+// Asked when a deal moves to Closed
+export async function askFee() {
+  const v = await ask({ title: 'Deal closed! How much did you make?', text: 'Enter the assignment fee for this deal. It shows up in Reports.', icon: 'check',
+    input: { type: 'number', prefix: '$', value: '10000', placeholder: '10000', hint: 'You can change it later on the deal page.' }, ok: 'Save fee', cancel: 'Cancel' });
+  return v == null ? null : String(v).replace(/[^\d.]/g, '') || '0';
+}
+
 export function menu(anchor, items) {
   closeMenus();
   const d = document.createElement('div');
@@ -158,7 +188,13 @@ export function fitMap(map, pts, county = S.county, note = null) {
   const box = map.getContainer();
   let msg = box.querySelector('.map-note');
   if (!msg) { msg = document.createElement('div'); msg.className = 'map-note'; box.appendChild(msg); }
-  const good = (pts || []).filter((p) => p.lat != null && p.lng != null);
+  let good = (pts || []).filter((p) => p.lat != null && p.lng != null);
+  if (good.length > 4) {  // a few badly placed pins must not zoom the map out to half the country
+    const med = (xs) => { const s = xs.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+    const la = med(good.map((p) => p.lat)), ln = med(good.map((p) => p.lng));
+    const near = good.filter((p) => Math.abs(p.lat - la) < 1.2 && Math.abs(p.lng - ln) < 1.6);
+    if (county !== 'all' && near.length) good = near;
+  }
   if (good.length) { msg.style.display = 'none'; map.fitBounds(L.latLngBounds(good.map((p) => [p.lat, p.lng])).pad(0.15), { maxZoom: 15 }); return; }
   const cs = (S.meta?.counties || []).filter((c) => c.lat != null && (county === 'all' || String(c.id) === String(county)));
   if (cs.length === 1) map.setView([cs[0].lat, cs[0].lng], 9);
@@ -323,7 +359,7 @@ export async function showLogin() {
   };
 }
 
-const CONTACT = 'zeeshanlatif.tech@gmail.com';
+const CONTACT = 'support@getestatehawk.com';
 export function plansModal(note = '') {
   const P = (S.meta && S.meta.plans) || {};
   const cur = S.meta?.org?.plan;
@@ -407,7 +443,8 @@ async function route() {
     S.user = (await r.json()).user;
   }
   ['#sidebar', '#topbar'].forEach((s) => { if ($(s)) $(s).style.display = ''; });
-  if (!S.meta) await refreshMeta();
+  const LOADER = `<div class="page-loader"><span class="spin" style="display:inline-flex">${ic('refresh', 22)}</span><span>Loading...</span></div>`;
+  if (!S.meta) { $('#view').innerHTML = LOADER; await refreshMeta(); }
   if (S.meta.org?.expired && !S.meta.super) { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
   if (!S.meta.settings.onboarded && S.meta.super && name !== 'welcome') { location.hash = '#/welcome'; return; }
   if (name === 'admin' && !S.meta.super) { location.hash = '#/deals'; return; }
@@ -423,6 +460,7 @@ async function route() {
   view.style.padding = name === 'welcome' ? '0' : '';
   view.style.maxWidth = name === 'welcome' ? 'none' : '';
   window.scrollTo(0, 0);
+  view.innerHTML = LOADER;  // shown until the page has its data (never a blank screen)
   try {
     cleanup = await fn(view, rest.map(decodeURIComponent));
   } catch (e) {

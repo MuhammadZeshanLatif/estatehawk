@@ -290,7 +290,7 @@ DEFAULT_SETTINGS = {
     "channels": {"email": False, "sms": False, "slack": False, "whatsapp": False},
     "digest": {"enabled": True, "time": "08:00"},
     "sync_time": "08:00",  # Pakistan time; Ohio sites refresh ~10 PM US Eastern = ~7-8 AM PKT
-    "profile": {"name": "Ashhad", "company": "EstateHawk", "email": "", "phone": "", "city": "Ohio"},
+    "profile": {"name": "", "company": "", "email": "", "phone": "", "city": ""},
     "offer_defaults": {"discount_pct": 65, "financing": "Cash", "closing_days": 21, "earnest": 1000,
                        "seller_credits": "Buyer pays all closing costs", "sequence": "Tax-delinquent v2"},
     "deal_types": ["wholesale"],

@@ -2,10 +2,10 @@ import csv, datetime as dt, io, json, os, re
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -14,8 +14,29 @@ ENV_PATH = os.path.join(ROOT, ".env")
 load_dotenv(ENV_PATH)
 WEB = os.path.join(ROOT, "web")
 
-app = FastAPI(title="EstateHawk")
+app = FastAPI(title="EstateHawk", docs_url=None, redoc_url=None)
 app.middleware("http")(auth.middleware)
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
+app.add_middleware(GZipMiddleware, minimum_size=800)
+
+
+@app.middleware("http")
+async def cache_headers(request, call_next):
+    resp = await call_next(request)
+    if request.url.path.startswith("/site/"):  # website images and fonts: change rarely
+        resp.headers["Cache-Control"] = "public, max-age=604800"
+    return resp
+
+
+@app.middleware("http")
+async def canonical_host(request, call_next):
+    """Pages on the old onrender address move to the real domain, so Google sees one site. The API stays on both."""
+    host = (request.url.hostname or "").lower()
+    if host.endswith(".onrender.com") and request.method in ("GET", "HEAD") and not request.url.path.startswith("/api/"):
+        from fastapi.responses import RedirectResponse
+        q = ("?" + request.url.query) if request.url.query else ""
+        return RedirectResponse(site.CANONICAL + request.url.path + q, status_code=301)
+    return await call_next(request)
 
 
 # ------------------------------------------------------------------ login + team
@@ -65,6 +86,58 @@ async def auth_login(request: Request):
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, u["id"])
     return resp
+
+
+@app.post("/api/auth/signup")
+async def auth_signup(request: Request):
+    """Self-serve sign up from the website: a new company on a 14-day trial with one county, and its admin login."""
+    ip = _client_ip(request)
+    auth.throttle(ip)
+    b = await request.json()
+    if b.get("website"):  # honeypot field: bots fill it
+        raise HTTPException(400, "Something went wrong. Please try again.")
+    name = (b.get("name") or "").strip()[:80]
+    email, pw = (b.get("email") or "").strip().lower()[:120], b.get("password") or ""
+    if not name or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(400, "Enter your name and a valid email.")
+    if len(pw) < 8:
+        raise HTTPException(400, "Choose a password of at least 8 characters.")
+    if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
+        auth.failed(ip)
+        raise HTTPException(400, "This email already has an account. Sign in instead.")
+    try:
+        cid = int(b.get("county_id") or 0)
+    except ValueError:
+        cid = 0
+    if not db.q1("SELECT 1 FROM counties WHERE id=? AND enabled=1 AND demo=0", (cid,)):
+        raise HTTPException(400, "Choose your first county.")
+    ends = (dt.date.today() + dt.timedelta(days=plans.PLANS["trial"]["days"])).isoformat()
+    company = (b.get("company") or "").strip()[:80] or f"{name}'s team"
+    oid = db.run("INSERT INTO orgs(name,plan,status,trial_ends,created,notes) VALUES(?,?,?,?,?,?)",
+                 (company, "trial", "active", ends, jobs.now(), "Signed up on the website"))
+    db.run("INSERT INTO org_counties(org_id, county_id) VALUES(?,?)", (oid, cid))
+    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
+                 (email, name, auth.hash_pw(pw), "admin", jobs.now(), oid))
+    u = db.q1("SELECT * FROM users WHERE email=?", (email,))
+    auth.audit("signed up", f"{company} ({email}) trial", user=u, org=oid, ip=ip)
+    resp = JSONResponse({"ok": True})
+    auth.set_cookie(resp, request, u["id"] if u else uid)
+    return resp
+
+
+@app.post("/api/public/contact")
+async def public_contact(request: Request):
+    ip = _client_ip(request)
+    auth.throttle(ip)
+    b = await request.json()
+    if b.get("website"):
+        return {"ok": True}
+    email, msg = (b.get("email") or "").strip()[:120], (b.get("message") or "").strip()[:2000]
+    if "@" not in email or len(msg) < 3:
+        raise HTTPException(400, "Enter your email and a message.")
+    auth.audit("website message", f"{(b.get('name') or '').strip()[:80]} <{email}>: {msg}", org=1, ip=ip)
+    auth.failed(ip)  # counts toward the hourly limit, stops floods
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")
@@ -1014,13 +1087,31 @@ def admin_stats():
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 
+app.mount("/site", StaticFiles(directory=os.path.join(WEB, "site")), name="site")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml(request: Request):
+    return Response(site.sitemap(request), media_type="application/xml")
+
+
+@app.get("/robots.txt")
+def robots_txt(request: Request):
+    return Response(site.robots(request), media_type="text/plain")
+
+
 @app.get("/manifest.webmanifest")
 def manifest():
-    return JSONResponse({"name": "EstateHawk", "short_name": "EstateHawk", "start_url": "/", "display": "standalone",
+    return JSONResponse({"name": "EstateHawk", "short_name": "EstateHawk", "start_url": "/app", "display": "standalone",
                          "background_color": "#F7F6F2", "theme_color": "#14532D",
                          "icons": [{"src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml"}]})
 
 
 @app.get("/{path:path}", response_class=HTMLResponse)
-def spa(path: str):
-    return FileResponse(os.path.join(WEB, "index.html"))
+def spa(path: str, request: Request):
+    if path == "app" or path.startswith("app/"):  # the product (single-page app)
+        return FileResponse(os.path.join(WEB, "index.html"), headers={"Cache-Control": "no-cache"})
+    html_ = site.render(request, path)  # the marketing website
+    if html_ is None:
+        return HTMLResponse(site.not_found(request), status_code=404)
+    return HTMLResponse(html_, headers={"Cache-Control": "public, max-age=300"})

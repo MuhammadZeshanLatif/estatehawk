@@ -1,7 +1,7 @@
 // EstateHawk screens. Each view(el, params) renders into el and may return a cleanup function.
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb, streetView, gmaps, homeLine,
-  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
+  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
 } from './app.js';
 export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
 
@@ -35,7 +35,7 @@ export async function deals(el) {
   const prof = S.meta.settings.profile;
   el.innerHTML = `
   <div class="page-head">
-    <div><h1>${greeting()}, ${esc(prof.name || 'there')}</h1><div class="sub">Here are your latest off-market opportunities from tax-delinquent records.</div></div>
+    <div><h1>${greeting()}, ${esc(((prof.name && prof.name !== 'Ashhad' ? prof.name : '') || S.meta.user?.name || 'there').split(' ')[0])}</h1><div class="sub">Here are your latest off-market opportunities from tax-delinquent records.</div></div>
     <div class="right">
       <div class="row">${ic('pin', 18)}${countySelect('countySel')}</div>
       <div class="updated-box">${ic('cal', 18)}<div><div class="small" style="font-weight:600">${fmtDate(new Date())}</div><div class="tiny muted">Last updated ${ago(S.meta.last_sync)}</div></div>
@@ -264,7 +264,7 @@ export async function deal(el, [rawId]) {
   ]); };
   async function moveStage(stage) {
     let fee;
-    if (stage === 'closed') { fee = prompt('Assignment fee earned ($)?', '10000'); if (fee == null) return; }
+    if (stage === 'closed') { fee = await askFee(); if (fee == null) return; }
     await api(`/api/parcels/${encodeURIComponent(id)}/stage`, { method: 'POST', body: { stage, fee: fee ? +fee : null } });
     toast(stage === 'remove' ? 'Removed from pipeline' : 'Stage updated'); deal(el, [rawId]);
   }
@@ -525,65 +525,115 @@ function taxTimeline(p) {
 
 // ================================================================ MAP
 export async function mapView(el) {
-  const st = { min_score: '80', min_equity: '30000', min_years: '2', ptype: 'homes', sort: 'score' };
+  const DEF = { min_score: '', min_equity: '', min_years: '', ptype: 'all', owed: '', q: '', sort: 'score', inview: true };
+  const st = { ...DEF };
+  try { Object.assign(st, JSON.parse(localStorage.getItem('eh_map_v2') || '{}')); } catch (e) { }
+  const CAP = 3000, PER = 20;
   el.style.padding = '18px 20px 20px';
+  const opt = (pairs, val) => pairs.map(([v, l]) => `<option value="${v}" ${String(val) === String(v) ? 'selected' : ''}>${l}</option>`).join('');
   el.innerHTML = `<div class="map-wrap">
-    <div class="map-list"><div class="row between" style="padding:16px 16px 8px"><h2 id="mapCount" style="font-size:17px">Properties</h2>
-      <select class="select" id="mSort" style="height:32px"><option value="score">Sort by: Deal Score</option><option value="owed">Taxes owed</option><option value="equity">Equity</option><option value="newest">Newest</option></select></div>
+    <div class="map-list">
+      <div style="padding:14px 16px 6px">
+        <div class="row between"><h2 id="mapCount" style="font-size:17px">Properties</h2>
+          <select class="select" id="mSort" style="height:32px">${opt([['score', 'Best deal score'], ['owed', 'Most taxes owed'], ['equity', 'Most equity'], ['years', 'Most years behind'], ['newest', 'Newest']], st.sort)}</select></div>
+        <div class="tiny muted" id="mapSub" style="margin-top:2px"></div>
+        <label class="row tiny" style="margin-top:8px;gap:6px;cursor:pointer"><input type="checkbox" id="mInView" ${st.inview ? 'checked' : ''}> Only list what is visible on the map</label>
+      </div>
       <div class="items" id="mItems"></div>
       <div class="row" style="justify-content:center;padding:10px;border-top:1px solid var(--line)"><button class="btn sm" id="mPrev">${ic('left', 15)}</button><span class="small muted" id="mPage" style="min-width:90px;text-align:center"></span><button class="btn sm" id="mNext">${ic('right', 15)}</button></div></div>
     <div class="map-area"><div id="bigMap"></div>
       <div class="map-filters">
         ${countySelect('mCounty')}
-        <select class="select" id="fs"><option value="">Score: any</option><option value="65">Score: 65+</option><option value="80" selected>Score: 80+</option><option value="85">Score: 85+</option></select>
-        <select class="select" id="fe"><option value="">Equity: any</option><option value="30000" selected>Equity: $30K+</option><option value="50000">Equity: $50K+</option><option value="100000">Equity: $100K+</option></select>
-        <select class="select" id="fy"><option value="">Years behind: any</option><option value="2" selected>Years behind: 2+</option><option value="3">Years behind: 3+</option></select>
-        <select class="select" id="ft"><option value="homes">Property type: Homes</option><option value="all">All types</option><option>Vacant land</option><option>Commercial</option><option>Agricultural</option></select>
-        <button class="btn ghost sm" id="fClear">Clear</button><span class="grow"></span><span class="small muted" id="resN"></span>
-        <button class="btn sm" id="saveSearch">${ic('bookmark', 15)} Save Search</button>
+        <div class="search" style="width:200px;height:36px">${ic('search', 15)}<input id="mQ" placeholder="Address or owner" value="${esc(st.q)}"></div>
+        <select class="select" id="fs" title="Deal score">${opt([['', 'Score: any'], ['40', 'Score: 40+'], ['60', 'Score: 60+'], ['80', 'Score: 80+']], st.min_score)}</select>
+        <select class="select" id="fo" title="Taxes owed">${opt([['', 'Owed: any'], ['0-2000', 'Owed: under $2K'], ['2000-10000', 'Owed: $2K-$10K'], ['10000-', 'Owed: $10K+']], st.owed)}</select>
+        <select class="select" id="fe" title="Estimated equity">${opt([['', 'Equity: any'], ['10000', 'Equity: $10K+'], ['30000', 'Equity: $30K+'], ['50000', 'Equity: $50K+'], ['100000', 'Equity: $100K+']], st.min_equity)}</select>
+        <select class="select" id="fy" title="Years behind on taxes">${opt([['', 'Years behind: any'], ['2', '2+ years'], ['3', '3+ years'], ['5', '5+ years']], st.min_years)}</select>
+        <select class="select" id="ft" title="Property type">${opt([['all', 'Type: all'], ['homes', 'Homes'], ['Vacant land', 'Vacant land'], ['Commercial', 'Commercial'], ['Agricultural', 'Agricultural']], st.ptype)}</select>
+        <button class="btn sm" id="fClear" title="Remove all filters">${ic('x', 14)} Reset</button>
+        <span class="grow"></span><span class="small muted" id="resN"></span>
+        <button class="btn sm" id="saveSearch" title="Open the map with these filters next time">${ic('bookmark', 15)} Save search</button>
       </div>
-      <div class="legend"><span><i style="background:#1F7A45"></i>85+ (High)</span><span><i style="background:${AMBER}"></i>65-84 (Medium)</span><span><i style="background:${GREY}"></i>Below 65 (Low)</span></div>
+      <div class="map-loading" id="mLoad">${ic('refresh', 15)} Loading properties...</div>
+      <div class="legend"><span><i style="background:#1F7A45"></i>Score 85+</span><span><i style="background:${AMBER}"></i>65-84</span><span><i style="background:${GREY}"></i>Below 65</span><span class="muted">Click a pin or a card for details</span></div>
     </div></div>`;
-  try { Object.assign(st, JSON.parse(localStorage.getItem('eh_map_search') || '{}')); } catch (e) { }
-  $('#fs').value = st.min_score; $('#fe').value = st.min_equity; $('#fy').value = st.min_years; $('#ft').value = st.ptype; $('#mSort').value = st.sort;
   const L = window.L;
-  const map = L.map('bigMap', { zoomControl: false }).setView([40.3, -82.4], 8);
+  const map = L.map('bigMap', { zoomControl: false, preferCanvas: true }).setView([39.5, -90], 5);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   baseTiles(map);
   const layer = L.layerGroup().addTo(map);
-  let pts = [], page = 1, markers = {};
-  const PER = 20;
+  let pts = [], shown = [], page = 1, markers = {}, sel = null, req = 0;
+  const sorter = { score: (p) => -(p.score || 0), owed: (p) => -(p.total_due ?? p.amount_owed ?? 0), equity: (p) => -(p.est_equity || 0), years: (p) => -(p.years_behind || 0), newest: (p) => -new Date(p.first_seen || 0) };
+  function query() {
+    const [mn, mx] = (st.owed || '-').split('-');
+    const q = { county: S.county, min_score: st.min_score, min_equity: st.min_equity, min_years: st.min_years, ptype: st.ptype, min_owed: mn, max_owed: mx, q: st.q.trim() };
+    return Object.entries(q).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  }
   async function load(fit = true) {
-    const q = { county: S.county, min_score: st.min_score, min_equity: st.min_equity, min_years: st.min_years, ptype: st.ptype, sort: st.sort };
-    pts = await api('/api/map?' + Object.entries(q).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&'));
-    if (st.sort !== 'score') { const key = { owed: (p) => -(p.total_due ?? p.amount_owed), equity: (p) => -(p.est_equity || 0), newest: (p) => -new Date(p.first_seen) }[st.sort]; pts.sort((a, b) => key(a) - key(b)); }
-    layer.clearLayers(); markers = {};
-    pts.forEach((p) => { markers[p.id] = pin(p).bindPopup(popupHtml(p), { maxWidth: 320 }).addTo(layer); });
-    if (fit) fitMap(map, pts, S.county, pts.length ? null : 'No properties match these filters here. Try Clear.');
-    $('#mapCount').textContent = `Properties (${num(pts.length)})`;
-    $('#resN').textContent = `${num(pts.length)} results`;
+    const my = ++req;
+    $('#mLoad').style.display = 'flex';
+    const res = await api('/api/map?' + query());
+    if (my !== req) return;  // a newer filter change already started
+    $('#mLoad').style.display = 'none';
+    pts = Array.isArray(res) ? res : [];
+    layer.clearLayers(); markers = {}; sel = null;
+    pts.forEach((p) => {
+      const m = pin(p).bindPopup(popupHtml(p), { maxWidth: 320 }).addTo(layer);
+      m.on('click', () => highlight(p.id, false));
+      markers[p.id] = m;
+    });
+    $('#resN').textContent = pts.length >= CAP ? `Top ${num(CAP)} shown` : `${num(pts.length)} on map`;
+    if (fit || !pts.length) fitMap(map, pts, S.county, pts.length ? null : 'No properties match these filters here. Click Reset.');
     page = 1; list();
   }
   function list() {
-    const items = pts.slice((page - 1) * PER, page * PER);
-    $('#mItems').innerHTML = items.map((p) => `<div class="pcard" data-id="${esc(p.id)}">${thumb(p, 'lg')}<div class="grow"><b>${esc(title(p.street))}</b><div class="small muted">${esc(place(p))}</div>${homeLine(p) ? `<div class="tiny" style="color:var(--ink2);margin-top:2px">${homeLine(p)}</div>` : ''}
-      <div class="meta"><div><b class="num">${money(p.total_due ?? p.amount_owed)}</b><span class="tiny muted">Taxes owed</span></div><div><b>${yrs(p.years_behind)}</b><span class="tiny muted">Years behind</span></div></div></div>${scorePill(p.score)}</div>`).join('') || '<div class="empty small">No properties match. Try fewer filters.</div>';
-    const pages = Math.max(1, Math.ceil(pts.length / PER));
+    const b = map.getBounds();
+    const base = st.inview ? pts.filter((p) => b.contains([p.lat, p.lng])) : pts.slice();
+    shown = base.sort((a, c) => sorter[st.sort](a) - sorter[st.sort](c));
+    const pages = Math.max(1, Math.ceil(shown.length / PER));
+    page = Math.min(page, pages);
+    const cn = S.county === 'all' ? 'all counties' : countyName(S.county);
+    $('#mapCount').textContent = `Properties (${num(shown.length)})`;
+    $('#mapSub').textContent = st.inview ? `${num(shown.length)} of ${num(pts.length)} visible on the map, ${cn}` : `${num(pts.length)} in ${cn}${pts.length >= CAP ? ` (top ${num(CAP)} by score: pick a county to see all)` : ''}`;
+    const items = shown.slice((page - 1) * PER, page * PER);
+    $('#mItems').innerHTML = items.map((p) => `<div class="pcard ${p.id === sel ? 'on' : ''}" data-id="${esc(p.id)}">${thumb(p, 'lg')}<div class="grow"><b>${esc(title(p.street) || 'Address not listed')}</b><div class="small muted">${esc(place(p))}</div>${homeLine(p) ? `<div class="tiny" style="color:var(--ink2);margin-top:2px">${homeLine(p)}</div>` : ''}
+      <div class="meta"><div><b class="num">${money(p.total_due ?? p.amount_owed)}</b><span class="tiny muted">Taxes owed</span></div><div><b class="num">${kmoney(p.est_equity)}</b><span class="tiny muted">Equity</span></div><div><b>${yrs(p.years_behind)}</b><span class="tiny muted">Years</span></div></div>
+      <div class="row" style="gap:6px;margin-top:6px"><a class="btn xs" href="#/deal/${encodeURIComponent(p.id)}">View deal</a><a class="btn xs primary" href="#/deal/${encodeURIComponent(p.id)}?offer=1">Draft offer</a></div></div>${scorePill(p.score)}</div>`).join('')
+      || `<div class="empty small" style="padding:30px 16px">${pts.length && st.inview ? 'Nothing in this part of the map. Zoom out or drag the map.' : 'No properties match these filters.'}<div style="margin-top:10px"><button class="btn sm" data-reset>${ic('x', 14)} Reset filters</button></div></div>`;
     $('#mPage').textContent = `${page} / ${pages}`;
     $('#mPrev').disabled = page <= 1; $('#mNext').disabled = page >= pages;
   }
-  $('#mItems').onclick = (e) => { const c = e.target.closest('.pcard'); if (!c) return; const m = markers[c.dataset.id]; $$('.pcard').forEach((x) => x.classList.toggle('on', x === c)); if (m) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 15)); m.openPopup(); } };
-  $('#mItems').ondblclick = (e) => { const c = e.target.closest('.pcard'); if (c) location.hash = '#/deal/' + encodeURIComponent(c.dataset.id); };
-  $('#mPrev').onclick = () => { page--; list(); }; $('#mNext').onclick = () => { page++; list(); };
-  const bind = (sel, key) => $(sel).onchange = (e) => { st[key] = e.target.value; load(); };
-  bind('#fs', 'min_score'); bind('#fe', 'min_equity'); bind('#fy', 'min_years'); bind('#ft', 'ptype');
-  $('#mSort').onchange = (e) => { st.sort = e.target.value; load(false); };
+  function highlight(id, fly = true) {
+    if (sel && markers[sel]) markers[sel].setStyle({ radius: 7, weight: 2 });
+    sel = id;
+    const m = markers[id]; if (!m) return;
+    m.setStyle({ radius: 11, weight: 3 }); m.bringToFront();
+    if (fly) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 15)); m.openPopup(); }
+    $$('.pcard').forEach((x) => x.classList.toggle('on', x.dataset.id === id));
+    const card = $(`.pcard[data-id="${CSS.escape(id)}"]`); if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  const save = () => { try { localStorage.setItem('eh_map_v2', JSON.stringify(st)); } catch (e) { } };
+  const reset = () => { Object.assign(st, DEF, { sort: st.sort, inview: st.inview }); $('#fs').value = ''; $('#fe').value = ''; $('#fy').value = ''; $('#ft').value = 'all'; $('#fo').value = ''; $('#mQ').value = ''; load(); };
+  $('#mItems').onclick = (e) => {
+    if (e.target.closest('[data-reset]')) return reset();
+    if (e.target.closest('a')) return;
+    const c = e.target.closest('.pcard'); if (c) highlight(c.dataset.id);
+  };
+  $('#mItems').onmouseover = (e) => { const c = e.target.closest('.pcard'); const m = c && markers[c.dataset.id]; if (m && c.dataset.id !== sel) { m.setStyle({ radius: 10 }); m.bringToFront(); } };
+  $('#mItems').onmouseout = (e) => { const c = e.target.closest('.pcard'); const m = c && markers[c.dataset.id]; if (m && c.dataset.id !== sel) m.setStyle({ radius: 7 }); };
+  $('#mPrev').onclick = () => { page--; list(); $('#mItems').scrollTop = 0; }; $('#mNext').onclick = () => { page++; list(); $('#mItems').scrollTop = 0; };
+  const bind = (s, key) => $(s).onchange = (e) => { st[key] = e.target.value; load(); };
+  bind('#fs', 'min_score'); bind('#fe', 'min_equity'); bind('#fy', 'min_years'); bind('#ft', 'ptype'); bind('#fo', 'owed');
+  let qt; $('#mQ').oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; load(); }, 350); };
+  $('#mSort').onchange = (e) => { st.sort = e.target.value; page = 1; list(); };
+  $('#mInView').onchange = (e) => { st.inview = e.target.checked; page = 1; list(); };
   $('#mCounty').onchange = (e) => { setCounty(e.target.value); load(); };
-  $('#fClear').onclick = () => { Object.assign(st, { min_score: '', min_equity: '', min_years: '', ptype: 'all' }); ['#fs', '#fe', '#fy'].forEach((s) => $(s).value = ''); $('#ft').value = 'all'; load(); };
-  $('#saveSearch').onclick = () => { try { localStorage.setItem('eh_map_search', JSON.stringify(st)); } catch (e) { } toast('Search saved. It opens with these filters next time.'); };
+  $('#fClear').onclick = reset;
+  $('#saveSearch').onclick = () => { save(); toast('Saved. The map opens with these filters next time.'); };
+  let mt; map.on('moveend', () => { clearTimeout(mt); mt = setTimeout(() => { if (st.inview) { page = 1; list(); } }, 150); });
   const fitH = () => { const w = $('.map-wrap'); if (w && innerWidth > 900) { w.style.height = Math.max(560, innerHeight - w.getBoundingClientRect().top - window.scrollY - 18) + 'px'; map.invalidateSize(); } };
   fitH(); addEventListener('resize', fitH);
   await load();
-  setTimeout(() => map.invalidateSize(), 50);
+  setTimeout(() => { map.invalidateSize(); list(); }, 60);
   return () => { map.remove(); el.style.padding = ''; removeEventListener('resize', fitH); };
 }

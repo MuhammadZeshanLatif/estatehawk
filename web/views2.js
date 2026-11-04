@@ -1,7 +1,7 @@
 // Alerts, Counties, Outreach, Reports, Settings, Onboarding
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb,
-  toast, modal, menu, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg,
+  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg,
 } from './app.js';
 import { alertIcon, baseTiles, taskModal, scoreColor } from './views.js';
 
@@ -149,7 +149,7 @@ export async function counties(el) {
       { label: c.enabled ? 'Pause tracking' : 'Resume tracking', icon: 'clock', fn: async () => { await api('/api/counties/' + c.id, { method: 'PUT', body: { enabled: c.enabled ? 0 : 1 } }); await refreshMeta(); counties(el); } },
       { label: 'Show leads', icon: 'home', fn: () => { setCounty(c.id); location.hash = '#/deals'; } },
       ...(c.host ? [{ label: 'Open county website', icon: 'link', fn: () => open(`https://${c.host}/DelinquentList`, '_blank') }] : []),
-      '-', { label: 'Remove', icon: 'x', danger: true, fn: async () => { if (!confirm('Remove ' + c.name + '?')) return; await api('/api/counties/' + c.id, { method: 'DELETE' }); await refreshMeta(); counties(el); } },
+      '-', { label: 'Remove', icon: 'x', danger: true, fn: async () => { if (!await ask({ title: `Remove ${c.name}?`, text: 'Its leads stop updating and leave your lists. You can add the county again later.', ok: 'Remove county', danger: true })) return; await api('/api/counties/' + c.id, { method: 'DELETE' }); await refreshMeta(); counties(el); } },
     ]);
   };
   if ($('#addCounty')) $('#addCounty').onclick = () => countyModal(null);
@@ -218,7 +218,7 @@ export async function outreach(el) {
     const col = e.target.closest('.kcol'); $$('.kcol').forEach((k) => k.classList.remove('drop'));
     if (!col || !dragId) return; e.preventDefault();
     let fee = null;
-    if (col.dataset.stage === 'closed') { fee = prompt('Assignment fee earned ($)?', '10000'); if (fee == null) return; }
+    if (col.dataset.stage === 'closed') { fee = await askFee(); if (fee == null) return; }
     await api(`/api/parcels/${encodeURIComponent(dragId)}/stage`, { method: 'POST', body: { stage: col.dataset.stage, fee: fee ? +fee : null } });
     dragId = null; load();
   });
@@ -331,7 +331,7 @@ export async function settings(el, [tab = 'scoring']) {
     };
     if (!SUPER) return;
     $('#dSeed').onclick = async () => { $('#dSeed').disabled = true; await api('/api/demo/seed', { method: 'POST' }); await refreshMeta(); toast('Demo data loaded'); };
-    $('#dClear').onclick = async () => { if (!confirm('Remove all demo parcels, alerts and pipeline items?')) return; const r = await api('/api/demo/clear', { method: 'POST' }); await refreshMeta(); toast(`Removed ${r.removed} demo parcels`); };
+    $('#dClear').onclick = async () => { if (!await ask({ title: 'Remove demo data?', text: 'All made-up parcels, alerts and pipeline items are deleted. Real county data stays.', ok: 'Remove demo data', danger: true })) return; const r = await api('/api/demo/clear', { method: 'POST' }); await refreshMeta(); toast(`Removed ${r.removed} demo parcels`); };
     return;
   }
   if (tab === 'team') {
