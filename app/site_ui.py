@@ -263,7 +263,7 @@ def side_nav(active):
     return f'<div class="side"><div class="lg"><img src="/site/logo-mark.svg" alt="" width="20" height="24">EstateHawk</div>{items}</div>'
 
 
-def browser(inner, url="app.estatehawk.com", label="EstateHawk app preview"):
+def browser(inner, url="getestatehawk.com/app", label="EstateHawk app preview"):
     return (f'<div class="browser" role="img" aria-label="{label}"><div class="bar"><i></i><i></i><i></i>'
             f'<span class="url">{ic("lock")}{url}</span></div>{inner}</div>')
 
