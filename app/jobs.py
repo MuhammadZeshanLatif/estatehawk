@@ -224,9 +224,24 @@ def sync_all(ids=None, enrich_limit=None):
     try:
         STATUS.update(running=True)
         res = {}
-        counties = db.q("SELECT id FROM counties WHERE enabled=1 AND demo=0" + (f" AND id IN ({','.join('?' * len(ids))})" if ids else ""), tuple(ids or ()))
+        counties = db.q("SELECT id, name, host FROM counties WHERE enabled=1 AND demo=0" + (f" AND id IN ({','.join('?' * len(ids))})" if ids else ""), tuple(ids or ()))
+        fails, down = {}, set()
         for c in counties:
-            res[c["id"]] = sync_county(c["id"], **({"enrich_limit": enrich_limit} if enrich_limit is not None else {}))
+            src = "lgbs" if (c["host"] or "").startswith("lgbs") else (c["host"] or "")  # one website per key
+            if src in down:  # this website stopped answering today: skip it instead of waiting on every county
+                db.run("UPDATE counties SET sync_status='error', sync_error=? WHERE id=?", ("Source website not reachable today, will retry tomorrow", c["id"]))
+                res[c["id"]] = {"ok": False, "error": "skipped, source down"}
+                print(f"{c['name']}: skipped (source down)", flush=True)
+                continue
+            r = sync_county(c["id"], **({"enrich_limit": enrich_limit} if enrich_limit is not None else {}))
+            res[c["id"]] = r
+            print(f"{c['name']}: " + (f"found {r['found']}, new {r['new']}, removed {r['removed']}" if r.get("ok") else f"error {r.get('error', '')[:120]}"), flush=True)
+            if r.get("ok"):
+                fails[src] = 0
+            elif "Timeout" in (r.get("error") or "") or "ConnectionError" in (r.get("error") or ""):
+                fails[src] = fails.get(src, 0) + 1
+                if fails[src] >= 2:
+                    down.add(src)
         check_auctions()
         send_instant_alerts()
         try:

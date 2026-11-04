@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -394,12 +394,24 @@ def export_parcels(request: Request):
                    p.mail_address, p.mail_state, p.amount_owed, p.total_due, p.prior_due, p.annual_tax, p.years_behind,
                    p.appraised_total, p.est_equity, p.rent_est, p.suggested_offer, p.score, p.property_type, p.land_use,
                    p.first_seen, p.lat, p.lng FROM parcels p JOIN counties c ON c.id=p.county_id {w} ORDER BY p.score DESC""", a)
+    allow = plans.export_allowance(INFO())
+    name = f"estatehawk-leads-{dt.date.today()}"
+    if allow is not None:
+        left, lim = allow
+        if left <= 0:
+            return HTMLResponse(f"<p style='font:16px sans-serif;padding:40px'>Your plan's daily export limit ({lim} leads) is used up for today. "
+                                "It resets tomorrow. Every lead stays open in the app.</p><p style='font:16px sans-serif;padding:0 40px'><a href='/app'>Back to EstateHawk</a></p>", status_code=429)
+        if len(rows) > left:
+            name += f"-top-{left}-of-{len(rows)}"
+            rows = rows[:left]
+        plans.export_used(INFO(), len(rows))
+    auth.audit("export", f"{len(rows)} leads")
     buf = io.StringIO()
     if rows:
         wr = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
         wr.writeheader(); wr.writerows(rows)
     return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
-                             headers={"Content-Disposition": f"attachment; filename=estatehawk-leads-{dt.date.today()}.csv"})
+                             headers={"Content-Disposition": f"attachment; filename={name}.csv"})
 
 
 def get_parcel(pid, unlocked=False):
@@ -954,6 +966,61 @@ def demo_clear():
 @app.get("/api/plans")
 def plan_list():
     return {"plans": {k: plans.PLANS[k] for k in plans.PUBLIC}, "org": INFO()}
+
+
+# ------------------------------------------------------------------ online payment (Creem)
+@app.get("/api/billing")
+def billing_status():
+    b = billing.get(OID())
+    return {"online": billing.configured(), "mode": billing.mode(), "plan": INFO()["plan"], "status": b.get("status"),
+            "period_end": b.get("period_end"), "has_portal": bool(b.get("customer_id")), "pending_plan": b.get("pending_plan") or None}
+
+
+@app.post("/api/billing/checkout")
+async def billing_checkout(request: Request):
+    b = await request.json()
+    plan = b.get("plan")
+    if plan not in billing.PLAN_PRODUCTS:
+        raise HTTPException(400, "Pick a plan")
+    if OID() == 1:
+        raise HTTPException(400, "The owner company does not need a plan")
+    u = ctx.get().get("user") or {}
+    try:
+        url = billing.start_checkout(OID(), plan, u.get("email"), site.base_url(request))
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    auth.audit("checkout started", plan)
+    return {"url": url}
+
+
+@app.post("/api/billing/confirm")
+def billing_confirm():
+    try:
+        b = billing.confirm(OID())
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    return {"plan": plans.org_info(OID())["plan"], "status": b.get("status")}
+
+
+@app.post("/api/billing/portal")
+def billing_portal():
+    try:
+        return {"url": billing.portal(OID())}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/public/creem/webhook")
+async def creem_webhook(request: Request):
+    raw = await request.body()
+    if not billing.verify(raw, request.headers.get("creem-signature", "")):
+        raise HTTPException(401, "Bad signature")
+    try:
+        note = billing.handle_event(json.loads(raw))
+    except Exception as e:
+        note = f"error {e}"
+    auth.audit("payment webhook", note, org=1)
+    return {"ok": True}
 
 
 def _org_row(o):

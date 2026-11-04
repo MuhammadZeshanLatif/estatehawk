@@ -375,7 +375,7 @@ def lgbs(c, state, county):
     import json
     out, url = [], "https://taxsales.lgbs.com/api/property_sales/?" + urlencode({"state": state, "county": county, "limit": 100})
     while url:
-        j = c.get(url, timeout=300).json()
+        j = c.get(url, timeout=(20, 300)).json()  # 20 s to connect, 5 min to read a big county
         for x in j.get("results", []):
             if (x.get("state") or "").upper() != state.upper() or (x.get("county") or "").upper() != county.upper():
                 continue  # the API ignores unknown filters: never mix counties
