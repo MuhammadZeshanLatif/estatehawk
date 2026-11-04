@@ -14,7 +14,7 @@ DAYS = 30
 _fails = {}  # ip -> [timestamps]
 
 # open without login
-PUBLIC = ("/api/auth/", "/static/", "/manifest.webmanifest")
+PUBLIC = ("/api/auth/", "/api/public/", "/static/", "/site/", "/manifest.webmanifest")
 # super admin only (the EstateHawk owner): data sources, keys, companies (method, path prefix)
 SUPER = [("*", "/api/integrations"), ("POST", "/api/counties"), ("PUT", "/api/counties"), ("DELETE", "/api/counties"),
          ("POST", "/api/sync"), ("*", "/api/demo"), ("*", "/api/admin"), ("POST", "/api/settings/preview-score")]
