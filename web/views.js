@@ -252,6 +252,32 @@ export async function deal(el, [rawId]) {
     $('#galCount').textContent = `${i + 1} / ${nTabs}`;
   });
   if (p.photo_url) $('.gal-tabs button[data-v=county]').click();
+  // full-screen map: bigger, drag, scroll to zoom, switch satellite / street map, Esc or the button to close
+  if (p.lat) {
+    L.control.zoom({ position: 'bottomright' }).addTo(gm);
+    const fsBtn = document.createElement('button');
+    fsBtn.className = 'gal-fs'; fsBtn.type = 'button';
+    const setFsBtn = (on) => { fsBtn.innerHTML = on ? ic('x', 18) : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+      fsBtn.setAttribute('aria-label', on ? 'Close full screen map' : 'Open map full screen'); fsBtn.title = on ? 'Close full screen (Esc)' : 'Full screen map'; };
+    setFsBtn(false);
+    const sw = document.createElement('div');
+    sw.className = 'gal-switch';
+    sw.innerHTML = '<button type="button" data-l="sat" class="on">Satellite</button><button type="button" data-l="light">Map</button>';
+    g.append(fsBtn, sw);
+    L.DomEvent.disableClickPropagation(fsBtn); L.DomEvent.disableClickPropagation(sw);
+    sw.onclick = (e) => { const b = e.target.closest('[data-l]'); if (!b) return; $$('button', sw).forEach((x) => x.classList.toggle('on', x === b)); photoBox.style.display = 'none'; gm.removeLayer(layer); layer = baseTiles(gm, b.dataset.l); };
+    let full = false;
+    const onKey = (e) => { if (e.key === 'Escape' && full) toggle(false); };
+    const toggle = (on) => {
+      full = on;
+      g.classList.toggle('gal-full', on); document.body.classList.toggle('no-scroll', on); setFsBtn(on);
+      if (on) { photoBox.style.display = 'none'; gm.scrollWheelZoom.enable(); document.addEventListener('keydown', onKey); fsBtn.focus(); }
+      else { gm.scrollWheelZoom.disable(); document.removeEventListener('keydown', onKey); }
+      setTimeout(() => { gm.invalidateSize(); gm.panTo([p.lat, p.lng]); }, 60);
+    };
+    fsBtn.onclick = () => toggle(!full);
+    window.addEventListener('hashchange', () => { if (full) toggle(false); }, { once: true });
+  }
 
   // header buttons
   $('#shareBtn').onclick = async () => { await navigator.clipboard?.writeText(location.href).catch(() => { }); toast('Link copied'); };

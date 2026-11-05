@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -64,7 +64,7 @@ def _client_ip(request):
 def auth_me(request: Request):
     u = auth.current(request)
     if not u:
-        return JSONResponse({"user": None, "setup": not auth.users_exist()}, status_code=401)
+        return JSONResponse({"user": None, "setup": not auth.users_exist(), "google": google_auth.configured()}, status_code=401)
     return {"user": u, "org": plans.org_info(u.get("org_id") or 1)}
 
 
@@ -126,26 +126,91 @@ async def auth_signup(request: Request):
         cid = int(b.get("county_id") or 0)
     except ValueError:
         cid = 0
-    if not db.q1("SELECT 1 FROM counties WHERE id=? AND enabled=1 AND demo=0", (cid,)):
+    if not _county_ok(cid):
         raise HTTPException(400, "Choose your first county.")
+    uid = _new_trial(request, name, email, auth.hash_pw(pw), b.get("company"), cid, ip, "website")
+    resp = JSONResponse({"ok": True})
+    auth.set_cookie(resp, request, uid)
+    return resp
+
+
+def _county_ok(cid):
+    return bool(cid) and bool(db.q1("SELECT 1 FROM counties WHERE id=? AND enabled=1 AND demo=0", (cid,)))
+
+
+def _new_trial(request, name, email, pw_hash, company, cid, ip, how):
+    """A new company on the 14-day trial with one county, its admin login, and the welcome email. Returns the user id."""
     ends = (dt.date.today() + dt.timedelta(days=plans.PLANS["trial"]["days"])).isoformat()
-    company = (b.get("company") or "").strip()[:80] or f"{name}'s team"
+    company = (company or "").strip()[:80] or f"{name}'s team"
     oid = db.run("INSERT INTO orgs(name,plan,status,trial_ends,created,notes) VALUES(?,?,?,?,?,?)",
-                 (company, "trial", "active", ends, jobs.now(), "Signed up on the website"))
+                 (company, "trial", "active", ends, jobs.now(), "Signed up on the website" + (" with Google" if how == "google" else "")))
     db.run("INSERT INTO org_counties(org_id, county_id) VALUES(?,?)", (oid, cid))
     uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
-                 (email, name, auth.hash_pw(pw), "admin", jobs.now(), oid))
+                 (email, name, pw_hash, "admin", jobs.now(), oid))
     u = db.q1("SELECT * FROM users WHERE email=?", (email,))
-    auth.audit("signed up", f"{company} ({email}) trial", user=u, org=oid, ip=ip)
+    auth.audit("signed up", f"{company} ({email}) trial" + (" via Google" if how == "google" else ""), user=u, org=oid, ip=ip)
     cname = (db.q1("SELECT name FROM counties WHERE id=?", (cid,)) or {}).get("name", "your county")
     site_url = site.base_url(request)
     mailer.send(email, "Welcome to EstateHawk: your 14-day trial is on", f"Welcome, {name.split(' ')[0]}",
                 [f"Your free trial is ready. You have 14 days and {plans.PLANS['trial']['reveals']} full leads to open in <b>{mailer.esc(cname)}</b>.",
                  "Start with the highest deal scores: they owe the most for the longest and have the most equity.",
                  "If you need anything, just reply to this email."], ("Open my leads", f"{site_url}/app"))
-    resp = JSONResponse({"ok": True})
-    auth.set_cookie(resp, request, u["id"] if u else uid)
-    return resp
+    return u["id"] if u else uid
+
+
+# ------------------------------------------------------------------ sign in with Google
+def _back(path, msg=None):
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import quote
+    r = RedirectResponse(path + (("&" if "?" in path else "?") + "error=" + quote(msg) if msg else ""), status_code=303)
+    r.delete_cookie(google_auth.COOKIE, path="/api/auth/google")
+    return r
+
+
+@app.get("/api/auth/google/start")
+def google_start(request: Request, county_id: str = "", company: str = "", mode: str = "login"):
+    from fastapi.responses import RedirectResponse
+    if not google_auth.configured():
+        return _back("/login", "Google sign-in is not turned on yet. Use your email and password.")
+    auth.throttle(_client_ip(request))
+    cid = int(county_id) if county_id.isdigit() and _county_ok(int(county_id)) else None
+    url, cookie = google_auth.start(site.base_url(request), cid, company)
+    r = RedirectResponse(url, status_code=303)
+    https = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    r.set_cookie(google_auth.COOKIE, cookie, max_age=600, httponly=True, samesite="lax", secure=https, path="/api/auth/google")
+    return r
+
+
+@app.get("/api/auth/google/callback")
+def google_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    ip = _client_ip(request)
+    if error or not code:
+        return _back("/login", "Google sign-in was cancelled.")
+    auth.throttle(ip)
+    try:
+        p = google_auth.finish(site.base_url(request), code, state, request.cookies.get(google_auth.COOKIE))
+    except ValueError as e:
+        auth.failed(ip)
+        return _back("/login", str(e))
+    except Exception:  # noqa: BLE001  Google unreachable
+        return _back("/login", "Could not reach Google. Please try again.")
+    u = db.q1("SELECT * FROM users WHERE email=?", (p["email"],))
+    if u:
+        if not u["active"]:
+            return _back("/login", "This login is turned off. Ask your company admin.")
+        o = db.q1("SELECT status FROM orgs WHERE id=?", (u.get("org_id") or 1,))
+        if o and o["status"] == "suspended" and u["role"] != "superadmin":
+            return _back("/login", "Your company account is paused. Contact EstateHawk.")
+        db.run("UPDATE users SET last_login=? WHERE id=?", (jobs.now(), u["id"]))
+        auth.audit("login", "with Google", user=u, org=u.get("org_id"), ip=ip)
+        uid = u["id"]
+    else:
+        if not p["county"] or not _county_ok(p["county"]):
+            return _back("/signup?google=1", "No account with that Google email yet. Choose your first county, then continue with Google.")
+        uid = _new_trial(request, p["name"], p["email"], "", p["company"], p["county"], ip, "google")
+    r = _back("/app")
+    auth.set_cookie(r, request, uid)
+    return r
 
 
 @app.post("/api/public/contact")
@@ -187,7 +252,7 @@ async def auth_password(request: Request):
         raise HTTPException(401, "Please log in")
     b = await request.json()
     row = db.q1("SELECT pw FROM users WHERE id=?", (u["id"],))
-    if not auth.check_pw(b.get("old") or "", row["pw"]):
+    if row["pw"] and not auth.check_pw(b.get("old") or "", row["pw"]):  # Google-only logins have no password yet
         raise HTTPException(400, "Current password is wrong")
     if len(b.get("new") or "") < 8:
         raise HTTPException(400, "New password needs at least 8 characters")
