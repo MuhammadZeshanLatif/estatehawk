@@ -248,6 +248,7 @@ function renderChrome() {
   const name = S.user?.name || m.settings.profile?.name || 'You';
   $('#userName').textContent = name;
   $('#avatar').textContent = name.trim()[0]?.toUpperCase() || 'U';
+  $('#userBtn').style.visibility = '';
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
   const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
   const trial = o.plan === 'trial' && !viewing ? `<div class="demo-banner">${ic('lock', 16)}<span><b>Free trial:</b> ${o.days_left >= 0 ? o.days_left + ' days left' : 'ended'}. You can open ${o.reveals_left} more leads in full. Paid plans show every lead, owner and contact.</span><button class="btn xs primary" style="margin-left:auto" id="bannerUp">See plans</button></div>` : '';

@@ -221,8 +221,17 @@ def franklin(c):
         raise RuntimeError("Franklin Tax Accounting folder not found")
     z = zipfile.ZipFile(io.BytesIO(c.get(root + sorted(folders)[-1] + "Tab-Delimited.zip").content))
 
-    def table(name):
-        with z.open(name) as f:
+    names = {n.rsplit("/", 1)[-1].lower(): n for n in z.namelist()}
+
+    def table(name, required=True):
+        """A file in the export, matched without case or folder. The auditor renames files now and then."""
+        real = names.get(name.lower()) or next((n for k, n in names.items() if k.startswith(name.lower().split(".")[0])), None)
+        if not real:
+            if required:
+                raise RuntimeError(f"Franklin export has no {name} (files: {', '.join(sorted(names))[:300]})")
+            print(f"Franklin: {name} not in the export, values skipped (files: {', '.join(sorted(names))[:300]})")
+            return
+        with z.open(real) as f:
             rd = csv.reader(io.TextIOWrapper(f, encoding="utf-8-sig", errors="replace"), delimiter="\t")
             head = next(rd)
             ix = {h.strip(): i for i, h in enumerate(head)}
@@ -236,10 +245,14 @@ def franklin(c):
         if prior > 1 and total > 1:
             due[row[ix["Parcel Id"]].strip('"')] = total
     vals = {}
-    for ix, row in table("Value.txt"):
-        pid = row[ix["Parcel Id"]].strip('"')
-        if pid in due and row[ix["ValueType"]].strip('"') == "BASE":
-            vals[pid] = (_num(row[ix["MarketLand"]]), _num(row[ix["MarketImpr"]]))
+    for ix, row in table("Value.txt", required=False):
+        try:
+            pid = row[ix["Parcel Id"]].strip('"')
+            if pid in due and row[ix["ValueType"]].strip('"') == "BASE":
+                vals[pid] = (_num(row[ix["MarketLand"]]), _num(row[ix["MarketImpr"]]))
+        except (KeyError, IndexError):
+            print("Franklin: value file columns changed, values skipped")
+            break
     out = []
     for ix, row in table("Parcel.txt"):
         g = lambda k: row[ix[k]].strip().strip('"') if k in ix and ix[k] < len(row) else ""

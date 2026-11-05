@@ -95,6 +95,30 @@ def main(argv):
                 if placed or addressed:
                     jobs.rescore([r["id"] for r in db.q("SELECT id FROM parcels WHERE county_id=?", (cid,))], quiet=True)
         return 0
+    if cmd == "flood-probe":
+        # why flood lookups fail: try every FEMA source with a long timeout and print what comes back
+        import time, requests
+        from . import research
+        lat, lng = (float(argv[2]), float(argv[3])) if len(argv) > 3 else (40.7426, -84.1052)  # Lima, Ohio
+        for name, url in research.FLOOD_SOURCES:
+            t = time.time()
+            try:
+                r = requests.get(url, timeout=60, headers={"User-Agent": research.UA}, params={
+                    "geometry": f"{lng},{lat}", "geometryType": "esriGeometryPoint", "inSR": "4326",
+                    "spatialRel": "esriSpatialRelIntersects", "outFields": "FLD_ZONE,SFHA_TF", "returnGeometry": "false", "f": "json"})
+                print(name, r.status_code, f"{time.time() - t:.1f}s", r.text[:300])
+            except Exception as e:
+                print(name, "ERROR", f"{time.time() - t:.1f}s", repr(e)[:300])
+        for r in db.q("SELECT id, lat, lng FROM parcels WHERE county_id=20 AND lat IS NOT NULL LIMIT 3"):
+            print("allen lead", r["id"], r["lat"], r["lng"], research.flood(r["lat"], r["lng"]))
+        for u in ("https://taxsales.lgbs.com/api/sale_counties/?limit=1", "https://taxsales.lgbs.com/"):
+            t = time.time()
+            try:
+                r = requests.get(u, timeout=30, headers={"User-Agent": research.UA})
+                print("lgbs", u, r.status_code, f"{time.time() - t:.1f}s", r.text[:120])
+            except Exception as e:
+                print("lgbs", u, "ERROR", f"{time.time() - t:.1f}s", repr(e)[:200])
+        return 0
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)
