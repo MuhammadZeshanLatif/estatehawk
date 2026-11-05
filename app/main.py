@@ -1136,6 +1136,44 @@ def billing_status():
             "period_end": b.get("period_end"), "has_portal": bool(b.get("customer_id")), "pending_plan": b.get("pending_plan") or None}
 
 
+@app.post("/api/billing/request")
+async def billing_request(request: Request):
+    """Upgrade request while card payment is not switched on: emails EstateHawk and confirms to the customer."""
+    b = await request.json()
+    plan = b.get("plan") or ""
+    if plan and (plan not in plans.PUBLIC or plan == "trial"):
+        raise HTTPException(400, "Pick a plan")
+    msg = (b.get("message") or "").strip()[:1500]
+    if not plan and len(msg) < 3:
+        raise HTTPException(400, "Write a short message")
+    c = ctx.get()
+    u, o = c.get("user") or {}, c.get("org") or {}
+    if plan and u.get("role") not in ("admin", "superadmin"):
+        raise HTTPException(403, "Only your company admin can change the plan")
+    label = plans.PLANS[plan]["label"] if plan else ""
+    import hashlib
+    key = f"upgrade_req:{dt.date.today().isoformat()}:{plan or hashlib.sha1(msg.encode()).hexdigest()[:10]}"
+    if db.q1("SELECT 1 FROM org_settings WHERE org_id=? AND key=?", (OID(), key)):
+        return {"ok": True, "again": True}  # same request twice today: no second email
+    db.run("INSERT INTO org_settings(org_id,key,value) VALUES(?,?,?)", (OID(), key, msg[:300]))
+    auth.audit("upgrade request", f"{label or 'message'}: {msg[:300]}")
+    details = [f"<b>Company:</b> {mailer.esc(o.get('name') or '')} (id {OID()}), now on {mailer.esc(o.get('label') or o.get('plan') or '')}",
+               f"<b>From:</b> {mailer.esc(u.get('name') or '')} &lt;{mailer.esc(u.get('email') or '')}&gt;"]
+    if label:
+        details.append(f"<b>Wants:</b> {mailer.esc(label)} (${plans.PLANS[plan]['price']}/month)")
+    if msg:
+        details.append(mailer.esc(msg).replace("\n", "<br>"))
+    details.append("Switch the plan in Admin > Companies > Edit, then reply to the customer.")
+    mailer.send(os.environ.get("SUPPORT_EMAIL") or "support@getestatehawk.com",
+                f"Upgrade request: {o.get('name') or ''} wants {label or 'to talk'}", "New upgrade request", details,
+                reply_to=u.get("email"), foot="Sent from the Plans window in the EstateHawk app.")
+    mailer.send(u.get("email"), f"We got your request{': ' + label if label else ''}", "Thanks, we are on it",
+                [f"We got your request{' for the <b>' + mailer.esc(label) + '</b> plan' if label else ''}. "
+                 "We will switch your account and email you the payment link the same business day.",
+                 "Your trial keeps working in the meantime."])
+    return {"ok": True}
+
+
 @app.post("/api/billing/checkout")
 async def billing_checkout(request: Request):
     b = await request.json()

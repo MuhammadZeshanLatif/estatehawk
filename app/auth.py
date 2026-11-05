@@ -19,7 +19,7 @@ PUBLIC = ("/api/auth/", "/api/public/", "/static/", "/site/", "/manifest.webmani
 SUPER = [("*", "/api/integrations"), ("POST", "/api/counties"), ("PUT", "/api/counties"), ("DELETE", "/api/counties"),
          ("POST", "/api/sync"), ("*", "/api/demo"), ("*", "/api/admin"), ("POST", "/api/settings/preview-score")]
 # company admin (or super admin): their own team
-ADMIN = [("*", "/api/users"), ("POST", "/api/billing")]
+ADMIN = [("*", "/api/users"), ("POST", "/api/billing/checkout"), ("POST", "/api/billing/confirm"), ("POST", "/api/billing/portal")]
 # still open when a trial has ended / company is suspended
 WHEN_EXPIRED = ("/api/meta", "/api/plans", "/api/auth/", "/api/billing")
 

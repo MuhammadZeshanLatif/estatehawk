@@ -383,22 +383,41 @@ export async function plansModal(note = '') {
     p.users == null ? 'Unlimited users' : `${p.users} ${p.users > 1 ? 'users' : 'user'}`,
     p.reveals ? `${p.reveals} leads in full` : 'Every lead in full: owner, address, contacts',
     p.export ? (p.export_day ? `CSV export (${p.export_day.toLocaleString()} leads a day) + letters` : 'CSV export + mail-merge letters') : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
-  const intro = canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
-    : bill.online ? 'Ask your company admin to upgrade the plan.' : 'Online payment is coming soon. To upgrade now, contact us and we switch your plan the same day.';
+  const intro = !isAdmin ? 'Only your company admin can change the plan. Ask them to pick one here.'
+    : canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
+    : 'Pick a plan and we switch your account the same business day. We email you the payment link, nothing is charged now.';
+  const pickBtn = (k, p) => !p.price || !isAdmin ? ''
+    : `<button class="btn primary sm" data-${canBuy ? 'buy' : 'req'}="${k}" style="width:100%">Choose ${esc(p.label)}</button>`;
   modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0">${Object.entries(P).map(([k, p]) => `
       <div class="card card-pad" style="display:flex;flex-direction:column;${k === cur ? 'border:2px solid var(--green)' : ''}"><b>${esc(p.label)}</b>
         <div style="font-size:24px;font-weight:700;margin:6px 0">${p.price ? '$' + p.price : 'Free'}<span class="small muted" style="font-weight:400">${p.price ? ' / month' : ''}</span></div>
         <ul class="small" style="padding-left:16px;margin:0 0 10px;line-height:1.7;flex:1">${feat(k, p).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
-        ${k === cur ? '<div class="pill p-green tiny">Current plan</div>' : (canBuy && p.price ? `<button class="btn primary sm" data-buy="${k}" style="width:100%">Choose ${esc(p.label)}</button>` : '')}</div>`).join('')}</div>
+        ${k === cur ? '<div class="pill p-green tiny" style="text-align:center">Current plan</div>' : pickBtn(k, p)}</div>`).join('')}</div>
     <div class="row" style="justify-content:flex-end;gap:8px">${bill.has_portal && isAdmin ? '<button class="btn" id="mBill">Manage billing</button>' : ''}<button class="btn" data-close>Close</button>
-      ${canBuy ? '' : `<a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade: ' + (S.meta?.org?.name || ''))}">Contact us to upgrade</a>`}</div>`, (el) => {
+      <button class="btn" id="mAsk">${ic('mail', 15)} Ask a question</button></div>`, (el) => {
     $$('[data-buy]', el).forEach((b) => b.onclick = async () => {
       const label = b.textContent; b.disabled = true; b.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 14)}</span> Opening checkout...`;
       try { const r = await api('/api/billing/checkout', { method: 'POST', body: { plan: b.dataset.buy } }); location.href = r.url; }
       catch (e) { toast(e.message, true); b.disabled = false; b.textContent = label; }
     });
     if ($('#mBill', el)) $('#mBill', el).onclick = openPortal;
+    $$('[data-req]', el).forEach((b) => b.onclick = async () => {
+      const k = b.dataset.req, label = P[k].label;
+      b.disabled = true; b.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 14)}</span> Sending...`;
+      try {
+        await api('/api/billing/request', { method: 'POST', body: { plan: k } });
+        b.outerHTML = `<div class="pill p-green tiny" style="text-align:center">${ic('check', 12)} Requested</div>`;
+        toast(`Thanks! We got your ${label} request and will email you today.`);
+      } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = `Choose ${label}`; }
+    });
+    $('#mAsk', el).onclick = async () => {
+      const m = await ask({ title: 'Ask EstateHawk', icon: 'mail', text: `We reply to ${esc(S.meta?.user?.email || 'your email')} within one business day.`,
+        input: { placeholder: 'Your question about plans, counties or payment', hint: `Or email us at ${CONTACT}` }, ok: 'Send', cancel: 'Back' });
+      if (m == null) return plansModal(note);
+      try { await api('/api/billing/request', { method: 'POST', body: { message: m } }); toast('Message sent. We reply within one business day.'); }
+      catch (e) { toast(e.message, true); }
+    };
   });
 }
 
