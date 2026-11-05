@@ -219,13 +219,14 @@ export async function deal(el, [rawId]) {
     <div class="col" style="gap:18px;min-width:0">
       <div class="card card-pad"><h3 style="margin-bottom:12px">Tax History</h3><div class="timeline">${taxTimeline(p)}</div>
         ${p.property_url ? `<a class="small" style="color:var(--green)" href="${esc(p.property_url)}" target="_blank" rel="noopener">Open county record ${ic('link', 13)}</a>` : ''}</div>
+      ${dataCard(p.data_check, false)}
       <div class="card card-pad"><div class="row between"><h3>Why this score?</h3>${p.ai ? `<button class="btn xs" id="aiWhy">${ic('sparkle', 13)} Explain with AI</button>` : ''}</div>
         <div class="big-score">${scorePill(p.score)}<div><b style="color:${p.score >= 85 ? 'var(--green-ink)' : 'var(--ink)'}">${label}</b><div class="tiny muted">Based on your scoring weights</div></div></div>
         <div id="reasons">${reasonsHtml(p.reasons)}</div>
         <div class="breakdown" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">${Object.entries(p.score_parts || {}).map(([k, v]) => {
           const w = S.meta.settings.weights[k] || 1;
           return `<div class="b-row"><span class="muted">${esc({ years_behind: 'Years behind', equity: 'Equity', amount_owed: 'Amount owed', out_of_state: 'Out-of-state owner', vacancy: 'Vacancy signals' }[k])}</span><div class="b-bar"><i style="width:${Math.min(100, v / w * 100)}%"></i></div><b class="num" style="text-align:right">+${Math.round(v)}/${w}</b></div>`;
-        }).join('')}</div></div>
+        }).join('')}</div>${SCORE_NOTE}</div>
     </div>
     <div class="col col3" style="gap:18px;min-width:0">
       <div class="card card-pad" id="offerCard"></div>
@@ -475,7 +476,8 @@ function lockedDeal(el, p, rawId) {
       ${fact('user', 'Owner', `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Hidden</span>`)}
       ${fact('pin', 'Address', `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Hidden</span>`)}
     </div></div>
-    <div class="card card-pad"><h3>Why this score?</h3><div id="reasons" style="margin-top:8px">${reasonsHtml(p.reasons)}</div></div>
+    <div class="card card-pad"><h3>Why this score?</h3><div id="reasons" style="margin-top:8px">${reasonsHtml(p.reasons)}</div>${SCORE_NOTE}</div>
+    ${dataCard(p.data_check, true)}
   </div>`;
   $('#seePlans').onclick = () => plansModal();
   $('#revealBtn').onclick = async () => {
@@ -525,6 +527,29 @@ function contactFact(p) {
 }
 
 function fact(i, k, v) { return `<div class="fact">${ic(i, 17)}<div><div class="k">${k}</div><div class="v">${v}</div></div></div>`; }
+
+// "Data sources" card: where the lead came from, how fresh it is, what the county left out, what is an estimate
+const CHECK = { verified: ['p-green', 'check', 'Verified'], partial: ['p-amber', 'alert', 'Partly verified'], conflict: ['p-red', 'alert', 'Amounts differ'],
+  stale: ['p-amber', 'clock', 'Not on latest list'], removed: ['p-grey', 'clock', 'Off the county list'] };
+function dataCard(dc, locked) {
+  if (!dc) return '';
+  const [tone, icn, word] = CHECK[dc.status] || CHECK.partial;
+  const row = (k, v) => `<div class="row between" style="padding:7px 0;border-top:1px solid var(--line);gap:12px"><span class="small muted">${k}</span><span class="small" style="text-align:right">${v}</span></div>`;
+  const d = (x) => x ? fmtDate(x, { month: 'short', day: 'numeric', year: 'numeric' }) : '--';
+  return `<div class="card card-pad" id="dataCard"><div class="row between"><h3>Data sources</h3><span class="pill ${tone} tiny">${ic(icn, 12)} ${word}</span></div>
+    <p class="small muted" style="margin:8px 0 10px">${esc(dc.note)}</p>
+    ${row('Source', dc.list_url ? `<a href="${esc(dc.list_url)}" target="_blank" rel="noopener" style="color:var(--green)">${esc(dc.source)} ${ic('link', 12)}</a>` : esc(dc.source))}
+    ${dc.record_url ? row('County property record', `<a href="${esc(dc.record_url)}" target="_blank" rel="noopener" style="color:var(--green)">Open record ${ic('link', 12)}</a>`) : locked ? row('County property record', '<span class="muted">Shown after you open this lead</span>') : ''}
+    ${row('First on the list', d(dc.first_seen))}
+    ${row('Last confirmed on the list', d(dc.last_seen))}
+    ${dc.record_read ? row('Property record read', d(dc.record_read)) : ''}
+    ${row('County last downloaded', dc.county_last_sync ? `${d(dc.county_last_sync)} <span class="muted">(${ago(dc.county_last_sync)})</span>` : '--')}
+    ${dc.amount_record ? row('Amount: list / county record', `${money(dc.amount_list, 2)} / ${money(dc.amount_record, 2)}${dc.amount_differs ? ` <span class="pill p-red tiny">differ</span>` : ` <span class="pill p-green tiny">match</span>`}`) : ''}
+    ${dc.missing.length ? row('Not published by the county', esc(dc.missing.join(', '))) : ''}
+    ${dc.estimates.length ? row('Estimates, not county facts', esc(dc.estimates.join(', '))) : ''}
+  </div>`;
+}
+const SCORE_NOTE = '<p class="tiny muted" style="margin:10px 0 0">The score ranks public-record signals. It is not a prediction that the owner will sell.</p>';
 
 function reasonsHtml(list) {
   const icons = [['dollar', 'tone-green'], ['doc', 'tone-green'], ['pin', 'tone-green']];

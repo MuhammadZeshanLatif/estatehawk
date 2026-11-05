@@ -393,3 +393,4 @@ input[type=range]{accent-color:var(--green);width:100%}
 .btn.danger:hover{background:#912018}
 .ask-field input[type=number]::-webkit-inner-spin-button,.ask-field input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .ask-field input[type=number]{-moz-appearance:textfield}
+.q-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--bg2,#F7F6F1)}

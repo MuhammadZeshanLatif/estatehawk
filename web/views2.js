@@ -95,18 +95,25 @@ export async function counties(el) {
   el.innerHTML = `${hide ? '' : `<div class="info-banner">${ic('db', 18)}<span>Data refreshes every night from official county records.</span><span class="small muted" style="margin-left:auto">Last full update: ${S.meta.last_sync ? fmtDate(S.meta.last_sync, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet'}</span><button class="icon-btn" id="hideBanner" style="width:28px;height:28px">${ic('x', 15)}</button></div>`}
   <div class="page-head"><div><div class="row"><h1>My counties</h1><span class="pill p-green">${rows.filter((r) => r.enabled).length} tracking</span></div><div class="sub">Track tax-delinquent properties in your target counties.</div></div>
     <div class="right"><div data-sync-status></div><div class="search" style="width:260px">${ic('search', 16)}<input id="cQ" placeholder="Search counties..."></div>
-      ${S.meta.super ? `<button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button>` : `<button class="btn primary" id="moreCounties">${ic('plus', 16)} Add more counties</button>`}</div></div>
+      ${S.meta.super ? '' : `<button class="btn" id="reqCounty">${ic('mail', 16)} Request a county</button>`}${S.meta.super ? `<button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button>` : `<button class="btn primary" id="moreCounties">${ic('plus', 16)} Add more counties</button>`}</div></div>
   <div class="county-grid" id="cGrid"></div>`;
   const statusPill = (c) => ({ synced: `<span class="pill p-green">${ic('check', 13)} Synced</span>`, syncing: `<span class="pill p-amber"><span class="spin" style="display:inline-flex">${ic('refresh', 13)}</span> Syncing</span>`,
     error: `<span class="pill p-red">${ic('alert', 13)} Error</span>`, never: `<span class="pill p-grey">Not synced</span>` }[c.sync_status] || `<span class="pill p-grey">${esc(c.sync_status)}</span>`);
   const syncBtn = (c) => !S.meta.super ? '' : c.sync_status === 'syncing'
     ? `<button class="btn sm sync-btn busy" disabled><span class="spin" style="display:inline-flex">${ic('refresh', 15)}</span> Syncing...</button>`
     : `<button class="btn sm sync-btn" data-id="${c.id}" title="Download the latest list for ${esc(c.name)} now">${ic('refresh', 15)} Sync now</button>`;
+  const qualityLine = (c) => { const q = c.quality; if (!q) return '';
+    const tone = { Full: 'p-green', Good: 'p-blue', Limited: 'p-amber' }[c.grade] || 'p-grey';
+    const fresh = { fresh: ['var(--green)', 'Fresh'], aging: ['#B54708', 'A few days old'], old: ['var(--red)', 'Out of date'] }[q.fresh];
+    return `<div class="q-line" title="Share of this county's leads that come with each field"><span class="pill ${tone} tiny">${esc(c.grade)} data</span>
+      <span class="tiny muted">Address ${q.address}% · Map ${q.map}% · Value ${q.value}% · Owner mail ${q.mailing}%</span>
+      ${fresh ? `<span class="tiny" style="color:${fresh[0]};margin-left:auto;white-space:nowrap">● ${fresh[1]}</span>` : ''}</div>`; };
   const draw = (q = '') => {
     $('#cGrid').innerHTML = rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => `
       <div class="card county" style="${c.enabled ? '' : 'opacity:.55'}"><div class="row" style="align-items:flex-start">${countyShape(c.name)}
         <div class="grow" style="min-width:0"><div class="row between" style="align-items:flex-start"><h3 style="font-size:16px">${esc(c.name)}, ${esc(c.state)}</h3><button class="icon-btn more" data-id="${c.id}" style="width:28px;height:28px;margin:-4px -6px 0 0">${ic('dots', 16)}</button></div>
-        <div class="row between" style="margin-top:4px"><span class="small muted">Source: County Treasurer</span>${statusPill(c)}</div></div></div>
+        <div class="row between" style="margin-top:4px"><span class="small muted">Source: ${c.list_url ? `<a href="${esc(c.list_url)}" target="_blank" rel="noopener" style="color:var(--green)">county list ${ic('link', 12)}</a>` : 'County Treasurer'}</span>${statusPill(c)}</div></div></div>
+        ${qualityLine(c)}
         <div class="tiny muted" style="text-align:right;margin-top:4px">${c.sync_status === 'error' ? `<a class="small retry" data-id="${c.id}" style="color:var(--blue);cursor:pointer">${ic('refresh', 13)} Retry sync</a><br>` : ''}Last sync: ${c.last_sync ? fmtDate(c.last_sync, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never'}</div>
         ${c.sync_status === 'error' ? `<div class="small" style="color:var(--red);margin-top:4px">${esc(c.sync_error || '')}</div>` : ''}
         <div class="row between" style="margin-top:8px"><div><div class="big num">${num(c.active)}</div><div class="small muted">Delinquent properties</div></div>
@@ -127,6 +134,13 @@ export async function counties(el) {
     setTimeout(() => counties(el), 1500); watchSync(() => counties(el));
   };
   if ($('#syncAll')) $('#syncAll').onclick = () => syncIds(null);
+  if ($('#reqCounty')) $('#reqCounty').onclick = async () => {
+    const v = await ask({ title: 'Request a county', icon: 'pin', text: 'Tell us the county and state. We check if its tax-delinquent list is public and email you within 2 business days.',
+      input: { placeholder: 'e.g. Franklin County, OH', hint: 'Several counties? Separate them with commas.' }, ok: 'Send request' });
+    if (v == null) return;
+    try { await api('/api/billing/request', { method: 'POST', body: { message: `County request: ${v}` } }); toast('Thanks! We got your county request.'); }
+    catch (e) { toast(e.message, true); }
+  };
   if ($('#moreCounties')) $('#moreCounties').onclick = () => plansModal(`Your ${S.meta.org.label} plan includes ${S.meta.org.limits.counties ?? 'all'} county(ies).`);
   $('#cGrid').onclick = (e) => {
     const rt = e.target.closest('.retry'); if (rt) return syncIds([+rt.dataset.id]);
@@ -186,7 +200,7 @@ export async function outreach(el) {
     <div class="row wrap" style="margin-bottom:14px"><div class="search" style="width:260px">${ic('search', 16)}<input id="oQ" placeholder="Search leads in pipeline..."></div>
       <div class="row">${ic('pin', 16)}${countySelect('oCounty')}</div>
       <div class="row">${ic('mail', 16)}<select class="select" id="oSeq">${['Tax-delinquent v1', 'Tax-delinquent v2'].map((s) => `<option ${s === od.sequence ? 'selected' : ''}>Sequence: ${s}</option>`).join('')}</select></div>
-      <button class="btn primary" id="batch">${ic('send', 15)} Send batch emails</button></div>
+      <button class="btn primary" id="batch" title="Drafts an offer letter for every lead in New. Nothing is sent.">${ic('send', 15)} Draft batch offers</button></div>
     <div class="kanban" id="kanban"></div></div>
     <div class="col" style="gap:18px">
       <div class="card card-pad"><div class="row between"><div class="row"><h3>Follow-ups today</h3><span class="pill p-grey" id="fuN">0</span></div><button class="btn xs" id="addFu">${ic('plus', 13)}</button></div><div id="fuList" style="margin-top:6px"></div></div>
@@ -229,9 +243,9 @@ export async function outreach(el) {
   $('#addFu').onclick = () => taskModal(null, load);
   $('#batch').onclick = () => {
     const n = $('[data-stage=new] .kcard') ? $$('[data-stage=new] .kcard').length : 0;
-    modal(`<h2>Send batch offers</h2><p class="muted">Creates an offer draft for every lead in <b>New lead</b> (${n}) using your default terms, then opens printable letters addressed to each owner's tax-bill mailing address.</p>
+    modal(`<h2>Draft batch offers</h2><p class="muted">Creates an offer draft for every lead in <b>New lead</b> (${n}) using your default terms, then opens printable letters addressed to each owner's tax-bill mailing address.</p>
       <div class="card card-pad small" style="background:#FAFAF8">County records have mailing addresses but no owner emails or phones. Mail the letters, or skip-trace first to email/text them.</div>
-      ${S.meta.integrations.gemini ? `<label class="row" style="margin-top:12px"><input type="checkbox" id="bAi"> Write each one with Gemini (slower)</label>` : ''}
+      ${S.meta.integrations.gemini ? `<label class="row" style="margin-top:12px"><input type="checkbox" id="bAi"> Write each one with AI (slower)</label>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="bGo" ${n ? '' : 'disabled'}>Create ${n} drafts</button></div>`, (m, close) => {
       $('#bGo', m).onclick = async () => {
         $('#bGo', m).disabled = true; $('#bGo', m).textContent = 'Working...';

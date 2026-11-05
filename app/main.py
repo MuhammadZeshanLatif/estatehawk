@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -582,7 +582,10 @@ def get_parcel(pid, unlocked=False):
 def parcel_detail(pid: str):
     p = get_parcel(pid)
     info = INFO()
+    county = db.q1("SELECT host, last_sync, sync_status FROM counties WHERE id=?", (p["county_id"],)) or {}
+    check = quality.lead(p, county)
     if plans.is_locked(info, pid):
+        check["record_url"] = None  # the county record link shows the address
         br = json.loads(p.get("score_breakdown") or "{}")
         p["score_parts"] = br.get("parts", {})
         p["reasons"] = scoring.reasons(p, br)
@@ -590,6 +593,7 @@ def parcel_detail(pid: str):
         p.update(snapshots=[], activities=[], offers=[], tasks=[], contacts=[], offer_defaults=db.get_setting("offer_defaults"),
                  ai=False, reveals_left=info["reveals_left"], reveals_total=info["limits"]["reveals"])
         p["reasons"] = [(t, x) for t, x in p["reasons"] if "Tax bills go to" not in x] + ([("Out-of-state owner", "Owner lives in another state.")] if p.get("mail_state") and p.get("mail_state") != p.get("state") else [])
+        p["data_check"] = check
         return p
     if p.get("lat") is None and (p.get("street") or "")[:1].isdigit() and not p.get("demo"):
         ll = geocode.one(p["street"], p.get("city") or "", p.get("state") or "OH", p.get("zip") or "")
@@ -607,6 +611,7 @@ def parcel_detail(pid: str):
     p["contacts"] = contacts.list_for(pid)
     p["offer_defaults"] = db.get_setting("offer_defaults")
     p["ai"] = ai.enabled()
+    p["data_check"] = check
     return p
 
 
@@ -812,6 +817,11 @@ def counties():
         c["new_today"] = per.get(t, 0)
         c["active"] = db.q1("SELECT COUNT(*) n FROM parcels WHERE county_id=? AND is_active=1", (c["id"],))["n"]
         c["last_run"] = db.q1("SELECT * FROM sync_runs WHERE county_id=? ORDER BY id DESC LIMIT 1", (c["id"],))
+    qual = quality.counties([c["id"] for c in rows]) if rows else {}
+    for c in rows:
+        c["quality"] = qual.get(c["id"])
+        c["grade"] = quality.grade(c["quality"])
+        c["list_url"] = quality.list_url(c.get("host"))
     return rows
 
 

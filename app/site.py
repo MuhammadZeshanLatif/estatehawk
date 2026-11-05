@@ -75,7 +75,7 @@ try{var r=await fetch(f.dataset.api,{method:'POST',headers:{'Content-Type':'appl
 if(!r.ok)throw new Error(j.detail||'Something went wrong. Please try again.');
 if(f.dataset.next){location.href=f.dataset.next;return}m.className='msg ok';m.textContent=f.dataset.ok||'Thanks!';f.reset();}
 catch(err){m.className='msg err';m.textContent=err.message}btn.disabled=false;btn.innerHTML=t;})});
-var q=new URLSearchParams(location.search),fm=document.querySelector('form .msg');if(q.get('error')&&fm){fm.className='msg err';fm.textContent=q.get('error')}
+var q=new URLSearchParams(location.search),fm=document.querySelector('form .msg'),cm=document.getElementById('c-msg');if(cm&&q.get('topic')==='county'&&!cm.value){cm.value='Please add this county (name and state): ';}if(q.get('error')&&fm){fm.className='msg err';fm.textContent=q.get('error')}
 document.querySelectorAll('a.g-btn[data-signup]').forEach(function(a){a.addEventListener('click',function(e){var s=document.getElementById('s-county'),c=document.getElementById('s-company');
 if(!s.value){e.preventDefault();fm.className='msg err';fm.textContent='Choose your first county first, then continue with Google.';s.focus();return}
 a.href='/api/auth/google/start?mode=signup&county_id='+encodeURIComponent(s.value)+'&company='+encodeURIComponent(c?c.value:'')})});})();
@@ -334,7 +334,7 @@ def counties(request):
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">Coverage</span><h1>{s["n_counties"]} counties and <span class="swoosh">growing</span></h1>'
             f'<p>Tax-delinquent and tax-sale property lists from official county sources, refreshed every night. {s["leads"]:,} active leads right now.</p></div></section>'
             f'<section class="sec-tight"><div class="wrap"><div class="states">{cards}</div>'
-            f'<p style="text-align:center;margin-top:28px">Need a county we do not cover yet? <a href="/contact" style="color:var(--leaf);font-weight:600">Tell us</a> and we will add it.</p></div></section>'
+            f'<p style="text-align:center;margin-top:28px">Need a county we do not cover yet? <a href="/contact?topic=county" style="color:var(--leaf);font-weight:600">Request a county</a> and we will check its records.</p></div></section>'
             + cta_band())
     return page(request, "/counties", f"Coverage: {s['n_counties']} Counties | EstateHawk", "See every county EstateHawk covers: tax-delinquent and tax-sale property lists from official records in Ohio, Texas and more, updated nightly.", body, [bs])
 
@@ -348,14 +348,23 @@ def county_state(request, state_slug):
     name = STATE_NAMES[code]
     bc, bs = crumbs(request, [("/counties", "Counties"), (f"/counties/{state_slug}", name)])
     total = sum(c["n"] for c in cs)
-    grid = "".join(f'<div class="county"><b>{esc(c["name"])}</b><span>{c["n"]:,} leads</span></div>' for c in sorted(cs, key=lambda c: -c["n"]))
+    def cov(c):
+        pct = round(100 * (c.get("good") or 0) / c["n"]) if c["n"] else 0
+        try:
+            when = dt.date.fromisoformat((c.get("last_sync") or "")[:10]).strftime("%b %-d")
+        except ValueError:
+            when = ""
+        return (f'<span>{c["n"]:,} leads</span><small style="flex-basis:100%;font-size:12.5px;color:var(--muted);margin-top:4px">'
+                f'{"Full" if pct >= 90 else "Good" if pct >= 60 else "Limited"} data, {pct}% with address'
+                f'{", updated " + when if when else ""}</small>')
+    grid = "".join(f'<div class="county" style="flex-wrap:wrap">{"<b>" + esc(c["name"]) + "</b>"}{cov(c)}</div>' for c in sorted(cs, key=lambda c: -c["n"]))
     kind = "tax sale" if code == "TX" else "tax-delinquent"
     intro = (f"Texas counties sell tax-defaulted homes at constable and sheriff sales. EstateHawk tracks every listed property across {len(cs)} Texas counties, with value, minimum bid and sale status, so you can reach owners before the auction."
              if code == "TX" else f"{name} counties publish who is behind on property taxes. EstateHawk downloads those lists every night across {len(cs)} {name} counties, scores every property and finds the owner so you can make an offer first.")
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">{name}</span><h1>{name} {kind} property <span class="swoosh">list</span></h1>'
             f'<p>{intro}</p></div></section><section class="sec-tight"><div class="wrap"><div class="strip" style="margin:0 0 26px"><h2>{name} right now</h2>'
             f'<div class="stat">{ic("users")}<div><b>{total:,}</b><span>active leads</span></div></div><div class="stat">{ic("pin")}<div><b>{len(cs)}</b><span>counties</span></div></div>'
-            f'<div class="stat">{ic("moon")}<div><span style="font-size:16px;color:var(--ink)">updated<br>nightly</span></div></div></div><div class="cgrid">{grid}</div></div></section>'
+            f'<div class="stat">{ic("moon")}<div><span style="font-size:16px;color:var(--ink)">updated<br>nightly</span></div></div></div><div class="cgrid">{grid}</div><p style="margin-top:18px;font-size:14px;color:var(--muted)">"Full" means at least 9 in 10 leads come with a street address or map location from county records. <a href="/contact?topic=county" style="color:var(--leaf);font-weight:600">Request another county</a>.</p></div></section>'
             + cta_band(f"Get the {name} list today.", f"Start a 14-day free trial and see every {kind} property in your {name} county."))
     return page(request, f"/counties/{state_slug}", f"{name} Tax Delinquent Property List ({total:,} Leads) | EstateHawk",
                 f"Daily {name} {kind} property list from {len(cs)} counties: {total:,} active leads with deal scores, maps and owner contacts. Start free for 14 days.", body, [bs])
