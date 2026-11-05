@@ -99,6 +99,55 @@ def enrich(client, county, parcel_ids, step_cb=None):
     return done
 
 
+def fill_from_state(county, limit=1500, addr_limit=400):
+    """Leads with no address and no map point: center of the parcel from the Ohio statewide layer, its acres and the
+    auditor record link; then a street address from the map point. Returns (placed, addressed)."""
+    from .scraper import ohio_parcels as op
+    rows = db.q("""SELECT id, parcel_number FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NULL
+                   AND COALESCE(street,'')='' LIMIT ?""", (county["id"], limit))
+    placed = addressed = 0
+    if rows:
+        by_pin = {}
+        for r in rows:
+            by_pin.setdefault(op.pin(r["parcel_number"]), []).append(r["id"])
+        try:
+            found = op.lookup(county["name"], list(by_pin))
+        except Exception as e:  # noqa: BLE001  the state server is down: try again next night
+            print(f"{county['name']}: Ohio parcel layer not reachable ({e})")
+            found = {}
+        with db.tx() as c:
+            for p, info in found.items():
+                for pid in by_pin.get(p, []):
+                    c.execute("""UPDATE parcels SET lat=?, lng=?, acres=COALESCE(acres, ?), property_url=COALESCE(property_url, ?),
+                                 enriched_at=COALESCE(enriched_at, ?), enrich_v=COALESCE(enrich_v, ?) WHERE id=?""",
+                              (info["lat"], info["lng"], info["acres"], info["url"], now(), ENRICH_V, pid))
+                    placed += 1
+        print(f"{county['name']}: {placed} of {len(rows)} placed from the Ohio parcel layer")
+    # street address: Ohio address point inside the parcel (shape known right after placing), else the nearest one;
+    # vacant land gets only city and zip. Rows that already have a city are not asked again.
+    rings = {pid: info["rings"] for p, info in found.items() for pid in by_pin.get(p, [])} if rows else {}
+    todo = db.q("""SELECT id, lat, lng FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NOT NULL
+                   AND COALESCE(street,'')='' AND COALESCE(city,'')='' LIMIT ?""", (county["id"], addr_limit))
+    s = __import__("requests").Session()
+    for i, r in enumerate(todo):
+        a = op.address(r["lat"], r["lng"], rings.get(r["id"]), s)
+        if a:
+            db.run("UPDATE parcels SET street=?, city=?, zip=CASE WHEN COALESCE(zip,'')='' THEN ? ELSE zip END WHERE id=?",
+                   (a[0], a[1], a[2], r["id"]))
+            addressed += 1
+            time.sleep(0.15)
+        else:
+            cz = op.city_zip(r["lat"], r["lng"], s)
+            db.run("UPDATE parcels SET city=?, zip=CASE WHEN COALESCE(zip,'')='' THEN ? ELSE zip END WHERE id=?",
+                   ((cz or (county["name"].upper().replace(" COUNTY", " CO."), ""))[0], (cz or ("", ""))[1], r["id"]))
+            time.sleep(1.1)  # OpenStreetMap asks for at most one request a second
+        if i and i % 50 == 0:
+            STATUS.update(step=f"Finding street addresses ({i}/{len(todo)})")
+    if todo:
+        print(f"{county['name']}: {addressed} of {len(todo)} street addresses found")
+    return placed, addressed
+
+
 EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "improvement_value",
          "appraised_total", "cert_year", "legal_desc", "year_built", "acres", "lat", "lng")
 
@@ -189,6 +238,10 @@ def sync_county(county_id, enrich_limit=700):
                                        (county_id, ENRICH_V, enrich_limit))]
         STATUS.update(step=f"Reading property details (0/{len(todo)})", progress=45)
         enrich(client, county, todo, step_cb=lambda i, n: STATUS.update(step=f"Reading property details ({i}/{n})", progress=45 + int(50 * i / max(n, 1))))
+        # Ohio lists with only a parcel number (Allen): statewide parcel layer for the map point, then the street address
+        if (county.get("state") or "OH") == "OH":
+            STATUS.update(step="Finding addresses from the Ohio parcel map", progress=94)
+            fill_from_state(county)
         # map coordinates for sites without a map link (street number needed for a match)
         # only parcels that are new or got an address today (or everything on a first sync / every Sunday), so misses are not retried daily
         recheck = first_sync or dt.date.today().weekday() == 6
