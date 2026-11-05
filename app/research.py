@@ -155,15 +155,42 @@ def rentcast_key():
     return os.environ.get("RENTCAST_API_KEY", "").strip()
 
 
-def comps(p, refresh=False):
-    """Value estimate and nearby sales from RentCast, cached 30 days per lead. None without a key or an address."""
+def rentcast_limit():
+    """Calls allowed per calendar month. RentCast has no hard cap and bills every call past the plan, so we stop here."""
+    try:
+        return int(os.environ.get("RENTCAST_MONTHLY_LIMIT", "45"))
+    except ValueError:
+        return 45
+
+
+def _usage_key():
+    return "rentcast:" + dt.date.today().strftime("%Y-%m")
+
+
+def rentcast_used():
+    r = db.q1("SELECT value FROM org_settings WHERE org_id=0 AND key=?", (_usage_key(),))
+    return int((r or {}).get("value") or 0)
+
+
+def comps(p, refresh=False, fetch=True):
+    """Value estimate and nearby sales from RentCast, cached 30 days per lead. None without a key or an address.
+    fetch=False only reads the cache (used by the calculator, so it never spends a paid call)."""
     cached = db.q1("SELECT ts, data FROM research_cache WHERE parcel_id=? AND kind='comps'", (p["id"],))
     if cached and not refresh and cached["ts"] >= (dt.date.today() - dt.timedelta(days=30)).isoformat():
         return json.loads(cached["data"])
+    if not fetch:
+        return json.loads(cached["data"]) if cached else None
     if not rentcast_key():
         return None
     if not (p.get("street") or "")[:1].isdigit():
         return {"error": "Needs a street address with a house number."}
+    used = rentcast_used()
+    if used >= rentcast_limit():
+        if cached:
+            return json.loads(cached["data"])
+        return {"error": "Value lookups for this month are used up. They start again on the 1st."}
+    db.run("""INSERT INTO org_settings(org_id,key,value) VALUES(0,?,?)
+              ON CONFLICT(org_id,key) DO UPDATE SET value=excluded.value""", (_usage_key(), str(used + 1)))
     addr = ", ".join(x for x in (p.get("street"), p.get("city"), f"{p.get('state') or 'OH'} {p.get('zip') or ''}".strip()) if x)
     try:
         r = requests.get(RENTCAST, timeout=30, headers={"X-Api-Key": rentcast_key(), "Accept": "application/json"},
@@ -197,7 +224,7 @@ def calc(p, d=None, arv=None, repairs=None, liens=0):
     profit_pct = float(d.get("profit_pct") or risk["profit"])
     src = {}
     if arv is None:
-        cv = (comps(p) or {}).get("value") if rentcast_key() else None
+        cv = (comps(p, fetch=False) or {}).get("value")
         arv, src["arv"] = (cv, "RentCast value estimate") if cv else (p.get("appraised_total") or 0, "County value (often below market)")
     else:
         src["arv"] = "Your number"

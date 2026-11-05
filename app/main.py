@@ -796,7 +796,7 @@ def parcel_comps(pid: str):
     n = int((used or {}).get("value") or 0)
     if n >= 25 and OID() != 1:
         raise HTTPException(429, "25 comp lookups a day are used up. Cached results still show.")
-    data = research.comps(p, refresh=True)
+    data = research.comps(p)  # a fresh cached result (under 30 days) costs nothing
     db.run("""INSERT INTO org_settings(org_id,key,value) VALUES(?,?,?)
               ON CONFLICT(org_id,key) DO UPDATE SET value=excluded.value""", (OID(), key, str(n + 1)))
     return data or {"error": "No result"}
