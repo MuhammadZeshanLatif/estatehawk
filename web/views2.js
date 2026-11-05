@@ -95,18 +95,25 @@ export async function counties(el) {
   el.innerHTML = `${hide ? '' : `<div class="info-banner">${ic('db', 18)}<span>Data refreshes every night from official county records.</span><span class="small muted" style="margin-left:auto">Last full update: ${S.meta.last_sync ? fmtDate(S.meta.last_sync, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'not yet'}</span><button class="icon-btn" id="hideBanner" style="width:28px;height:28px">${ic('x', 15)}</button></div>`}
   <div class="page-head"><div><div class="row"><h1>My counties</h1><span class="pill p-green">${rows.filter((r) => r.enabled).length} tracking</span></div><div class="sub">Track tax-delinquent properties in your target counties.</div></div>
     <div class="right"><div data-sync-status></div><div class="search" style="width:260px">${ic('search', 16)}<input id="cQ" placeholder="Search counties..."></div>
-      ${S.meta.super ? `<button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button>` : `<button class="btn primary" id="moreCounties">${ic('plus', 16)} Add more counties</button>`}</div></div>
+      ${S.meta.super ? '' : `<button class="btn" id="reqCounty">${ic('mail', 16)} Request a county</button>`}${S.meta.super ? `<button class="btn" id="syncAll">${ic('refresh', 16)} Sync all</button><button class="btn primary" id="addCounty">${ic('plus', 16)} Add county</button>` : `<button class="btn primary" id="moreCounties">${ic('plus', 16)} Add more counties</button>`}</div></div>
   <div class="county-grid" id="cGrid"></div>`;
   const statusPill = (c) => ({ synced: `<span class="pill p-green">${ic('check', 13)} Synced</span>`, syncing: `<span class="pill p-amber"><span class="spin" style="display:inline-flex">${ic('refresh', 13)}</span> Syncing</span>`,
     error: `<span class="pill p-red">${ic('alert', 13)} Error</span>`, never: `<span class="pill p-grey">Not synced</span>` }[c.sync_status] || `<span class="pill p-grey">${esc(c.sync_status)}</span>`);
   const syncBtn = (c) => !S.meta.super ? '' : c.sync_status === 'syncing'
     ? `<button class="btn sm sync-btn busy" disabled><span class="spin" style="display:inline-flex">${ic('refresh', 15)}</span> Syncing...</button>`
     : `<button class="btn sm sync-btn" data-id="${c.id}" title="Download the latest list for ${esc(c.name)} now">${ic('refresh', 15)} Sync now</button>`;
+  const qualityLine = (c) => { const q = c.quality; if (!q) return '';
+    const tone = { Full: 'p-green', Good: 'p-blue', Limited: 'p-amber' }[c.grade] || 'p-grey';
+    const fresh = { fresh: ['var(--green)', 'Fresh'], aging: ['#B54708', 'A few days old'], old: ['var(--red)', 'Out of date'] }[q.fresh];
+    return `<div class="q-line" title="Share of this county's leads that come with each field"><span class="pill ${tone} tiny">${esc(c.grade)} data</span>
+      <span class="tiny muted">Address ${q.address}% · Map ${q.map}% · Value ${q.value}% · Owner mail ${q.mailing}%</span>
+      ${fresh ? `<span class="tiny" style="color:${fresh[0]};margin-left:auto;white-space:nowrap">● ${fresh[1]}</span>` : ''}</div>`; };
   const draw = (q = '') => {
     $('#cGrid').innerHTML = rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => `
       <div class="card county" style="${c.enabled ? '' : 'opacity:.55'}"><div class="row" style="align-items:flex-start">${countyShape(c.name)}
         <div class="grow" style="min-width:0"><div class="row between" style="align-items:flex-start"><h3 style="font-size:16px">${esc(c.name)}, ${esc(c.state)}</h3><button class="icon-btn more" data-id="${c.id}" style="width:28px;height:28px;margin:-4px -6px 0 0">${ic('dots', 16)}</button></div>
-        <div class="row between" style="margin-top:4px"><span class="small muted">Source: County Treasurer</span>${statusPill(c)}</div></div></div>
+        <div class="row between" style="margin-top:4px"><span class="small muted">Source: ${c.list_url ? `<a href="${esc(c.list_url)}" target="_blank" rel="noopener" style="color:var(--green)">county list ${ic('link', 12)}</a>` : 'County Treasurer'}</span>${statusPill(c)}</div></div></div>
+        ${qualityLine(c)}
         <div class="tiny muted" style="text-align:right;margin-top:4px">${c.sync_status === 'error' ? `<a class="small retry" data-id="${c.id}" style="color:var(--blue);cursor:pointer">${ic('refresh', 13)} Retry sync</a><br>` : ''}Last sync: ${c.last_sync ? fmtDate(c.last_sync, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never'}</div>
         ${c.sync_status === 'error' ? `<div class="small" style="color:var(--red);margin-top:4px">${esc(c.sync_error || '')}</div>` : ''}
         <div class="row between" style="margin-top:8px"><div><div class="big num">${num(c.active)}</div><div class="small muted">Delinquent properties</div></div>
@@ -127,6 +134,13 @@ export async function counties(el) {
     setTimeout(() => counties(el), 1500); watchSync(() => counties(el));
   };
   if ($('#syncAll')) $('#syncAll').onclick = () => syncIds(null);
+  if ($('#reqCounty')) $('#reqCounty').onclick = async () => {
+    const v = await ask({ title: 'Request a county', icon: 'pin', text: 'Tell us the county and state. We check if its tax-delinquent list is public and email you within 2 business days.',
+      input: { placeholder: 'e.g. Franklin County, OH', hint: 'Several counties? Separate them with commas.' }, ok: 'Send request' });
+    if (v == null) return;
+    try { await api('/api/billing/request', { method: 'POST', body: { message: `County request: ${v}` } }); toast('Thanks! We got your county request.'); }
+    catch (e) { toast(e.message, true); }
+  };
   if ($('#moreCounties')) $('#moreCounties').onclick = () => plansModal(`Your ${S.meta.org.label} plan includes ${S.meta.org.limits.counties ?? 'all'} county(ies).`);
   $('#cGrid').onclick = (e) => {
     const rt = e.target.closest('.retry'); if (rt) return syncIds([+rt.dataset.id]);
@@ -185,8 +199,9 @@ export async function outreach(el) {
   <div class="kanban-wrap"><div style="min-width:0">
     <div class="row wrap" style="margin-bottom:14px"><div class="search" style="width:260px">${ic('search', 16)}<input id="oQ" placeholder="Search leads in pipeline..."></div>
       <div class="row">${ic('pin', 16)}${countySelect('oCounty')}</div>
+      ${(S.meta.team || []).length > 1 ? `<div class="row">${ic('user', 16)}<select class="select" id="oWho" aria-label="Assigned to"><option value="all">Everyone's leads</option><option value="me">Assigned to me</option><option value="none">Not assigned</option>${S.meta.team.map((u) => `<option value="${u.id}">${esc(u.name || u.email)}</option>`).join('')}</select></div>` : ''}
       <div class="row">${ic('mail', 16)}<select class="select" id="oSeq">${['Tax-delinquent v1', 'Tax-delinquent v2'].map((s) => `<option ${s === od.sequence ? 'selected' : ''}>Sequence: ${s}</option>`).join('')}</select></div>
-      <button class="btn primary" id="batch">${ic('send', 15)} Send batch emails</button></div>
+      <button class="btn primary" id="batch" title="Drafts an offer letter for every lead in New. Nothing is sent.">${ic('send', 15)} Draft batch offers</button></div>
     <div class="kanban" id="kanban"></div></div>
     <div class="col" style="gap:18px">
       <div class="card card-pad"><div class="row between"><div class="row"><h3>Follow-ups today</h3><span class="pill p-grey" id="fuN">0</span></div><button class="btn xs" id="addFu">${ic('plus', 13)}</button></div><div id="fuList" style="margin-top:6px"></div></div>
@@ -195,11 +210,11 @@ export async function outreach(el) {
     </div></div>`;
   const kIcon = { email: 'mail', call: 'phone', sms: 'sms', letter: 'letter', reply: 'sms', stage: 'right', note: 'note' };
   async function load() {
-    const r = await api(`/api/pipeline?county=${S.county}&q=${encodeURIComponent($('#oQ').value)}`);
+    const r = await api(`/api/pipeline?county=${S.county}&q=${encodeURIComponent($('#oQ').value)}&who=${$('#oWho') ? $('#oWho').value : 'all'}`);
     $('#kanban').innerHTML = r.columns.map((c) => `<div class="kcol" data-stage="${c.key}"><div class="khead k-${c.key}">${esc(c.label)}<span class="n">${c.items.length}</span></div>
       <div class="kitems">${c.items.map((p) => { const [k, ts, txt] = (p.last || '||').split('|'); return `<div class="kcard" draggable="true" data-id="${esc(p.parcel_id)}">
         <div class="top">${thumb(p)}<div class="grow" style="min-width:0"><b style="font-size:13px">${esc(title(p.street))}</b><div class="tiny muted">${esc(place(p))}</div></div></div>
-        <div class="owner"><span>${esc(title(p.owner_name).slice(0, 22))}</span>${scorePill(p.score)}</div>
+        <div class="owner"><span>${esc(title(p.owner_name).slice(0, 22))}</span>${p.assignee ? `<span class="avatar xs" title="Assigned to ${esc(p.assignee)}">${esc(p.assignee.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase())}</span>` : ''}${scorePill(p.score)}</div>
         <div class="last" style="color:${k === 'reply' ? 'var(--green-ink)' : k ? 'var(--blue)' : 'var(--mute)'}">${ic(kIcon[k] || 'clock', 13)}<span class="grow" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k ? esc(txt) : 'Not contacted yet'}</span>${ts ? `<span class="tiny muted">${ago(ts)}</span>` : ''}</div></div>`; }).join('')}</div></div>`).join('');
     $('#rr').textContent = r.reply_rate + '%';
     $('#rrSub').textContent = `${r.replies_week} replies from ${r.contacts_week} contacts`;
@@ -225,13 +240,14 @@ export async function outreach(el) {
   $('#kanban').addEventListener('click', (e) => { const c = e.target.closest('.kcard'); if (c) location.hash = '#/deal/' + encodeURIComponent(c.dataset.id); });
   let qt; $('#oQ').oninput = () => { clearTimeout(qt); qt = setTimeout(load, 250); };
   $('#oCounty').onchange = (e) => { setCounty(e.target.value); load(); };
+  if ($('#oWho')) $('#oWho').onchange = load;
   $('#oSeq').onchange = async (e) => { const v = e.target.value.replace('Sequence: ', ''); S.meta.settings.offer_defaults.sequence = v; await api('/api/settings', { method: 'PUT', body: { offer_defaults: S.meta.settings.offer_defaults } }); toast('Sequence saved'); };
   $('#addFu').onclick = () => taskModal(null, load);
   $('#batch').onclick = () => {
     const n = $('[data-stage=new] .kcard') ? $$('[data-stage=new] .kcard').length : 0;
-    modal(`<h2>Send batch offers</h2><p class="muted">Creates an offer draft for every lead in <b>New lead</b> (${n}) using your default terms, then opens printable letters addressed to each owner's tax-bill mailing address.</p>
+    modal(`<h2>Draft batch offers</h2><p class="muted">Creates an offer draft for every lead in <b>New lead</b> (${n}) using your default terms, then opens printable letters addressed to each owner's tax-bill mailing address.</p>
       <div class="card card-pad small" style="background:#FAFAF8">County records have mailing addresses but no owner emails or phones. Mail the letters, or skip-trace first to email/text them.</div>
-      ${S.meta.integrations.gemini ? `<label class="row" style="margin-top:12px"><input type="checkbox" id="bAi"> Write each one with Gemini (slower)</label>` : ''}
+      ${S.meta.integrations.gemini ? `<label class="row" style="margin-top:12px"><input type="checkbox" id="bAi"> Write each one with AI (slower)</label>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="bGo" ${n ? '' : 'disabled'}>Create ${n} drafts</button></div>`, (m, close) => {
       $('#bGo', m).onclick = async () => {
         $('#bGo', m).disabled = true; $('#bGo', m).textContent = 'Working...';
@@ -255,6 +271,8 @@ export async function reports(el) {
       <div class="card card-pad"><h3>Leads by county</h3><div id="hbars" style="margin-top:10px"></div></div>
       <div class="card card-pad"><h3>Lead to deal</h3><div id="funnel"></div></div>
     </div>
+    <div class="card" style="margin-top:18px"><div class="card-head" style="padding-bottom:10px"><h3>Which counties turn into deals</h3><span class="small muted right">Leads in your pipeline, by county</span></div>
+      <div style="overflow-x:auto"><table class="table"><thead><tr><th>County</th><th class="r">In pipeline</th><th class="r">Contacted</th><th class="r">Reply rate</th><th class="r">Closed</th><th class="r">Close rate</th><th class="r hide-m">Fees</th><th class="r hide-m">Avg score</th></tr></thead><tbody id="convT"></tbody></table></div></div>
     <div class="card" style="margin-top:18px"><div class="card-head" style="padding-bottom:10px"><h3>Top deals this month</h3><a class="btn sm right" href="#/outreach">View all deals</a></div>
       <div style="overflow-x:auto"><table class="table"><thead><tr><th>#</th><th>Property</th><th>Owner</th><th class="hide-m">County</th><th class="r">Est. value</th><th class="r hide-m">Est. equity</th><th class="r">Fee</th><th class="hide-m">Date</th><th>Status</th></tr></thead><tbody id="topT"></tbody></table></div></div>`;
   const COLORS = ['#1F6B3A', '#E0A030', '#8C938F', '#5B8DEF', '#B36BD6', '#2BA59A'];
@@ -263,6 +281,9 @@ export async function reports(el) {
     const r = await api(`/api/reports?days=${days}&county=${S.county}`);
     $('#rSpan').textContent = `${fmtDate(r.labels[0])} - ${fmtDate(r.labels[r.labels.length - 1])}`;
     $('#rCsv').href = `/api/reports/export.csv?days=${days}`;
+    const pc = (x) => x == null ? '--' : x + '%';
+    $('#convT').innerHTML = (r.conversion || []).map((c) => `<tr><td>${esc(c.county)}</td><td class="r num">${num(c.leads)}</td><td class="r num">${num(c.contacted)}</td><td class="r">${pc(c.reply_rate)}</td><td class="r num">${num(c.closed)}</td><td class="r"><b>${pc(c.close_rate)}</b></td><td class="r hide-m">${money(c.fees)}</td><td class="r hide-m">${c.avg_score ?? '--'}</td></tr>`).join('')
+      || '<tr><td colspan="8" class="muted small" style="text-align:center;padding:18px">Add leads to your pipeline and move them along. Conversion by county shows here.</td></tr>';
     const k = r.kpi;
     const bars = (seed) => { let h = seed; return Array.from({ length: 12 }, () => { h = (h * 9301 + 49297) % 233280; return 4 + h / 233280 * 16; }).map((v, i) => `<i style="display:inline-block;width:3px;margin-right:2px;height:${v + i}px;background:#1F6B3A;opacity:.55;border-radius:1px"></i>`).join(''); };
     $('#kpis').innerHTML = [
@@ -300,7 +321,7 @@ export async function reports(el) {
 export async function settings(el, [tab = 'scoring']) {
   const SUPER = S.meta.super;
   const TABS = [['profile', 'Profile', 'user'], ...(SUPER ? [['scoring', 'Deal scoring', 'chart'], ['integrations', 'Integrations', 'link']] : []),
-    ['notifications', 'Notifications', 'bell'], ['team', 'Team', 'users'], ['billing', 'Plan & billing', 'card']];
+    ['notifications', 'Notifications', 'bell'], ['team', 'Team', 'users'], ['api', 'API access', 'link'], ['billing', 'Plan & billing', 'card']];
   if (!SUPER && ['scoring', 'integrations'].includes(tab)) tab = 'profile';
   el.innerHTML = `<div class="page-head"><div><h1>Settings</h1><div class="sub">Customize your preferences, integrations, and account settings.</div></div></div>
     <div class="settings-wrap"><div class="card sub-nav" style="padding:8px">${TABS.map(([k, l, i]) => `<a href="#/settings/${k}" class="${tab === k ? 'on' : ''}">${ic(i, 17)}${l}</a>`).join('')}</div><div id="sBody" style="min-width:0"></div></div>`;
@@ -309,6 +330,7 @@ export async function settings(el, [tab = 'scoring']) {
   if (tab === 'scoring') return scoringTab(body);
   if (tab === 'integrations') return integrationsTab(body);
   if (tab === 'notifications') { location.hash = '#/alerts'; return; }
+  if (tab === 'api') return apiTab(body);
   if (tab === 'profile') {
     const p = s.profile, o = s.offer_defaults;
     body.innerHTML = `<div class="settings-cols"><div class="card card-pad"><h3 style="margin-bottom:14px">Investor profile</h3><div class="small muted" style="margin:-8px 0 14px">Auto-filled into every offer letter and email.</div>
@@ -592,4 +614,36 @@ export async function admin(el, [tab = 'companies']) {
       };
     });
   }
+}
+
+
+// Settings > API access: read-only keys for a company's own tools (Zapier, a CRM, a spreadsheet script).
+async function apiTab(body) {
+  const admin = ['admin', 'superadmin'].includes(S.meta.user?.role);
+  const paid = !!S.meta.org?.limits?.export;
+  const base = location.origin;
+  const draw = async (fresh) => {
+    const keys = admin ? await api('/api/keys').catch(() => []) : [];
+    body.innerHTML = `<div class="card card-pad"><h3>API access</h3>
+      <p class="small muted" style="margin:6px 0 14px">Read your leads from your own tools. Keys see the same counties and plan limits as your account. 60 requests a minute.</p>
+      ${!paid ? '<div class="info-banner">The API is on paid plans. <a href="#/billing" style="color:var(--green);font-weight:600;margin-left:6px">See plans</a></div>' : ''}
+      ${fresh ? `<div class="card card-pad" style="background:#F2F8F3;margin-bottom:14px"><b class="small">Your new key, shown only once</b><div class="row" style="gap:8px;margin-top:6px"><code id="newKey" style="word-break:break-all">${esc(fresh)}</code><button class="btn xs" id="copyKey">Copy</button></div></div>` : ''}
+      ${admin && paid ? `<div class="row" style="gap:8px;margin-bottom:12px"><input class="input" id="kLabel" placeholder="What is it for? e.g. Zapier" style="max-width:280px"><button class="btn primary" id="kNew">Create key</button></div>` : ''}
+      ${!admin ? '<p class="small muted">Only your company admin can create keys.</p>' : ''}
+      ${keys.length ? `<table class="table"><thead><tr><th>Key</th><th>For</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>${keys.map((k) => `<tr><td><code>${esc(k.prefix)}...</code></td><td>${esc(k.label || '')}</td><td>${esc((k.created || '').slice(0, 10))}</td><td>${k.last_used ? ago(k.last_used) : 'Never'}</td><td class="r">${k.revoked ? '<span class="pill p-grey tiny">Revoked</span>' : `<button class="btn xs" data-revoke="${k.id}">Revoke</button>`}</td></tr>`).join('')}</tbody></table>` : ''}
+      <h3 style="margin:20px 0 8px">How to call it</h3>
+      <pre class="code">curl -H "Authorization: Bearer YOUR_KEY" "${esc(base)}/v1/leads?min_score=80&amp;per=50"</pre>
+      <table class="table" style="margin-top:8px"><tbody>
+        <tr><td><code>GET /v1/leads</code></td><td class="small">Active leads, best score first. Filters: <code>county</code>, <code>min_score</code>, <code>updated_since</code> (YYYY-MM-DD), <code>page</code>, <code>per</code> (up to 500).</td></tr>
+        <tr><td><code>GET /v1/leads/{id}</code></td><td class="small">One lead with its tax history.</td></tr>
+        <tr><td><code>GET /v1/counties</code></td><td class="small">Your counties with lead counts, data grade and last update.</td></tr></tbody></table>
+      <p class="tiny muted" style="margin-top:10px">Owner contact data you get through the API is for your own outreach. Follow TCPA, Do Not Call and CAN-SPAM rules when you call, text or email owners.</p></div>`;
+    if ($('#kNew')) $('#kNew').onclick = async () => { try { const r = await api('/api/keys', { method: 'POST', body: { label: $('#kLabel').value } }); draw(r.key); } catch (e) { toast(e.message, true); } };
+    if ($('#copyKey')) $('#copyKey').onclick = () => { navigator.clipboard?.writeText(fresh); toast('Key copied.'); };
+    $$('[data-revoke]', body).forEach((b) => b.onclick = async () => {
+      if (!await ask({ title: 'Revoke this key?', text: 'Tools using it stop working at once.', danger: true, ok: 'Revoke' })) return;
+      await api('/api/keys/' + b.dataset.revoke, { method: 'DELETE' }); draw();
+    });
+  };
+  await draw();
 }

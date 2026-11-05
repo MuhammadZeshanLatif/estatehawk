@@ -99,6 +99,50 @@ def enrich(client, county, parcel_ids, step_cb=None):
     return done
 
 
+def fill_flood(county_id, limit=150):
+    from . import research
+    rows = db.q("""SELECT id, lat, lng FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NOT NULL AND flood_checked IS NULL
+                   ORDER BY score DESC LIMIT ?""", (county_id, limit))
+    misses = done = 0
+    s = __import__("requests").Session()
+    for r in rows:
+        f = research.flood(r["lat"], r["lng"], s)
+        if f is None:
+            misses += 1
+            if misses >= 3:
+                break
+            continue
+        misses = 0
+        db.run("UPDATE parcels SET flood_zone=?, flood_sfha=?, flood_checked=? WHERE id=?", (f["zone"], f["sfha"], now()[:10], r["id"]))
+        done += 1
+        time.sleep(0.2)
+    if rows:
+        print(f"county {county_id}: flood zone for {done} of {len(rows)} leads")
+    return done
+
+
+def watch_notes(county_id, removed, alerts):
+    """Leads a company keeps in its pipeline: write what changed on the county list into that lead's activity."""
+    changed = {a[3]: a for a in alerts if a[1] in ("owner_change", "amount_up")}
+    ids = list(dict.fromkeys(list(removed) + list(changed)))
+    if not ids:
+        return 0
+    rows = db.q(f"SELECT org_id, parcel_id FROM pipeline WHERE stage <> 'closed' AND parcel_id IN ({','.join('?' * len(ids))})", ids)
+    notes = []
+    for r in rows:
+        pid = r["parcel_id"]
+        if pid in removed:
+            text = "County list update: this property is no longer on the delinquent list. Taxes were likely paid or it was redeemed."
+        else:
+            a = changed[pid]
+            text = f"County list update: {a[4]} ({a[5]})."
+        notes.append((pid, now(), "note", text, "EstateHawk", r["org_id"]))
+    if notes:
+        with db.tx() as c:
+            c.executemany("INSERT INTO activities(parcel_id, ts, kind, text, author, org_id) VALUES(?,?,?,?,?,?)", notes)
+    return len(notes)
+
+
 def fill_from_state(county, limit=1500, addr_limit=400):
     """Leads with no address and no map point: center of the parcel from the Ohio statewide layer, its acres and the
     auditor record link; then a street address from the map point. Returns (placed, addressed)."""
@@ -149,7 +193,7 @@ def fill_from_state(county, limit=1500, addr_limit=400):
 
 
 EXTRA = ("mail_address", "mail_state", "mail_zip", "land_use", "land_value", "improvement_value",
-         "appraised_total", "cert_year", "legal_desc", "year_built", "acres", "lat", "lng")
+         "appraised_total", "cert_year", "legal_desc", "year_built", "acres", "lat", "lng", "sale_date", "min_bid", "sale_status")
 
 
 def drop_stray_points(county_id):
@@ -208,8 +252,12 @@ def sync_county(county_id, enrich_limit=700):
                 upd.append((r["owner_name"], r["amount_owed"], r["property_url"], d, r["street"], r["city"], r["zip"], pid))
             snap.append((pid, d, r["amount_owed"], r["owner_name"]))
         removed = [pid for pid in prev_active if pid not in seen]
+        gone = {r["id"]: r for r in db.q(f"SELECT id, street, city FROM parcels WHERE id IN ({','.join('?' * len(removed))})", removed)} if removed else {}
         for pid in removed:
-            alerts.append((now(), "paid_off", county_id, pid, "Taxes paid / removed from list", pid.split(":", 1)[1]))
+            g = gone.get(pid) or {}
+            where = ", ".join(x.title() for x in (g.get("street"), g.get("city")) if x) or f"Parcel {pid.split(':', 1)[1]}"
+            alerts.append((now(), "paid_off", county_id, pid, f"Off the county list: {where}",
+                           "Taxes were likely paid or the parcel redeemed. Check before you spend more on it."))
         with db.tx() as c:
             c.executemany("""INSERT INTO parcels(id, county_id, parcel_number, owner_name, school_district, street, city, state, zip,
                              amount_owed, property_url, first_seen, last_seen, is_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1)""", ins)
@@ -229,6 +277,7 @@ def sync_county(county_id, enrich_limit=700):
             for ks, vals in groups.items():
                 c.executemany(f"UPDATE parcels SET {', '.join(k + '=?' for k in ks)} WHERE id=?", vals)
             c.execute("UPDATE counties SET tax_year=COALESCE(?, tax_year), delinquent_count=? WHERE id=?", (year, len(rows), county_id))
+        watch_notes(county_id, removed, alerts)
         if new_ids and first_sync:
             alert("new_delinquent", f"{county['name']}: first sync found {len(new_ids)} delinquent properties",
                   "Scores are ready in Deals.", county_id)
@@ -242,6 +291,9 @@ def sync_county(county_id, enrich_limit=700):
         if (county.get("state") or "OH") == "OH":
             STATUS.update(step="Finding addresses from the Ohio parcel map", progress=94)
             fill_from_state(county)
+        # flood zones for the strongest leads (FEMA, free); stops after 3 misses in a row if FEMA is down
+        STATUS.update(step="Checking flood zones", progress=96)
+        fill_flood(county_id)
         # map coordinates for sites without a map link (street number needed for a match)
         # only parcels that are new or got an address today (or everything on a first sync / every Sunday), so misses are not retried daily
         recheck = first_sync or dt.date.today().weekday() == 6

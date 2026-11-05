@@ -387,7 +387,8 @@ def lgbs(c, state, county):
                             " ".join(v for v in (x.get("prop_address_one"), x.get("prop_address_two")) if v),
                             x.get("prop_city"), x.get("prop_zipcode"), url=None,
                             appraised_total=_num(x.get("value")), legal_desc=note,
-                            lat=geo[1], lng=geo[0]))
+                            lat=geo[1], lng=geo[0], sale_date=sale[:10] or None, min_bid=_num(x.get("minimum_bid")),
+                            sale_status=(x.get("status") or "")[:60] or None))
             out[-1]["state"] = (x.get("prop_state") or state)[:2]
         url = j.get("next")
         time.sleep(1.5)

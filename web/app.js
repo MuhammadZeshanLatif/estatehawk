@@ -220,7 +220,7 @@ export function countySelect(id = 'countySel', withAll = true, val = S.county) {
 
 // ---------- chrome ----------
 const NAV = [
-  ['deals', 'Deals', 'home'], ['map', 'Map', 'map'], ['alerts', 'Alerts', 'bell'], ['counties', 'Counties', 'county'],
+  ['deals', 'Deals', 'home'], ['map', 'Map', 'map'], ['alerts', 'Alerts', 'bell'], ['auctions', 'Auctions', 'gavel'], ['counties', 'Counties', 'county'],
   ['outreach', 'Outreach', 'send'], ['reports', 'Reports', 'chart'], ['settings', 'Settings', 'gear'],
 ];
 export function setViewOrg(id) {
@@ -251,10 +251,16 @@ function renderChrome() {
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
   const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
   const trial = o.plan === 'trial' && !viewing ? `<div class="demo-banner">${ic('lock', 16)}<span><b>Free trial:</b> ${o.days_left >= 0 ? o.days_left + ' days left' : 'ended'}. You can open ${o.reveals_left} more leads in full. Paid plans show every lead, owner and contact.</span><button class="btn xs primary" style="margin-left:auto" id="bannerUp">See plans</button></div>` : '';
-  $('#banner').innerHTML = viewing + trial + (m.settings.demo && m.super ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
+  const verify = m.user && m.user.email_verified === 0 && !viewing ? `<div class="demo-banner" style="background:#FFF6E6">${ic('mail', 16)}<span><b>Confirm your email</b> to open your free leads. We sent a link to ${esc(m.user.email)}.</span><button class="btn xs" style="margin-left:auto" id="bannerVerify">Resend link</button></div>` : '';
+  $('#banner').innerHTML = verify + viewing + trial + (m.settings.demo && m.super ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
     <a class="btn xs" style="margin-left:auto" href="#/settings/profile">Manage</a></div>` : '');
   if ($('#exitView')) $('#exitView').onclick = () => setViewOrg(null);
   if ($('#bannerUp')) $('#bannerUp').onclick = () => plansModal();
+  if ($('#bannerVerify')) $('#bannerVerify').onclick = async (e) => {
+    e.target.disabled = true;
+    try { const r = await api('/api/auth/resend-verify', { method: 'POST' }); toast(r.already ? 'Your email is already confirmed.' : 'Sent. Check your inbox and spam folder.'); }
+    catch (err) { toast(err.message, true); e.target.disabled = false; }
+  };
 }
 
 function initTopbar() {
@@ -383,22 +389,41 @@ export async function plansModal(note = '') {
     p.users == null ? 'Unlimited users' : `${p.users} ${p.users > 1 ? 'users' : 'user'}`,
     p.reveals ? `${p.reveals} leads in full` : 'Every lead in full: owner, address, contacts',
     p.export ? (p.export_day ? `CSV export (${p.export_day.toLocaleString()} leads a day) + letters` : 'CSV export + mail-merge letters') : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
-  const intro = canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
-    : bill.online ? 'Ask your company admin to upgrade the plan.' : 'Online payment is coming soon. To upgrade now, contact us and we switch your plan the same day.';
+  const intro = !isAdmin ? 'Only your company admin can change the plan. Ask them to pick one here.'
+    : canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
+    : 'Pick a plan and we switch your account the same business day. We email you the payment link, nothing is charged now.';
+  const pickBtn = (k, p) => !p.price || !isAdmin ? ''
+    : `<button class="btn primary sm" data-${canBuy ? 'buy' : 'req'}="${k}" style="width:100%">Choose ${esc(p.label)}</button>`;
   modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0">${Object.entries(P).map(([k, p]) => `
       <div class="card card-pad" style="display:flex;flex-direction:column;${k === cur ? 'border:2px solid var(--green)' : ''}"><b>${esc(p.label)}</b>
         <div style="font-size:24px;font-weight:700;margin:6px 0">${p.price ? '$' + p.price : 'Free'}<span class="small muted" style="font-weight:400">${p.price ? ' / month' : ''}</span></div>
         <ul class="small" style="padding-left:16px;margin:0 0 10px;line-height:1.7;flex:1">${feat(k, p).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
-        ${k === cur ? '<div class="pill p-green tiny">Current plan</div>' : (canBuy && p.price ? `<button class="btn primary sm" data-buy="${k}" style="width:100%">Choose ${esc(p.label)}</button>` : '')}</div>`).join('')}</div>
+        ${k === cur ? '<div class="pill p-green tiny" style="text-align:center">Current plan</div>' : pickBtn(k, p)}</div>`).join('')}</div>
     <div class="row" style="justify-content:flex-end;gap:8px">${bill.has_portal && isAdmin ? '<button class="btn" id="mBill">Manage billing</button>' : ''}<button class="btn" data-close>Close</button>
-      ${canBuy ? '' : `<a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade: ' + (S.meta?.org?.name || ''))}">Contact us to upgrade</a>`}</div>`, (el) => {
+      <button class="btn" id="mAsk">${ic('mail', 15)} Ask a question</button></div>`, (el) => {
     $$('[data-buy]', el).forEach((b) => b.onclick = async () => {
       const label = b.textContent; b.disabled = true; b.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 14)}</span> Opening checkout...`;
       try { const r = await api('/api/billing/checkout', { method: 'POST', body: { plan: b.dataset.buy } }); location.href = r.url; }
       catch (e) { toast(e.message, true); b.disabled = false; b.textContent = label; }
     });
     if ($('#mBill', el)) $('#mBill', el).onclick = openPortal;
+    $$('[data-req]', el).forEach((b) => b.onclick = async () => {
+      const k = b.dataset.req, label = P[k].label;
+      b.disabled = true; b.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 14)}</span> Sending...`;
+      try {
+        await api('/api/billing/request', { method: 'POST', body: { plan: k } });
+        b.outerHTML = `<div class="pill p-green tiny" style="text-align:center">${ic('check', 12)} Requested</div>`;
+        toast(`Thanks! We got your ${label} request and will email you today.`);
+      } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = `Choose ${label}`; }
+    });
+    $('#mAsk', el).onclick = async () => {
+      const m = await ask({ title: 'Ask EstateHawk', icon: 'mail', text: `We reply to ${esc(S.meta?.user?.email || 'your email')} within one business day.`,
+        input: { placeholder: 'Your question about plans, counties or payment', hint: `Or email us at ${CONTACT}` }, ok: 'Send', cancel: 'Back' });
+      if (m == null) return plansModal(note);
+      try { await api('/api/billing/request', { method: 'POST', body: { message: m } }); toast('Message sent. We reply within one business day.'); }
+      catch (e) { toast(e.message, true); }
+    };
   });
 }
 
@@ -525,7 +550,7 @@ new MutationObserver(() => { clearTimeout(labelControls.t); labelControls.t = se
 // ---------- router ----------
 const routes = {
   deals: V.deals, deal: V.deal, map: V.mapView, alerts: V.alerts, counties: V.counties, outreach: V.outreach,
-  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView,
+  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView, auctions: V.auctions,
 };
 let cleanup = null;
 let routeSeq = 0;

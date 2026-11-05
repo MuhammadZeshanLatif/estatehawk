@@ -86,6 +86,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
   action TEXT, detail TEXT, ip TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit_log(ts);
+CREATE TABLE IF NOT EXISTS research_cache (parcel_id TEXT NOT NULL, kind TEXT NOT NULL, ts TEXT, data TEXT, PRIMARY KEY (parcel_id, kind));
+CREATE TABLE IF NOT EXISTS api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, org_id INTEGER NOT NULL, key_hash TEXT NOT NULL, prefix TEXT, label TEXT,
+  created TEXT, last_used TEXT, revoked INTEGER DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE COLLATE NOCASE, name TEXT, pw TEXT,
   role TEXT DEFAULT 'member', active INTEGER DEFAULT 1, created TEXT, last_login TEXT
@@ -219,7 +224,9 @@ _con = None
 NEW_PARCEL_COLS = {"cert_year": "INTEGER", "beds": "INTEGER", "baths_full": "INTEGER", "baths_half": "INTEGER",
                    "year_built": "INTEGER", "living_area": "INTEGER", "style": "TEXT", "condition": "TEXT",
                    "stories": "REAL", "photo_url": "TEXT", "enrich_v": "INTEGER DEFAULT 0",
-                   "contact_status": "TEXT", "contact_checked": "TEXT"}
+                   "contact_status": "TEXT", "contact_checked": "TEXT",
+                   "flood_zone": "TEXT", "flood_sfha": "INTEGER", "flood_checked": "TEXT",
+                   "sale_date": "TEXT", "min_bid": "REAL", "sale_status": "TEXT"}
 
 
 def con():
@@ -298,6 +305,9 @@ DEFAULT_SETTINGS = {
     "contact_lookup": {"enabled": True, "per_day": 50, "min_score": 0},
     "onboarded": False,
     "demo": False,
+    # deal calculator: what the investor wants to make and how careful to be
+    "calc_defaults": {"profit_pct": 20, "risk": "medium", "repair_per_sqft": 25, "buy_closing_pct": 2, "sell_closing_pct": 8,
+                      "hold_months": 6, "monthly_hold": 250},
 }
 
 
@@ -338,6 +348,8 @@ def migrate(c):
     """One-time upgrade of a single-team database to companies. Existing data becomes company #1 (EstateHawk HQ)."""
     if "token_ver" not in columns(c, "users"):  # session version: logout / password change ends old sessions
         c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
+    if "email_verified" not in columns(c, "users"):  # accounts made before this are trusted; new email signups confirm
+        c.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 1")
     for t in ("activities", "tasks", "offers", "users"):
         if "org_id" not in columns(c, t):
             c.execute(f"ALTER TABLE {t} ADD COLUMN org_id INTEGER")
@@ -347,6 +359,10 @@ def migrate(c):
         c.execute("INSERT INTO pipeline_new(org_id,parcel_id,stage,updated_at,fee,closed_at) SELECT 1,parcel_id,stage,updated_at,fee,closed_at FROM pipeline")
         c.execute("DROP TABLE pipeline")
         c.execute("ALTER TABLE pipeline_new RENAME TO pipeline")
+    if "assigned_to" not in columns(c, "pipeline"):  # team member who works the lead
+        c.execute("ALTER TABLE pipeline ADD COLUMN assigned_to INTEGER")
+    if "lost_reason" not in columns(c, "pipeline"):
+        c.execute("ALTER TABLE pipeline ADD COLUMN lost_reason TEXT")
     if not c.execute("SELECT id FROM orgs WHERE id=1").fetchone():
         from datetime import datetime
         c.execute("INSERT INTO orgs(id,name,plan,status,created) VALUES(?,?,?,?,?)",
@@ -366,7 +382,7 @@ def migrate(c):
 
 
 # settings that each company keeps for itself (the rest are global, owned by the super admin)
-ORG_KEYS = {"profile", "offer_defaults", "alert_rules", "channels", "digest", "deal_types", "onboarded"}
+ORG_KEYS = {"profile", "offer_defaults", "alert_rules", "channels", "digest", "deal_types", "onboarded", "calc_defaults"}
 
 
 def _org():
