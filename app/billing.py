@@ -98,7 +98,7 @@ def start_checkout(org, plan, email, site):
     j = _api("POST", "/checkouts", json={
         "product_id": pid, "request_id": f"org{org}-{plan}-{int(time.time())}",
         "customer": {"email": email} if email else None,
-        "success_url": f"{site}/app#/billing",
+        "success_url": f"{site}/app#/billing/return",
         "metadata": {"org_id": str(org), "plan": plan},
     })
     save(org, checkout_id=j.get("id"), pending_plan=plan, mode=mode())

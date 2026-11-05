@@ -16,7 +16,7 @@ export async function alerts(el) {
   <div class="page-head"><div><h1>Alerts</h1><div class="sub">Get notified about new opportunities, changes, and important updates in your target counties.</div></div>
     <div class="right"><div class="row">${ic('pin', 18)}${countySelect('aCounty')}</div>${lastUpdatedBox()}</div></div>
   <div class="alerts-grid">
-    <div style="min-width:0"><div class="row between"><div class="tabs grow" id="aTabs"></div><button class="btn sm" id="readAll" style="margin-left:12px">${ic('check', 15)} Mark all read</button></div>
+    <div style="min-width:0"><div class="alert-head"><div class="tabs grow" id="aTabs"></div><button class="btn sm" id="readAll">${ic('check', 15)} Mark all read</button></div>
       <div class="card" id="feed"></div></div>
     <div class="col" style="gap:18px">
       <div class="card card-pad"><h3>Alert rules</h3><div class="small muted" style="margin-bottom:8px">Get notified when properties match your criteria.</div>
@@ -45,9 +45,9 @@ export async function alerts(el) {
     r.rows.forEach((a) => groups[a.ts.startsWith(today) ? 'Today' : a.ts.startsWith(yest) ? 'Yesterday' : 'Earlier'].push(a));
     $('#feed').innerHTML = Object.entries(groups).filter(([, v]) => v.length).map(([g, rows]) => `<div class="feed-group">${g}</div>` + rows.map((a) => `
       <div class="feed-row" data-id="${a.id}" data-p="${esc(a.parcel_id || '')}"><span class="${a.read ? '' : 'unread'}"></span>${alertIcon(a.type).replace('border-radius:50%', 'border-radius:10px;width:38px;height:38px')}
-        <div style="min-width:0"><b style="font-weight:600">${esc(a.title)}</b><div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.body || '')}</div></div>
+        <div style="min-width:0"><b style="font-weight:600">${esc(a.title)}</b><div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.body || '')}</div><div class="tiny muted feed-meta">${esc([a.county_name, g === 'Earlier' || g === 'Yesterday' ? fmtDate(a.ts, { month: 'short', day: 'numeric' }) : ago(a.ts)].filter(Boolean).join(' · '))}</div></div>
         <span class="small muted c4">${esc(a.county_name || '')}</span><span class="small muted c5">${g === 'Earlier' || g === 'Yesterday' ? fmtDate(a.ts, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ago(a.ts)}</span>
-        <span>${a.score != null ? scorePill(a.score) : ''}</span><a class="small" style="color:var(--green);font-weight:600" ${a.parcel_id ? `href="#/deal/${encodeURIComponent(a.parcel_id)}"` : 'href="#/counties"'}>View</a>
+        <span class="c6">${a.score != null ? scorePill(a.score) : ''}</span><a class="small" style="color:var(--green);font-weight:600" ${a.parcel_id ? `href="#/deal/${encodeURIComponent(a.parcel_id)}"` : 'href="#/counties"'}>View</a>
         <button class="icon-btn more" style="width:30px;height:30px">${ic('dots', 16)}</button></div>`).join('')).join('') || '<div class="empty">No alerts here yet. They appear after each nightly sync.</div>';
   }
   $('#aTabs').onclick = (e) => { const a = e.target.closest('[data-t]'); if (a) { tab = a.dataset.t; load(); } };

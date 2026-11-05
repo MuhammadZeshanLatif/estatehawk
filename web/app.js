@@ -174,6 +174,7 @@ export function menu(anchor, items) {
   document.body.append(d);
   const r = anchor.getBoundingClientRect();
   d.style.position = 'fixed';
+  d.style.right = 'auto';
   d.style.top = Math.min(r.bottom + 4, innerHeight - d.offsetHeight - 8) + 'px';
   d.style.left = Math.max(8, Math.min(r.right - d.offsetWidth, innerWidth - d.offsetWidth - 8)) + 'px';
   d.onclick = (e) => { const b = e.target.closest('[data-i]'); if (b) { closeMenus(); items[+b.dataset.i].fn(); } };
@@ -401,8 +402,9 @@ async function openPortal() {
   try { const r = await api('/api/billing/portal', { method: 'POST' }); location.href = r.url; } catch (e) { toast(e.message, true); }
 }
 
-// Back from the payment page: ask the server to check the payment, then show the result.
+// #/billing: the company's plan. #/billing/return (back from the payment page): check the payment first.
 async function billingView(el) {
+  if (!location.hash.startsWith('#/billing/return')) return billingOverview(el);
   el.innerHTML = `<div class="card card-pad" style="max-width:520px;margin:40px auto;text-align:center"><span class="spin" style="display:inline-flex">${ic('refresh', 26)}</span><h2>Checking your payment...</h2><p class="muted small">This takes a few seconds.</p></div>`;
   let r = null;
   for (let i = 0; i < 5; i++) {
@@ -421,6 +423,29 @@ async function billingView(el) {
     <div class="row" style="justify-content:center;gap:8px">${paid ? '<a class="btn primary" href="#/deals">Go to my leads</a>' : '<button class="btn" id="bAgain">Check again</button><button class="btn primary" id="bPlans">See plans</button>'}</div></div>`;
   if ($('#bAgain')) $('#bAgain').onclick = () => billingView(el);
   if ($('#bPlans')) $('#bPlans').onclick = () => plansModal();
+}
+
+async function billingOverview(el) {
+  let b = {};
+  try { b = await api('/api/billing'); } catch (e) { /* plan still shows from meta */ }
+  const o = S.meta.org || {}, L = o.limits || {};
+  const isAdmin = ['admin', 'superadmin'].includes(S.meta.user?.role);
+  const line = o.plan === 'trial' ? (o.days_left != null ? `${Math.max(o.days_left, 0)} days left in your free trial` : 'Free trial')
+    : b.period_end ? `Renews ${fmtDate(b.period_end, { month: 'short', day: 'numeric', year: 'numeric' })}` : (b.status ? `Status: ${b.status}` : '');
+  const feats = [L.counties == null ? 'All counties' : `${L.counties} ${L.counties > 1 ? 'counties' : 'county'}`, L.users == null ? 'Unlimited users' : `${L.users} ${L.users > 1 ? 'users' : 'user'}`,
+    L.reveals ? `${o.reveals_left ?? L.reveals} of ${L.reveals} owner contacts left` : 'Every owner contact', L.export ? `CSV export${L.export_day ? `, ${num(L.export_day)} leads a day` : ''}` : 'No CSV export'];
+  el.innerHTML = `<div class="page-head"><div><h1>Plan &amp; billing</h1><div class="sub">Your plan, what it includes and your invoices.</div></div></div>
+    <div class="card card-pad" style="max-width:620px">
+      <div class="row between" style="flex-wrap:wrap;gap:12px"><div><div class="small muted">Current plan</div><h2 style="margin:2px 0">${esc(o.label || o.plan || '')}</h2>
+        <div class="small muted">${esc(line)}</div></div>
+        ${b.pending_plan ? `<span class="pill">Waiting for payment: ${esc(b.pending_plan)}</span>` : ''}</div>
+      <ul style="margin:16px 0 18px;padding-left:18px;line-height:1.8">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+      ${isAdmin ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" id="bPlans">${o.plan === 'trial' ? 'Choose a plan' : 'Change plan'}</button>
+        ${b.has_portal ? '<button class="btn" id="bPortal">Invoices and card</button>' : ''}</div>`
+      : '<p class="small muted">Only your company admin can change the plan.</p>'}
+    </div>`;
+  if ($('#bPlans')) $('#bPlans').onclick = () => plansModal();
+  if ($('#bPortal')) $('#bPortal').onclick = () => openPortal();
 }
 
 export function showExpired(msg) {
