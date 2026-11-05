@@ -104,6 +104,7 @@ export async function deals(el) {
   async function loadSide() {
     const [pts, al] = await Promise.all([api(`/api/map?county=${S.county}&ptype=homes`), api('/api/alerts?limit=4&county=' + S.county)]);
     const L = window.L, mm = $('#miniMap');
+    if (!mm || !document.body.contains(mm)) return;  // the user left the page while the map data was loading
     if (!mm._map) { mm._map = L.map(mm, { zoomControl: true, attributionControl: false, scrollWheelZoom: false }); baseTiles(mm._map); mm._layer = L.layerGroup().addTo(mm._map); }
     mm._layer.clearLayers();
     const top = pts.slice(0, 120);
@@ -158,7 +159,8 @@ export async function deals(el) {
     watchSync(() => { loadStats(); loadLeads(); loadSide(); });
   };
   if (S.meta.sync.running) watchSync(() => { loadStats(); loadLeads(); loadSide(); });
-  await Promise.all([loadStats(), loadLeads(), loadSide()]);
+  // the side map and alerts are extras: if they fail, the leads table still shows
+  await Promise.all([loadStats().catch(console.error), loadLeads(), loadSide().catch(console.error)]);
 }
 
 // ================================================================ DEAL DETAIL
