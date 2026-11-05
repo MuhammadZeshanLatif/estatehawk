@@ -164,7 +164,14 @@ def rentcast_limit():
 
 
 def _usage_key():
-    return "rentcast:" + dt.date.today().strftime("%Y-%m")
+    """RentCast resets the quota on the day of the month the plan was activated (RENTCAST_CYCLE_DAY), not on the 1st."""
+    try:
+        day = min(max(int(os.environ.get("RENTCAST_CYCLE_DAY", "1")), 1), 28)
+    except ValueError:
+        day = 1
+    t = dt.date.today()
+    y, m = (t.year, t.month) if t.day >= day else ((t.year - 1, 12) if t.month == 1 else (t.year, t.month - 1))
+    return f"rentcast:{y:04d}-{m:02d}-{day:02d}"
 
 
 def rentcast_used():
@@ -188,7 +195,7 @@ def comps(p, refresh=False, fetch=True):
     if used >= rentcast_limit():
         if cached:
             return json.loads(cached["data"])
-        return {"error": "Value lookups for this month are used up. They start again on the 1st."}
+        return {"error": "Value lookups for this month are used up. They start again next billing month."}
     db.run("""INSERT INTO org_settings(org_id,key,value) VALUES(0,?,?)
               ON CONFLICT(org_id,key) DO UPDATE SET value=excluded.value""", (_usage_key(), str(used + 1)))
     addr = ", ".join(x for x in (p.get("street"), p.get("city"), f"{p.get('state') or 'OH'} {p.get('zip') or ''}".strip()) if x)
