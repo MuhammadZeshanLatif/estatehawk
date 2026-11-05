@@ -95,6 +95,21 @@ def main(argv):
                 if placed or addressed:
                     jobs.rescore([r["id"] for r in db.q("SELECT id FROM parcels WHERE county_id=?", (cid,))], quiet=True)
         return 0
+    if cmd == "flood-probe":
+        # why flood lookups fail: try every FEMA source with a long timeout and print what comes back
+        import time, requests
+        from . import research
+        lat, lng = (float(argv[2]), float(argv[3])) if len(argv) > 3 else (40.7426, -84.1052)  # Lima, Ohio
+        for name, url in research.FLOOD_SOURCES:
+            t = time.time()
+            try:
+                r = requests.get(url, timeout=60, headers={"User-Agent": research.UA}, params={
+                    "geometry": f"{lng},{lat}", "geometryType": "esriGeometryPoint", "inSR": "4326",
+                    "spatialRel": "esriSpatialRelIntersects", "outFields": "FLD_ZONE,SFHA_TF", "returnGeometry": "false", "f": "json"})
+                print(name, r.status_code, f"{time.time() - t:.1f}s", r.text[:300])
+            except Exception as e:
+                print(name, "ERROR", f"{time.time() - t:.1f}s", repr(e)[:300])
+        return 0
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)
