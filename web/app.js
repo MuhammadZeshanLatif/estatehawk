@@ -528,7 +528,9 @@ const routes = {
   reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView,
 };
 let cleanup = null;
+let routeSeq = 0;
 async function route() {
+  const my = ++routeSeq;
   closeMenus();
   $('#modal').hidden = true;
   const [, name = 'deals', ...rest] = location.hash.split('/');
@@ -560,6 +562,7 @@ async function route() {
     cleanup = await fn(view, rest.map(decodeURIComponent));
   } catch (e) {
     console.error(e);
+    if (my !== routeSeq) return;  // an older page failed after the user moved on: keep the page they are on
     view.innerHTML = `<div class="card empty">Something went wrong: ${esc(e.message)}</div>`;
   }
 }

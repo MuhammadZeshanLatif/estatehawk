@@ -78,6 +78,7 @@ export async function deals(el) {
     const s = await api('/api/stats?county=' + S.county);
     const chg = (v, txt) => v == null ? `<div class="foot">${txt}</div>` : `<div class="foot"><span class="chg ${v < 0 ? 'down' : ''}" style="margin:0">${v < 0 ? '' : '+'}${v}%</span> ${txt}</div>`;
     $('#stats').innerHTML = [
+      ['layers', 'tone-blue', 'Total leads', num(s.active), `<div class="foot">${s.homes != null && s.homes < s.active ? `${num(s.homes)} homes, ${num(s.active - s.homes)} land/other` : `In ${S.county === 'all' ? (s.counties === 1 ? 'your county' : `${s.counties} counties`) : esc(countyName(S.county) || 'this county')}`}</div>`, '#/deals'],
       ['doc', 'tone-green', 'New leads today', num(s.new_today), chg(s.new_change, 'vs. yesterday'), '#/deals'],
       ['star', 'tone-amber', 'High-score deals', num(s.high_score), chg(s.high_change, '80+ vs. last week'), '#/map'],
       ['house', 'tone-green', 'Avg equity', kmoney(s.avg_equity), '<div class="foot">Estimated per deal</div>', ''],
@@ -92,7 +93,7 @@ export async function deals(el) {
     $('#prev').disabled = r.page <= 1; $('#next').disabled = r.page * r.per >= r.total;
     $('#leadTable tbody').innerHTML = r.rows.map((p) => `<tr data-id="${esc(p.id)}">
       <td><input type="checkbox" class="chk" aria-label="Select ${esc(p.street || p.parcel_number || 'this lead')}" ${chosen.has(p.id) ? 'checked' : ''}></td>
-      <td><div class="prop">${thumb(p)}<div><b>${esc(title(p.street))}</b><span>${esc(place(p))}</span>${homeLine(p) ? `<span style="display:block;color:var(--ink2)">${homeLine(p)}</span>` : ''}</div></div></td>
+      <td><div class="prop">${thumb(p)}<div><b>${esc(title(p.street) || 'Address not listed by county')}</b><span>${esc(place(p))}</span>${homeLine(p) ? `<span style="display:block;color:var(--ink2)">${homeLine(p)}</span>` : ''}</div></div></td>
       <td class="hide-m"><div style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title(p.owner_name))}">${p.locked ? `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Locked</span>` : esc(title(p.owner_name))}</div>${p.contact_status === 'found' ? ` <span class="pill p-green tiny">${ic('phone', 11)} Contact</span>` : p.contact_status === 'private' ? ' <span class="pill tiny" style="background:#EEE;color:#555">Private</span>' : ''}${p.mail_state && p.mail_state !== p.state ? ` <span class="pill p-amber tiny" style="padding:1px 7px">Out of state: ${esc(p.mail_state)}</span>` : ''}</td>
       <td class="r num">${money(p.total_due ?? p.amount_owed)}</td>
       <td class="r num hide-m hide-xl">${yrs(p.years_behind)}</td>
@@ -103,6 +104,7 @@ export async function deals(el) {
   async function loadSide() {
     const [pts, al] = await Promise.all([api(`/api/map?county=${S.county}&ptype=homes`), api('/api/alerts?limit=4&county=' + S.county)]);
     const L = window.L, mm = $('#miniMap');
+    if (!mm || !document.body.contains(mm)) return;  // the user left the page while the map data was loading
     if (!mm._map) { mm._map = L.map(mm, { zoomControl: true, attributionControl: false, scrollWheelZoom: false }); baseTiles(mm._map); mm._layer = L.layerGroup().addTo(mm._map); }
     mm._layer.clearLayers();
     const top = pts.slice(0, 120);
@@ -157,7 +159,8 @@ export async function deals(el) {
     watchSync(() => { loadStats(); loadLeads(); loadSide(); });
   };
   if (S.meta.sync.running) watchSync(() => { loadStats(); loadLeads(); loadSide(); });
-  await Promise.all([loadStats(), loadLeads(), loadSide()]);
+  // the side map and alerts are extras: if they fail, the leads table still shows
+  await Promise.all([loadStats().catch(console.error), loadLeads(), loadSide().catch(console.error)]);
 }
 
 // ================================================================ DEAL DETAIL

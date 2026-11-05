@@ -39,7 +39,9 @@ def stats():
     try:
         leads = db.q1("SELECT COUNT(*) n FROM parcels WHERE is_active=1 AND demo=0")["n"]
         rows = db.q("""SELECT c.id, c.name, c.state, c.last_sync,
-                       (SELECT COUNT(*) FROM parcels p WHERE p.county_id=c.id AND p.is_active=1) n
+                       (SELECT COUNT(*) FROM parcels p WHERE p.county_id=c.id AND p.is_active=1) n,
+                       (SELECT COUNT(*) FROM parcels p WHERE p.county_id=c.id AND p.is_active=1
+                          AND (p.lat IS NOT NULL OR COALESCE(p.street,'') <> '')) good
                        FROM counties c WHERE c.enabled=1 AND c.demo=0 ORDER BY c.state, c.name""")
     except Exception:
         leads, rows = 0, []
@@ -505,7 +507,9 @@ def reset(request):
 
 def signup(request):
     s = stats()
-    opts = "".join(f'<option value="{c["id"]}">{esc(c["name"])}, {c["state"]} ({c["n"]:,} leads)</option>' for c in sorted(s["counties"], key=lambda c: (c["state"], c["name"])))
+    # only counties whose leads come with an address or a map point: a new trial must see photos and real addresses
+    ready = [c for c in s["counties"] if c.get("good", 0) >= 0.6 * c["n"]]
+    opts = "".join(f'<option value="{c["id"]}">{esc(c["name"])}, {c["state"]} ({c["n"]:,} leads)</option>' for c in sorted(ready, key=lambda c: (c["state"], c["name"])))
     body = (f'<section class="sec" style="padding-top:46px"><div class="wrap"><form class="form" data-api="/api/auth/signup" data-next="/app" novalidate>'
             f'<h1>Start your free trial</h1><p class="sub">14 days free. One county. No credit card.</p><div class="msg" role="alert"></div>'
             f'<div class="field"><label for="s-county">Your first county</label><select id="s-county" name="county_id" required><option value="">Choose a county</option>{opts}</select></div>'

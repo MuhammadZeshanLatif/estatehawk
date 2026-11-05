@@ -79,6 +79,10 @@ h3{font-size:15px;margin:0;font-weight:600}
 .card-head .right{margin-left:auto}
 .grid{display:grid;gap:18px}
 .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+#stats.stats{grid-template-columns:repeat(5,minmax(0,1fr))}
+#stats .stat{padding:16px 14px;gap:12px}#stats .stat .val{font-size:24px}
+@media (max-width:1480px){#stats .stat>.ico{display:none}}
+@media (max-width:1180px) and (min-width:761px){#stats.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .stat{display:flex;gap:14px;padding:18px 18px;align-items:flex-start}
 .stat .ico{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;flex:none}
 .stat .lbl{color:var(--ink2);font-size:13px}

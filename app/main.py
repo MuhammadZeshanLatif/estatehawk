@@ -135,7 +135,12 @@ async def auth_signup(request: Request):
 
 
 def _county_ok(cid):
-    return bool(cid) and bool(db.q1("SELECT 1 FROM counties WHERE id=? AND enabled=1 AND demo=0", (cid,)))
+    """Open for new trials: enabled, real, and most leads come with an address or a map point."""
+    if not cid or not db.q1("SELECT 1 FROM counties WHERE id=? AND enabled=1 AND demo=0", (cid,)):
+        return False
+    r = db.q1("""SELECT COUNT(*) n, SUM(CASE WHEN lat IS NOT NULL OR COALESCE(street,'') <> '' THEN 1 ELSE 0 END) good
+                 FROM parcels WHERE county_id=? AND is_active=1""", (cid,))
+    return bool(r and r["n"] and (r["good"] or 0) >= 0.6 * r["n"])
 
 
 def _new_trial(request, name, email, pw_hash, company, cid, ip, how):
@@ -513,9 +518,10 @@ def stats(county: str = "all"):
     cc, _ = county_filter(None, "counties")
     ct = db.q1(f"SELECT COUNT(*) n, COUNT(DISTINCT state) st FROM counties WHERE enabled=1{cc.replace('counties.county_id', 'counties.id')}")
     active = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1{s}", a)["n"]
+    homes = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1 AND (p.property_type IN ('Single family','Residential') OR p.property_type IS NULL OR p.property_type IN ('Unknown','Other')){s}", a)["n"]
     pct = lambda n, o: (round((n - o) * 100 / o) if o else None)
     return {"new_today": new_today, "new_change": pct(new_today, new_y), "high_score": hi, "high_change": pct(hi, hi_wk),
-            "avg_equity": round(eq or 0), "counties": ct["n"], "states": ct["st"], "active": active}
+            "avg_equity": round(eq or 0), "counties": ct["n"], "states": ct["st"], "active": active, "homes": homes}
 
 
 # ------------------------------------------------------------------ parcels
