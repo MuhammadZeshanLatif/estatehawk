@@ -84,6 +84,16 @@ def main(argv):
             if n:
                 print(r["name"], "removed", n)
         return 0
+    if cmd == "fill-ohio":
+        # map points + addresses from the Ohio statewide layers, for counties whose list has parcel numbers only
+        ids = [int(x) for x in argv[2:]] or [r["id"] for r in db.q("SELECT id FROM counties WHERE state='OH' AND enabled=1 AND demo=0")]
+        for cid in ids:
+            c = db.q1("SELECT * FROM counties WHERE id=?", (cid,))
+            if c:
+                placed, addressed = jobs.fill_from_state(c, addr_limit=3000)
+                if placed or addressed:
+                    jobs.rescore([r["id"] for r in db.q("SELECT id FROM parcels WHERE county_id=?", (cid,))], quiet=True)
+        return 0
     if cmd == "county":
         res = jobs.sync_county(int(argv[2]), enrich_limit=int(argv[3]) if len(argv) > 3 else 1500)
         print(res)
