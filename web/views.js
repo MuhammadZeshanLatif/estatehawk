@@ -4,6 +4,8 @@ import {
   toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
 } from './app.js';
 export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
+import { loadResearch, lockedResearch, compareModal } from './research.js';
+export { auctions } from './research.js';
 
 const GREEN = '#14532D', AMBER = '#E0A030', GREY = '#8C938F';
 export const scoreColor = (s) => s >= 85 ? '#1F7A45' : s >= 65 ? AMBER : GREY;
@@ -57,7 +59,7 @@ export async function deals(el) {
         <span class="small muted" id="pageInfo"></span>
         <div class="pager"><button class="btn sm" id="prev" aria-label="Previous page">${ic('left', 16)}</button><button class="btn sm" id="next" aria-label="Next page">${ic('right', 16)}</button></div>
       </div>
-      <div id="bulk" class="row hide" style="padding:0 20px 12px"><b class="small" id="bulkN"></b><button class="btn xs" id="bulkPipe">${ic('plus', 14)} Add to pipeline</button><button class="btn xs" id="bulkOffer">${ic('letter', 14)} Draft offers</button><a class="btn xs" id="bulkCsv">${ic('download', 14)} Export CSV</a></div>
+      <div id="bulk" class="row hide" style="padding:0 20px 12px"><b class="small" id="bulkN"></b><button class="btn xs" id="bulkCmp" title="Pick 2 to 4 leads">${ic('chart', 14)} Compare</button><button class="btn xs" id="bulkPipe">${ic('plus', 14)} Add to pipeline</button><button class="btn xs" id="bulkOffer">${ic('letter', 14)} Draft offers</button><a class="btn xs" id="bulkCsv">${ic('download', 14)} Export CSV</a></div>
       <div style="overflow-x:auto"><table class="table" id="leadTable"><thead><tr>
         <th style="width:32px"><input type="checkbox" id="allChk" aria-label="Select all leads on this page"></th><th>Property</th><th class="hide-m">Owner</th><th class="r">Taxes Owed</th>
         <th class="r hide-m hide-xl">Years Behind</th><th class="r hide-m">Est. Value</th><th style="text-align:center">Deal Score</th><th class="hide-m">Actions</th>
@@ -132,7 +134,7 @@ export async function deals(el) {
     $('#mApply', m).onclick = () => { st.ptype = $('#mType', m).value; st.min_equity = $('#mEq', m).value; st.new_days = $('#mNew', m).value; st.out_of_state = $('#mOos', m).checked ? '1' : ''; st.sort = $('#mSort', m).value; close(); reload(); };
   });
   const tbody = $('#leadTable tbody');
-  const updBulk = () => { $('#bulk').classList.toggle('hide', !chosen.size); $('#bulkN').textContent = `${chosen.size} selected`; $('#bulkCsv').href = '/api/parcels/export.csv?' + qs(); };
+  const updBulk = () => { $('#bulk').classList.toggle('hide', !chosen.size); $('#bulkN').textContent = `${chosen.size} selected`; $('#bulkCmp').disabled = chosen.size < 2 || chosen.size > 4; $('#bulkCsv').href = '/api/parcels/export.csv?' + qs(); };
   tbody.onclick = (e) => {
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const id = tr.dataset.id;
@@ -149,6 +151,7 @@ export async function deals(el) {
     location.hash = '#/deal/' + encodeURIComponent(id);
   };
   $('#allChk').onchange = (e) => { $$('.chk', tbody).forEach((c) => { c.checked = e.target.checked; const id = c.closest('tr').dataset.id; e.target.checked ? chosen.add(id) : chosen.delete(id); }); updBulk(); };
+  $('#bulkCmp').onclick = () => compareModal([...chosen]);
   $('#bulkPipe').onclick = async () => { for (const id of chosen) await api(`/api/parcels/${encodeURIComponent(id)}/stage`, { method: 'POST', body: { stage: 'new' } }); toast(`${chosen.size} leads added to Outreach`); chosen.clear(); updBulk(); loadLeads(); };
   $('#bulkOffer').onclick = async () => { const ids = [...chosen]; for (const id of ids) await api(`/api/parcels/${encodeURIComponent(id)}/stage`, { method: 'POST', body: { stage: 'new' } }); const r = await api('/api/batch-offers', { method: 'POST', body: { ids } }); toast(`${r.count} offer drafts created`); open('/letters?ids=' + encodeURIComponent(ids.join(','))); };
   $('#syncBtn').onclick = async () => {
@@ -182,7 +185,9 @@ export async function deal(el, [rawId]) {
     <div class="row" style="margin-left:24px"><span class="pill p-green" style="padding:6px 8px 6px 14px;font-size:13px">Deal score ${scorePill(p.score)}</span>
       ${!p.is_active ? '<span class="pill p-grey">Paid / off list</span>' : ''}${stageLabel ? `<span class="pill p-blue">${esc(stageLabel)}</span>` : ''}</div>
     <div class="right">
+      <a class="btn" id="reportBtn" href="/report/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">${ic('doc', 16)} Report</a>
       <button class="btn" id="shareBtn">${ic('share', 16)} Share</button>
+      ${(S.meta.team || []).length > 1 ? `<select class="select" id="assignSel" aria-label="Assigned to" style="width:auto"><option value="">Not assigned</option>${S.meta.team.map((u) => `<option value="${u.id}" ${u.id === p.assigned_to ? 'selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select>` : ''}
       <button class="btn" id="listBtn">${ic('bookmark', 16)} ${p.stage ? 'In pipeline' : 'Add to list'}</button>
       <button class="btn" id="moreBtn" style="width:40px;padding:0">${ic('dots', 18)}</button>
     </div>
@@ -235,8 +240,14 @@ export async function deal(el, [rawId]) {
         <div id="acts"></div></div>
     </div>
   </div>
+  <div id="research" style="margin-top:18px"></div>
   <div class="mobile-actions"><button class="btn primary" id="mOffer">${ic('mail', 16)} Send offer</button><div class="row"><a class="btn grow" id="mCall">${ic('phone', 16)} Call owner</a><button class="btn grow" id="mSave">${ic('bookmark', 16)} Save deal</button></div></div>`;
 
+  loadResearch(p, $('#research'));
+  if ($('#assignSel')) $('#assignSel').onchange = async (e) => {
+    try { await api(`/api/parcels/${encodeURIComponent(p.id)}/assign`, { method: 'POST', body: { user_id: e.target.value ? +e.target.value : null } }); toast(e.target.value ? 'Lead assigned.' : 'Lead unassigned.'); }
+    catch (err) { toast(err.message, true); }
+  };
   // gallery
   const L = window.L, g = $('#gal');
   const gm = L.map(g, { zoomControl: false, attributionControl: false, scrollWheelZoom: false }).setView([p.lat || 40, p.lng || -82], p.lat ? 18 : 6);
@@ -478,7 +489,9 @@ function lockedDeal(el, p, rawId) {
     </div></div>
     <div class="card card-pad"><h3>Why this score?</h3><div id="reasons" style="margin-top:8px">${reasonsHtml(p.reasons)}</div>${SCORE_NOTE}</div>
     ${dataCard(p.data_check, true)}
+    <div class="col" id="lockedResearch" style="gap:18px"></div>
   </div>`;
+  lockedResearch(p, $('#lockedResearch'));
   $('#seePlans').onclick = () => plansModal();
   $('#revealBtn').onclick = async () => {
     $('#revealBtn').disabled = true;

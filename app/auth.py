@@ -19,7 +19,7 @@ PUBLIC = ("/api/auth/", "/api/public/", "/static/", "/site/", "/manifest.webmani
 SUPER = [("*", "/api/integrations"), ("POST", "/api/counties"), ("PUT", "/api/counties"), ("DELETE", "/api/counties"),
          ("POST", "/api/sync"), ("*", "/api/demo"), ("*", "/api/admin"), ("POST", "/api/settings/preview-score")]
 # company admin (or super admin): their own team
-ADMIN = [("*", "/api/users"), ("POST", "/api/billing/checkout"), ("POST", "/api/billing/confirm"), ("POST", "/api/billing/portal")]
+ADMIN = [("*", "/api/users"), ("*", "/api/keys"), ("POST", "/api/billing/checkout"), ("POST", "/api/billing/confirm"), ("POST", "/api/billing/portal")]
 # still open when a trial has ended / company is suspended
 WHEN_EXPIRED = ("/api/meta", "/api/plans", "/api/auth/", "/api/billing")
 
@@ -81,7 +81,7 @@ def read_token(tok):
     try:
         if not hmac.compare_digest(sig, good) or int(exp) < time.time():
             return None
-        u = db.q1("SELECT id, email, name, role, active, org_id, token_ver FROM users WHERE id=?", (int(uid),))
+        u = db.q1("SELECT id, email, name, role, active, org_id, token_ver, email_verified FROM users WHERE id=?", (int(uid),))
     except ValueError:
         return None
     if not u or not u["active"] or int(u.get("token_ver") or 0) != int(ver):
@@ -107,12 +107,15 @@ def make_reset(uid, purpose="reset"):
     return base64.urlsafe_b64encode(f"{msg}.{sig}".encode()).decode().rstrip("=")
 
 
-def read_reset(tok):
+def read_reset(tok, purposes=("reset", "invite")):
+    """User id for a valid link token of one of `purposes`; a verify-email link can never reset a password."""
     try:
         tok += "=" * (-len(tok) % 4)
         purpose, uid, exp, sig = base64.urlsafe_b64decode(tok.encode()).decode().split(".")
         uid, exp = int(uid), int(exp)
     except Exception:
+        return None
+    if purpose not in purposes:
         return None
     row = db.q1("SELECT id, pw, active FROM users WHERE id=?", (uid,))
     if not row or not row["active"] or exp < time.time():
@@ -175,7 +178,7 @@ def audit(action, detail="", user=None, org=None, ip=""):
 
 async def middleware(request: Request, call_next):
     path = request.url.path
-    needs = path.startswith("/api/") or path.startswith("/letters")
+    needs = path.startswith("/api/") or path.startswith("/letters") or path.startswith("/report/")
     if not needs or any(path.startswith(p) for p in PUBLIC):
         return await call_next(request)
     u = current(request)

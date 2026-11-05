@@ -91,6 +91,7 @@ def main(argv):
             c = db.q1("SELECT * FROM counties WHERE id=?", (cid,))
             if c:
                 placed, addressed = jobs.fill_from_state(c, addr_limit=3000)
+                jobs.fill_flood(cid, limit=1000)
                 if placed or addressed:
                     jobs.rescore([r["id"] for r in db.q("SELECT id FROM parcels WHERE county_id=?", (cid,))], quiet=True)
         return 0

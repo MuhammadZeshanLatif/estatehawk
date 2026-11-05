@@ -220,7 +220,7 @@ export function countySelect(id = 'countySel', withAll = true, val = S.county) {
 
 // ---------- chrome ----------
 const NAV = [
-  ['deals', 'Deals', 'home'], ['map', 'Map', 'map'], ['alerts', 'Alerts', 'bell'], ['counties', 'Counties', 'county'],
+  ['deals', 'Deals', 'home'], ['map', 'Map', 'map'], ['alerts', 'Alerts', 'bell'], ['auctions', 'Auctions', 'gavel'], ['counties', 'Counties', 'county'],
   ['outreach', 'Outreach', 'send'], ['reports', 'Reports', 'chart'], ['settings', 'Settings', 'gear'],
 ];
 export function setViewOrg(id) {
@@ -251,10 +251,16 @@ function renderChrome() {
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
   const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
   const trial = o.plan === 'trial' && !viewing ? `<div class="demo-banner">${ic('lock', 16)}<span><b>Free trial:</b> ${o.days_left >= 0 ? o.days_left + ' days left' : 'ended'}. You can open ${o.reveals_left} more leads in full. Paid plans show every lead, owner and contact.</span><button class="btn xs primary" style="margin-left:auto" id="bannerUp">See plans</button></div>` : '';
-  $('#banner').innerHTML = viewing + trial + (m.settings.demo && m.super ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
+  const verify = m.user && m.user.email_verified === 0 && !viewing ? `<div class="demo-banner" style="background:#FFF6E6">${ic('mail', 16)}<span><b>Confirm your email</b> to open your free leads. We sent a link to ${esc(m.user.email)}.</span><button class="btn xs" style="margin-left:auto" id="bannerVerify">Resend link</button></div>` : '';
+  $('#banner').innerHTML = verify + viewing + trial + (m.settings.demo && m.super ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
     <a class="btn xs" style="margin-left:auto" href="#/settings/profile">Manage</a></div>` : '');
   if ($('#exitView')) $('#exitView').onclick = () => setViewOrg(null);
   if ($('#bannerUp')) $('#bannerUp').onclick = () => plansModal();
+  if ($('#bannerVerify')) $('#bannerVerify').onclick = async (e) => {
+    e.target.disabled = true;
+    try { const r = await api('/api/auth/resend-verify', { method: 'POST' }); toast(r.already ? 'Your email is already confirmed.' : 'Sent. Check your inbox and spam folder.'); }
+    catch (err) { toast(err.message, true); e.target.disabled = false; }
+  };
 }
 
 function initTopbar() {
@@ -544,7 +550,7 @@ new MutationObserver(() => { clearTimeout(labelControls.t); labelControls.t = se
 // ---------- router ----------
 const routes = {
   deals: V.deals, deal: V.deal, map: V.mapView, alerts: V.alerts, counties: V.counties, outreach: V.outreach,
-  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView,
+  reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView, auctions: V.auctions,
 };
 let cleanup = null;
 let routeSeq = 0;

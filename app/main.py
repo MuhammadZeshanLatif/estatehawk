@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -122,6 +122,8 @@ async def auth_signup(request: Request):
     if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
         auth.failed(ip)
         raise HTTPException(400, "This email already has an account. Sign in instead.")
+    if email.split("@")[-1] in DISPOSABLE:
+        raise HTTPException(400, "Please use your real work or personal email, not a temporary inbox.")
     try:
         cid = int(b.get("county_id") or 0)
     except ValueError:
@@ -132,6 +134,15 @@ async def auth_signup(request: Request):
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, uid)
     return resp
+
+
+DISPOSABLE = {"mailinator.com", "10minutemail.com", "guerrillamail.com", "guerrillamail.net", "sharklasers.com", "yopmail.com",
+              "tempmail.com", "temp-mail.org", "trashmail.com", "getnada.com", "dispostable.com", "maildrop.cc", "throwawaymail.com",
+              "mintemail.com", "fakeinbox.com", "mohmal.com", "emailondeck.com", "tempmailo.com", "moakt.com", "mailnesia.com"}
+
+
+def _verify_link(request, uid):
+    return f"{site.base_url(request)}/verify-email?token={auth.make_reset(uid, 'verify')}"
 
 
 def _county_ok(cid):
@@ -150,16 +161,20 @@ def _new_trial(request, name, email, pw_hash, company, cid, ip, how):
     oid = db.run("INSERT INTO orgs(name,plan,status,trial_ends,created,notes) VALUES(?,?,?,?,?,?)",
                  (company, "trial", "active", ends, jobs.now(), "Signed up on the website" + (" with Google" if how == "google" else "")))
     db.run("INSERT INTO org_counties(org_id, county_id) VALUES(?,?)", (oid, cid))
-    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
-                 (email, name, pw_hash, "admin", jobs.now(), oid))
+    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id,email_verified) VALUES(?,?,?,?,?,?,?)",
+                 (email, name, pw_hash, "admin", jobs.now(), oid, 1 if how == "google" else 0))
     u = db.q1("SELECT * FROM users WHERE email=?", (email,))
     auth.audit("signed up", f"{company} ({email}) trial" + (" via Google" if how == "google" else ""), user=u, org=oid, ip=ip)
     cname = (db.q1("SELECT name FROM counties WHERE id=?", (cid,)) or {}).get("name", "your county")
     site_url = site.base_url(request)
-    mailer.send(email, "Welcome to EstateHawk: your 14-day trial is on", f"Welcome, {name.split(' ')[0]}",
+    rid = u["id"] if u else uid
+    confirm = how != "google"
+    mailer.send(email, "Welcome to EstateHawk: confirm your email" if confirm else "Welcome to EstateHawk: your 14-day trial is on", f"Welcome, {name.split(' ')[0]}",
                 [f"Your free trial is ready. You have 14 days and {plans.PLANS['trial']['reveals']} full leads to open in <b>{mailer.esc(cname)}</b>.",
-                 "Start with the highest deal scores: they owe the most for the longest and have the most equity.",
-                 "If you need anything, just reply to this email."], ("Open my leads", f"{site_url}/app"))
+                 ("Confirm your email with the button below, then open your first leads. The link works for 7 days." if confirm else
+                  "Start with the highest deal scores: they owe the most for the longest and have the most equity."),
+                 "If you need anything, just reply to this email."],
+                ("Confirm my email", _verify_link(request, rid)) if confirm else ("Open my leads", f"{site_url}/app"))
     return u["id"] if u else uid
 
 
@@ -266,6 +281,36 @@ async def auth_password(request: Request):
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, u["id"])
     return resp
+
+
+@app.get("/verify-email")
+def verify_email(request: Request, token: str = ""):
+    from fastapi.responses import RedirectResponse
+    uid = auth.read_reset(token, purposes=("verify",))
+    if not uid:
+        return RedirectResponse("/login?error=" + "This confirmation link is old or already used. Sign in and resend it from the banner.", status_code=303)
+    db.run("UPDATE users SET email_verified=1 WHERE id=?", (uid,))
+    u = db.q1("SELECT * FROM users WHERE id=?", (uid,))
+    auth.audit("email confirmed", u.get("email") if u else "", user=u, org=(u or {}).get("org_id"), ip=_client_ip(request))
+    r = RedirectResponse("/app#/deals", status_code=303)
+    auth.set_cookie(r, request, uid)
+    return r
+
+
+@app.post("/api/auth/resend-verify")
+def resend_verify(request: Request):
+    u = auth.current(request)
+    if not u:
+        raise HTTPException(401, "Please log in")
+    if u.get("email_verified") != 0:
+        return {"ok": True, "already": True}
+    ip = _client_ip(request)
+    auth.throttle(ip, u["email"])
+    auth.failed(ip, u["email"])  # counts toward the limit, so the button cannot flood an inbox
+    mailer.send(u["email"], "Confirm your EstateHawk email", "Confirm your email",
+                ["Click the button to confirm this is your email. Then you can open your free leads.", "The link works for 7 days."],
+                ("Confirm my email", _verify_link(request, u["id"])))
+    return {"ok": True}
 
 
 @app.post("/api/auth/forgot")
@@ -495,7 +540,8 @@ def meta():
             "stages": [{"key": k, "label": STAGE_LABEL[k]} for k in STAGES],
             "last_sync": (db.q1("SELECT MAX(last_sync) t FROM counties") or {}).get("t"),
             "unread_alerts": unread_alerts(), "org": INFO(), "user": c.get("user"), "super": bool(c.get("super")),
-            "plans": {k: plans.PLANS[k] for k in plans.PUBLIC}}
+            "plans": {k: plans.PLANS[k] for k in plans.PUBLIC},
+            "team": db.q("SELECT id, name, email FROM users WHERE org_id=? AND active=1 ORDER BY name", (OID(),))}
 
 
 def unread_alerts():
@@ -569,7 +615,7 @@ def export_parcels(request: Request):
 
 def get_parcel(pid, unlocked=False):
     cf, _ = county_filter(None)
-    p = db.q1(f"""SELECT p.*, c.name county_name, c.host county_host, c.tax_sale_date, pl.stage, pl.fee
+    p = db.q1(f"""SELECT p.*, c.name county_name, c.host county_host, c.tax_sale_date, pl.stage, pl.fee, pl.assigned_to
                  FROM parcels p JOIN counties c ON c.id=p.county_id {PL()} WHERE p.id=?{cf}""", (pid,))
     if not p:
         raise HTTPException(404, "Parcel not found")
@@ -615,6 +661,154 @@ def parcel_detail(pid: str):
     return p
 
 
+def _num_or_none(v, lo=0, hi=1e9):
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    if x != x or x < lo or x > hi:
+        raise ValueError("Numbers must be between 0 and 1,000,000,000")
+    return x
+
+
+@app.get("/api/parcels/{pid:path}/research")
+def parcel_research(pid: str):
+    """Flood zone, state tax-sale rules, cached comps and the deal calculator for one lead."""
+    p = get_parcel(pid)
+    locked = plans.is_locked(INFO(), pid)
+    fl = research.flood_for(p)
+    out = {"flood": fl, "rules": research.rules_for(p), "comps_available": bool(research.rentcast_key()),
+           "calc_defaults": db.get_setting("calc_defaults"), "locked": locked}
+    if locked:
+        return out  # the rest needs the address
+    c = db.q1("SELECT data FROM research_cache WHERE parcel_id=? AND kind='comps'", (pid,))
+    out["comps"] = json.loads(c["data"]) if c else None
+    out["calc"] = research.calc(p, db.get_setting("calc_defaults"))
+    return out
+
+
+COMPARE_BY = {
+    "margin": ("Room under your maximum offer", "max_bid"),
+    "equity": ("Estimated equity", "est_equity"),
+    "score": ("Deal score", "score"),
+    "cheap": ("Lowest taxes to clear", "taxes"),
+}
+
+
+@app.get("/api/auctions")
+def auctions(days: int = 120):
+    """Upcoming tax sales: a date per county (county sale dates) and per property (Texas sale lists)."""
+    today = dt.date.today().isoformat()
+    end = (dt.date.today() + dt.timedelta(days=max(1, min(days, 365)))).isoformat()
+    cf, a = county_filter("all")
+    per = db.q(f"""SELECT p.sale_date d, p.county_id, c.name county, c.state, COUNT(*) n, SUM(COALESCE(p.min_bid, p.amount_owed, 0)) bids,
+                   MIN(COALESCE(p.min_bid, p.amount_owed)) low, MAX(p.appraised_total) top_value,
+                   SUM(CASE WHEN p.score >= 80 THEN 1 ELSE 0 END) strong
+                   FROM parcels p JOIN counties c ON c.id=p.county_id
+                   WHERE p.is_active=1 AND p.sale_date>=? AND p.sale_date<=?{cf} GROUP BY p.sale_date, p.county_id, c.name, c.state""", [today, end] + a)
+    seen = {(r["d"], r["county_id"]) for r in per}
+    cc, _ = county_filter(None, "x")
+    for c in db.q(f"SELECT id, name, state, tax_sale_date FROM counties x WHERE enabled=1 AND tax_sale_date>=? AND tax_sale_date<=?{cc.replace('x.county_id', 'x.id')}", (today, end)):
+        if (c["tax_sale_date"], c["id"]) in seen:
+            continue
+        n = db.q1("SELECT COUNT(*) n FROM parcels WHERE county_id=? AND is_active=1", (c["id"],))["n"]
+        per.append({"d": c["tax_sale_date"], "county_id": c["id"], "county": c["name"], "state": c["state"], "n": None, "listed": n,
+                    "bids": None, "low": None, "top_value": None, "strong": None, "kind": "county"})
+    for r in per:
+        r.setdefault("kind", "list")
+        r["days"] = (dt.date.fromisoformat(r["d"][:10]) - dt.date.today()).days
+    per.sort(key=lambda r: (r["d"], r["county"]))
+    return {"rows": per, "today": today, "until": end,
+            "note": "Sale dates come from county and tax-attorney sale lists and can change or be cancelled. Confirm with the county before the sale."}
+
+
+@app.get("/api/parcels-by-sale")
+def parcels_by_sale(county_id: int, date: str):
+    cf, a = county_filter("all")
+    rows = db.q(f"""SELECT p.id, p.street, p.city, p.zip, p.state, p.min_bid, p.amount_owed, p.appraised_total, p.score, p.sale_status, p.lat, p.lng
+                    FROM parcels p WHERE p.is_active=1 AND p.county_id=? AND p.sale_date=?{cf} ORDER BY p.score DESC LIMIT 200""", [county_id, date] + a)
+    info = INFO()
+    if info["limits"]["reveals"]:
+        seen = plans.revealed_set(info, [r["id"] for r in rows]) or set()
+        for r in rows:
+            if r["id"] not in seen:
+                r["street"] = "Address hidden"
+    return rows
+
+
+@app.post("/api/compare")
+async def compare(request: Request):
+    """2 to 4 leads side by side, ranked by the measure the user picks, with the reason for each rank."""
+    b = await request.json()
+    ids = [i for i in (b.get("ids") or []) if isinstance(i, str)][:4]
+    by = b.get("by") if b.get("by") in COMPARE_BY else "margin"
+    if len(ids) < 2:
+        raise HTTPException(400, "Pick 2 to 4 leads to compare")
+    info, d = INFO(), db.get_setting("calc_defaults")
+    rows = []
+    for pid in ids:
+        p = get_parcel(pid)
+        locked = plans.is_locked(info, pid)
+        county = db.q1("SELECT host, last_sync, sync_status FROM counties WHERE id=?", (p["county_id"],)) or {}
+        dc = quality.lead(p, county)
+        k = research.calc(p, d)
+        fz = p.get("flood_zone")
+        row = {"id": pid, "locked": locked, "title": "Address hidden" if locked else (p.get("street") or f"Parcel {p.get('parcel_number')}"),
+               "place": ", ".join(x for x in (p.get("city"), p.get("state")) if x), "county": p.get("county_name"),
+               "value": p.get("appraised_total"), "taxes": p.get("total_due") or p.get("amount_owed") or 0, "est_equity": p.get("est_equity"),
+               "years_behind": p.get("years_behind"), "score": p.get("score"), "max_bid": k["max_bid"], "repairs": k["repairs"],
+               "roi_pct": k["roi_pct"], "property_type": p.get("property_type"), "status": dc["status"],
+               "missing": len(dc["missing"]), "complete": round(100 * (6 - len(dc["missing"])) / 6),
+               "flood": (f"Zone {fz}" + (" (high risk)" if p.get("flood_sfha") else "")) if fz else "Not checked",
+               "out_of_state": bool(p.get("mail_state") and p.get("mail_state") != p.get("state"))}
+        rows.append(row)
+    label, key = COMPARE_BY[by]
+    rev = by != "cheap"
+    rows.sort(key=lambda r: ((r.get(key) or 0) * (1 if rev else -1), r["complete"]), reverse=True)
+    for i, r in enumerate(rows, 1):
+        r["rank"] = i
+        bits = [f"{label.lower()}: " + (f"${r[key]:,.0f}" if key in ("max_bid", "est_equity", "taxes") and r.get(key) is not None else f"{r.get(key) or 0:g}")]
+        if r["missing"]:
+            bits.append(f"{r['missing']} county fields missing")
+        if r["status"] in ("stale", "removed", "conflict"):
+            bits.append({"stale": "not on the latest list", "removed": "off the county list", "conflict": "amounts differ"}[r["status"]])
+        if "high risk" in r["flood"]:
+            bits.append("high flood risk")
+        r["why"] = "; ".join(bits)
+    return {"by": by, "label": label, "rows": rows, "options": {k2: v[0] for k2, v in COMPARE_BY.items()},
+            "note": "Ranked by one measure you choose, using county records and your calculator settings. Estimates, not predictions."}
+
+
+@app.post("/api/parcels/{pid:path}/comps")
+def parcel_comps(pid: str):
+    p = get_parcel(pid, unlocked=True)
+    if not research.rentcast_key():
+        raise HTTPException(400, "Comps are not switched on yet (needs a RentCast key in Render).")
+    key = f"comps:{dt.date.today().isoformat()}"
+    used = db.q1("SELECT value FROM org_settings WHERE org_id=? AND key=?", (OID(), key))
+    n = int((used or {}).get("value") or 0)
+    if n >= 25 and OID() != 1:
+        raise HTTPException(429, "25 comp lookups a day are used up. Cached results still show.")
+    data = research.comps(p, refresh=True)
+    db.run("""INSERT INTO org_settings(org_id,key,value) VALUES(?,?,?)
+              ON CONFLICT(org_id,key) DO UPDATE SET value=excluded.value""", (OID(), key, str(n + 1)))
+    return data or {"error": "No result"}
+
+
+@app.post("/api/parcels/{pid:path}/calc")
+async def parcel_calc(pid: str, request: Request):
+    p = get_parcel(pid, unlocked=True)
+    b = await request.json()
+    d = {**db.get_setting("calc_defaults"), **{k: v for k, v in (b.get("settings") or {}).items() if k in db.DEFAULT_SETTINGS["calc_defaults"]}}
+    if d.get("risk") not in research.RISK:
+        d["risk"] = "medium"
+    for k in ("profit_pct", "repair_per_sqft", "buy_closing_pct", "sell_closing_pct", "hold_months", "monthly_hold"):
+        d[k] = _num_or_none(d.get(k), 0, 1e6) or 0
+    if b.get("save"):
+        db.set_setting("calc_defaults", d)
+    return research.calc(p, d, arv=_num_or_none(b.get("arv")), repairs=_num_or_none(b.get("repairs")), liens=_num_or_none(b.get("liens")) or 0)
+
+
 @app.post("/api/parcels/{pid:path}/reveal")
 def reveal(pid: str):
     get_parcel(pid)
@@ -623,6 +817,9 @@ def reveal(pid: str):
         return {"ok": True, "reveals_left": info["reveals_left"]}
     if info["reveals_left"] is not None and info["reveals_left"] <= 0:
         raise HTTPException(402, f"You have opened all {info['limits']['reveals']} free leads. Upgrade to see every lead.")
+    me = ctx.get().get("user") or {}
+    if me.get("email_verified") == 0:
+        raise HTTPException(403, "Confirm your email first: open the link we sent you, or resend it from the banner at the top.")
     db.run("INSERT INTO reveals(org_id,parcel_id,ts) VALUES(?,?,?)", (OID(), pid, jobs.now()))
     return {"ok": True, "reveals_left": plans.org_info(OID())["reveals_left"]}
 
@@ -723,6 +920,24 @@ async def set_stage(pid: str, request: Request):
            (OID(), pid, st, jobs.now(), fee, dt.date.today().isoformat() if st == "closed" else None))
     db.run("INSERT INTO activities(parcel_id,ts,kind,text,author,org_id) VALUES(?,?,?,?,?,?)",
            (pid, jobs.now(), "stage", f"Moved to {STAGE_LABEL[st]}", me_name(), OID()))
+    return {"ok": True}
+
+
+@app.post("/api/parcels/{pid:path}/assign")
+async def assign(pid: str, request: Request):
+    """Give a pipeline lead to a team member (or nobody)."""
+    get_parcel(pid, unlocked=True)
+    b = await request.json()
+    uid = b.get("user_id")
+    if uid is not None:
+        u = db.q1("SELECT id, name, email FROM users WHERE id=? AND org_id=? AND active=1", (int(uid), OID()))
+        if not u:
+            raise HTTPException(400, "Pick someone on your team")
+    if not db.q1("SELECT 1 FROM pipeline WHERE parcel_id=? AND org_id=?", (pid, OID())):
+        db.run("INSERT INTO pipeline(org_id,parcel_id,stage,updated_at) VALUES(?,?,?,?)", (OID(), pid, "new", jobs.now()))
+    db.run("UPDATE pipeline SET assigned_to=?, updated_at=? WHERE parcel_id=? AND org_id=?", (uid, jobs.now(), pid, OID()))
+    db.run("INSERT INTO activities(parcel_id,ts,kind,text,author,org_id) VALUES(?,?,?,?,?,?)",
+           (pid, jobs.now(), "note", f"Assigned to {u['name'] or u['email']}" if uid is not None else "Unassigned", me_name(), OID()))
     return {"ok": True}
 
 
@@ -891,12 +1106,19 @@ def sync_status():
 
 # ------------------------------------------------------------------ pipeline + tasks
 @app.get("/api/pipeline")
-def pipeline(county: str = "all", q: str = ""):
+def pipeline(county: str = "all", q: str = "", who: str = "all"):
     s, a = county_filter(county)
     if q:
         s += " AND (p.street LIKE ? OR p.owner_name LIKE ?)"; a += [f"%{q}%"] * 2
+    if who == "me":
+        s += " AND pl.assigned_to=?"; a.append((ctx.get().get("user") or {}).get("id"))
+    elif who == "none":
+        s += " AND pl.assigned_to IS NULL"
+    elif who.isdigit():
+        s += " AND pl.assigned_to=?"; a.append(int(who))
     o = OID()
     rows = db.q(f"""SELECT pl.*, p.street, p.city, p.zip, p.owner_name, p.score, p.lat, p.lng, p.county_id, p.total_due, p.amount_owed,
+                    (SELECT u.name FROM users u WHERE u.id=pl.assigned_to) assignee,
                     (SELECT kind||'|'||ts||'|'||text FROM activities x WHERE x.parcel_id=p.id AND x.org_id={o} ORDER BY ts DESC LIMIT 1) last
                     FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id WHERE pl.org_id={o}{s} ORDER BY pl.updated_at DESC""", a)
     cols = {k: [] for k in STAGES}
@@ -984,6 +1206,201 @@ def letters(ids: str = ""):
     return f"<!doctype html><title>Offer letters</title><style>{css}</style>{''.join(pages) or '<p style=padding:40px>No offers yet. Create offer drafts first.</p>'}<script>setTimeout(()=>print(),400)</script>"
 
 
+@app.get("/report/{pid:path}", response_class=HTMLResponse)
+def lead_report(pid: str):
+    """Printable due-diligence report for one lead: verified facts, estimates, sources, gaps and warnings."""
+    import html as H
+    p = get_parcel(pid)
+    if plans.is_locked(INFO(), pid):
+        raise HTTPException(403, "Open this lead first (free trial), then download its report.")
+    e = lambda x: H.escape(str(x)) if x not in (None, "") else "--"
+    m = lambda x, c=0: f"${x:,.{c}f}" if isinstance(x, (int, float)) else "--"
+    county = db.q1("SELECT host, last_sync, sync_status FROM counties WHERE id=?", (p["county_id"],)) or {}
+    dc = quality.lead(p, county)
+    fl = research.flood_for(p)
+    rules = research.rules_for(p)
+    cache = db.q1("SELECT data FROM research_cache WHERE parcel_id=? AND kind='comps'", (pid,))
+    cp = json.loads(cache["data"]) if cache else None
+    k = research.calc(p, db.get_setting("calc_defaults"))
+    snaps = db.q("SELECT date, amount, owner_name FROM snapshots WHERE parcel_id=? ORDER BY date", (pid,))
+    br = json.loads(p.get("score_breakdown") or "{}")
+    why = scoring.reasons(p, br)
+    rec = lambda label, val, src: f"<tr><td>{label}</td><td>{val}</td><td class=src>{src}</td></tr>"
+    county_src = f"{e(dc['source'])}" + (f' (<a href="{e(dc["list_url"])}">list</a>)' if dc.get("list_url") else "")
+    record_src = f'<a href="{e(p["property_url"])}">county property record</a>' if p.get("property_url") else county_src
+    facts = "".join([
+        rec("Address", e(", ".join(x for x in (p.get("street"), p.get("city"), f"{p.get('state') or ''} {p.get('zip') or ''}".strip()) if x)), county_src),
+        rec("Parcel number", e(p.get("parcel_number")), county_src),
+        rec("Owner on record", e(p.get("owner_full_name") or p.get("owner_name")), record_src),
+        rec("Tax bill mailed to", e(p.get("mail_address")), record_src),
+        rec("Taxes owed (county list)", m(p.get("amount_owed"), 2), county_src),
+        rec("Total due (county record)", m(p.get("total_due"), 2), record_src),
+        rec("Yearly tax", m(p.get("annual_tax"), 2), record_src),
+        rec("County value", m(p.get("appraised_total")), record_src + ", for tax purposes"),
+        rec("Land / building value", f"{m(p.get('land_value'))} / {m(p.get('improvement_value'))}", record_src),
+        rec("Land use", e(p.get("land_use") or p.get("property_type")), record_src),
+        rec("Acres", e(p.get("acres")), record_src),
+        rec("Beds / baths / sq ft / built", f"{e(p.get('beds'))} / {e(p.get('baths_full'))} / {e(p.get('living_area'))} / {e(p.get('year_built'))}", record_src),
+        rec("Flood zone", e(fl.get("words")), e(fl.get("source") or "FEMA National Flood Hazard Layer") + (f", checked {e(fl.get('checked'))}" if fl.get("checked") else "")),
+        rec("First / last seen on the county list", f"{e(dc['first_seen'])} / {e(dc['last_seen'])}", "EstateHawk nightly download"),
+    ])
+    ests = "".join([
+        rec("Years behind", e(p.get("years_behind")), "Estimated from the amount owed and the yearly tax" if not p.get("cert_year") else f"Certified delinquent {p['cert_year']}"),
+        rec("Equity", m(p.get("est_equity")), "County value minus taxes owed; mortgages unknown"),
+        rec("Rent", m(p.get("rent_est")) + " / month" if p.get("rent_est") else "--", "Rule of thumb, about 0.9% of value a month"),
+        rec("Market value", f"{m(cp.get('value'))} ({m(cp.get('low'))} to {m(cp.get('high'))})" if cp and cp.get("value") else "--", f"{e(cp.get('source'))}, {e(cp.get('fetched'))}" if cp and cp.get("value") else "Not looked up"),
+        rec("Deal score", e(round(p["score"]) if p.get("score") is not None else None), "Ranks public-record signals; not a prediction that the owner will sell"),
+    ])
+    hist = "".join(f"<tr><td>{e(s_['date'])}</td><td>{m(s_['amount'], 2)}</td><td>{e(s_['owner_name'])}</td></tr>" for s_ in snaps[-12:]) or "<tr><td colspan=3>No history yet</td></tr>"
+    comps_html = ("".join(f"<tr><td>{e(c['address'])}</td><td>{m(c['price'])}</td><td>{e(c['sqft'])}</td><td>{e(c['miles'])}</td><td>{e(c['date'])}</td></tr>" for c in cp["comps"])
+                  if cp and cp.get("comps") else "<tr><td colspan=5>No comparable sales looked up yet.</td></tr>")
+    calc_rows = "".join(f"<tr><td>{a}</td><td>{b}</td><td class=src>{c}</td></tr>" for a, b, c in [
+        ("After-repair value", m(k["arv"]), e(k["sources"].get("arv"))), ("Repairs", m(k["repairs"]), e(k["sources"].get("repairs"))),
+        ("Back taxes", m(k["taxes"], 2), "County"), ("Closing, buy + sell", m(k["buy_closing"] + k["sell_closing"]), "Your settings"),
+        ("Holding", m(k["holding"]), f"{k['hold_months']:g} months"), ("Profit target", m(k["profit"]), f"{k['profit_pct']:g}% of value"),
+        ("<b>Maximum offer</b>", f"<b>{m(k['max_bid'])}</b>", "Value minus all of the above"), ("70% rule", m(k["rule70"]), "For comparison")])
+    gaps = [f"Not published by the county: {', '.join(dc['missing'])}." for _ in [0] if dc["missing"]]
+    gaps += ["Mortgages, liens and judgments are not in county tax records. Order a title search."]
+    if dc["amount_differs"]:
+        gaps.append(f"The county list says {m(dc['amount_list'], 2)} but the property record says {m(dc['amount_record'], 2)}. Get a payoff letter from the treasurer.")
+    if dc["status"] in ("stale", "removed"):
+        gaps.append(dc["note"])
+    if fl.get("sfha"):
+        gaps.append("Inside a FEMA high-risk flood zone: lenders require flood insurance and resale buyers may be fewer.")
+    if not p.get("street") or p.get("lat") is None:
+        gaps.append("No street address or map location: confirm the property on the county map before any offer.")
+    rule_html = ""
+    if rules:
+        rule_html = (f"<h2>{e(rules['name'])} tax sale rules</h2><p>{e(rules['kind'])}. Reviewed {e(rules['reviewed'])}.</p><ul>"
+                     + "".join(f'<li><b>{e(h)}:</b> {e(t)} <a href="{e(u)}">Statute</a></li>' for h, t, u in rules["points"]) + "</ul>"
+                     + (f"<p><b>Sale date:</b> {e(rules['sale_date'])}</p>" if rules.get("sale_date") else "")
+                     + (f"<p><b>Redemption until about:</b> {e(rules['redemption']['ends'])} ({e(rules['redemption']['basis'])}). {e(rules['redemption']['assumes'])}</p>" if rules.get("redemption") else "")
+                     + "<p><b>Checklist:</b></p><ul>" + "".join(f"<li>{e(c)}</li>" for c in rules["checklist"]) + f"</ul><p class=note>{e(rules['note'])}</p>")
+    title = H.escape((p.get("street") or f"Parcel {p.get('parcel_number')}").title())
+    css = ("body{font:13.5px/1.5 -apple-system,Segoe UI,Arial,sans-serif;color:#1d2420;margin:0;padding:32px;max-width:900px}h1{font-size:24px;margin:0}"
+           "h2{font-size:16px;margin:26px 0 8px;padding-bottom:4px;border-bottom:2px solid #1A4A30}table{width:100%;border-collapse:collapse}"
+           "td,th{padding:6px 8px;border-bottom:1px solid #e3e0d6;text-align:left;vertical-align:top}th{font-size:12px;color:#5E675F}.src{color:#5E675F;font-size:12px}"
+           ".tag{display:inline-block;padding:2px 8px;border-radius:99px;background:#E8F1EA;color:#1A4A30;font-weight:600;font-size:12px}.note{color:#5E675F;font-size:12px}"
+           "a{color:#1A4A30}.bar{display:flex;gap:8px;margin:0 0 20px}.bar button{padding:8px 14px;border-radius:8px;border:1px solid #1A4A30;background:#1A4A30;color:#fff;font-weight:600;cursor:pointer}"
+           "@media print{.bar{display:none}body{padding:0}a{color:inherit;text-decoration:none}}")
+    return (f"<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Report: {title}</title><style>{css}</style>"
+            f"<div class=bar><button onclick='print()'>Print or save as PDF</button></div>"
+            f"<p class=note>EstateHawk due-diligence report · {dt.date.today():%B %d, %Y}</p><h1>{title}</h1>"
+            f"<p>{e(p.get('county_name'))} · Parcel {e(p.get('parcel_number'))} · <span class=tag>{e(dc['status'].title())}</span> {e(dc['note'])}</p>"
+            f"<h2>Verified facts</h2><table><tr><th>Item</th><th>Value</th><th>Source</th></tr>{facts}</table>"
+            f"<h2>Estimates</h2><table><tr><th>Item</th><th>Value</th><th>How it is worked out</th></tr>{ests}</table>"
+            f"<h2>Why this score</h2><ul>{''.join(f'<li><b>{e(t)}:</b> {e(x)}</li>' for t, x in why)}</ul>"
+            f"<h2>Tax history (county list)</h2><table><tr><th>Date</th><th>Amount owed</th><th>Owner</th></tr>{hist}</table>"
+            f"<h2>Comparable sales</h2><table><tr><th>Address</th><th>Price</th><th>Sq ft</th><th>Miles</th><th>Date</th></tr>{comps_html}</table>"
+            f"<h2>Deal math (estimates)</h2><table>{calc_rows}</table>"
+            f"<h2>Missing information and warnings</h2><ul>{''.join(f'<li>{e(g)}</li>' for g in gaps)}</ul>{rule_html}"
+            "<p class=note style='margin-top:28px'>Facts come from public county records as downloaded by EstateHawk; estimates are marked. "
+            "This report is research, not an appraisal, title opinion or legal advice.</p></html>")
+
+
+# ------------------------------------------------------------------ public API (read-only, key per company)
+import hashlib as _hl, secrets as _sec, time as _time
+_api_hits = {}  # key id -> [timestamps]
+API_FIELDS = ["id", "county_name", "parcel_number", "owner_name", "street", "city", "state", "zip", "amount_owed", "total_due",
+              "appraised_total", "est_equity", "years_behind", "score", "property_type", "lat", "lng", "mail_address", "mail_state",
+              "first_seen", "last_seen", "is_active", "property_url", "sale_date", "min_bid", "flood_zone"]
+
+
+@app.get("/api/keys")
+def keys_list():
+    return db.q("SELECT id, prefix, label, created, last_used, revoked FROM api_keys WHERE org_id=? ORDER BY id DESC", (OID(),))
+
+
+@app.post("/api/keys")
+async def keys_create(request: Request):
+    require_export()  # paid plans only
+    b = await request.json()
+    if (db.q1("SELECT COUNT(*) n FROM api_keys WHERE org_id=? AND revoked=0", (OID(),)) or {}).get("n", 0) >= 5:
+        raise HTTPException(400, "Up to 5 active keys. Revoke one first.")
+    raw = "eh_" + _sec.token_urlsafe(30)
+    db.run("INSERT INTO api_keys(org_id,key_hash,prefix,label,created) VALUES(?,?,?,?,?)",
+           (OID(), _hl.sha256(raw.encode()).hexdigest(), raw[:10], (b.get("label") or "API key")[:60], jobs.now()))
+    auth.audit("api key created", (b.get("label") or "")[:60])
+    return {"key": raw, "note": "Copy it now: it is shown only once."}
+
+
+@app.delete("/api/keys/{kid}")
+def keys_revoke(kid: int):
+    db.run("UPDATE api_keys SET revoked=1 WHERE id=? AND org_id=?", (kid, OID()))
+    auth.audit("api key revoked", str(kid))
+    return {"ok": True}
+
+
+def _api_ctx(request: Request):
+    """Bearer key -> the company's context (counties, plan, masking), 60 requests a minute per key."""
+    h = request.headers.get("authorization", "")
+    raw = h[7:].strip() if h.lower().startswith("bearer ") else request.headers.get("x-api-key", "").strip()
+    if not raw:
+        raise HTTPException(401, "Send your key: Authorization: Bearer eh_...")
+    k = db.q1("SELECT * FROM api_keys WHERE key_hash=? AND revoked=0", (_hl.sha256(raw.encode()).hexdigest(),))
+    if not k:
+        raise HTTPException(401, "Unknown or revoked key")
+    now_ = _time.time()
+    hits = [t for t in _api_hits.get(k["id"], []) if now_ - t < 60]
+    if len(hits) >= 60:
+        raise HTTPException(429, "60 requests a minute. Slow down.")
+    _api_hits[k["id"]] = hits + [now_]
+    info = plans.org_info(k["org_id"])
+    if not info or info["expired"] or not info["limits"]["export"]:
+        raise HTTPException(402, "The API is on paid plans")
+    u = db.q1("SELECT id, email, name, role, active, org_id FROM users WHERE org_id=? AND role='admin' AND active=1 ORDER BY id LIMIT 1", (k["org_id"],)) or {}
+    db.run("UPDATE api_keys SET last_used=? WHERE id=?", (jobs.now(), k["id"]))
+    return ctx.current.set({"user": u, "org_id": k["org_id"], "org": info, "super": False, "ip": auth.client_ip(request)})
+
+
+@app.get("/v1/leads")
+def api_leads(request: Request, county: int = 0, min_score: float = 0, updated_since: str = "", page: int = 1, per: int = 100):
+    tok = _api_ctx(request)
+    try:
+        s, a = county_filter(county or "all")
+        if min_score:
+            s += " AND p.score>=?"; a.append(min_score)
+        if updated_since:
+            s += " AND p.last_seen>=?"; a.append(updated_since[:10])
+        per, page = max(1, min(per, 500)), max(1, page)
+        total = db.q1(f"SELECT COUNT(*) n FROM parcels p WHERE p.is_active=1 AND p.demo=0{s}", a)["n"]
+        rows = db.q(f"""SELECT p.*, c.name county_name FROM parcels p JOIN counties c ON c.id=p.county_id
+                        WHERE p.is_active=1 AND p.demo=0{s} ORDER BY p.score DESC, p.id LIMIT ? OFFSET ?""", a + [per, (page - 1) * per])
+        rows = [{k2: r.get(k2) for k2 in API_FIELDS} for r in apply_mask(rows)]
+        return {"total": total, "page": page, "per": per, "data": rows}
+    finally:
+        ctx.current.reset(tok)
+
+
+@app.get("/v1/leads/{pid:path}")
+def api_lead(pid: str, request: Request):
+    tok = _api_ctx(request)
+    try:
+        p = get_parcel(pid)
+        if plans.is_locked(INFO(), pid):
+            p = plans.mask(p)
+        out = {k2: p.get(k2) for k2 in API_FIELDS}
+        out["history"] = db.q("SELECT date, amount, owner_name FROM snapshots WHERE parcel_id=? ORDER BY date", (pid,))
+        return out
+    finally:
+        ctx.current.reset(tok)
+
+
+@app.get("/v1/counties")
+def api_counties(request: Request):
+    tok = _api_ctx(request)
+    try:
+        cf, _ = county_filter(None, "x")
+        rows = db.q(f"SELECT id, name, state, last_sync, sync_status, tax_sale_date FROM counties x WHERE enabled=1 AND demo=0{cf.replace('x.county_id', 'x.id')} ORDER BY state, name")
+        q = quality.counties([r["id"] for r in rows]) if rows else {}
+        for r in rows:
+            r["leads"] = (q.get(r["id"]) or {}).get("n", 0)
+            r["data_grade"] = quality.grade(q.get(r["id"]))
+        return {"data": rows}
+    finally:
+        ctx.current.reset(tok)
+
+
 # ------------------------------------------------------------------ reports
 @app.get("/api/reports")
 def reports(days: int = 30, county: str = "all"):
@@ -1006,7 +1423,18 @@ def reports(days: int = 30, county: str = "all"):
     top = db.q(f"""SELECT p.id, p.street, p.city, p.zip, p.owner_name, p.appraised_total, p.est_equity, p.lat, p.lng, c.name county, pl.stage, pl.fee, pl.closed_at, pl.updated_at
                    FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id JOIN counties c ON c.id=p.county_id
                    WHERE pl.org_id={o} AND pl.stage IN ('closed','under_contract','negotiating'){s} ORDER BY (pl.stage='closed') DESC, pl.fee DESC, p.score DESC LIMIT 8""", a)
-    return {"kpi": {"found": found, "found_change": round((found - found_prev) * 100 / found_prev) if found_prev else None,
+    conv = db.q(f"""SELECT c.name county, COUNT(*) leads,
+                    SUM(CASE WHEN pl.stage <> 'new' THEN 1 ELSE 0 END) contacted,
+                    SUM(CASE WHEN pl.stage IN ('replied','negotiating','under_contract','closed') THEN 1 ELSE 0 END) replied,
+                    SUM(CASE WHEN pl.stage='closed' THEN 1 ELSE 0 END) closed, COALESCE(SUM(CASE WHEN pl.stage='closed' THEN pl.fee END),0) fees,
+                    AVG(p.score) avg_score FROM pipeline pl JOIN parcels p ON p.id=pl.parcel_id JOIN counties c ON c.id=p.county_id
+                    WHERE pl.org_id={o}{s} GROUP BY c.name ORDER BY closed DESC, replied DESC, leads DESC""", a)
+    for r in conv:
+        r["reply_rate"] = round(100 * (r["replied"] or 0) / r["contacted"]) if r["contacted"] else None
+        r["close_rate"] = round(100 * (r["closed"] or 0) / r["contacted"]) if r["contacted"] else None
+        r["avg_score"] = round(r["avg_score"]) if r["avg_score"] is not None else None
+    return {"conversion": conv,
+            "kpi": {"found": found, "found_change": round((found - found_prev) * 100 / found_prev) if found_prev else None,
                     "contacted": contacted, "replied": replied, "reply_rate": round(replied * 100 / contacted) if contacted else 0,
                     "closed": closed, "fees": fees},
             "labels": [(start + dt.timedelta(days=i)).isoformat() for i in range(days)], "per_day": per_day,
@@ -1040,6 +1468,10 @@ async def put_settings(request: Request):
     b = await request.json()
     rescore_needed = False
     is_super = bool(ctx.get().get("super"))
+    role = (ctx.get().get("user") or {}).get("role")
+    member_ok = {"calc_defaults", "onboarded"}  # a team member may change these; the rest is the company admin's
+    if role not in ("admin", "superadmin") and any(k not in member_ok for k in b):
+        raise HTTPException(403, "Only your company admin can change these settings")
     for k, v in b.items():
         if k in db.DEFAULT_SETTINGS and (is_super or k in db.ORG_KEYS):
             if k in ("weights", "offer_defaults") and v != db.get_setting(k):
