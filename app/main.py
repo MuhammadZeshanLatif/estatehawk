@@ -55,6 +55,13 @@ async def canonical_host(request, call_next):
     return await call_next(request)
 
 
+@app.get("/healthz")
+@app.head("/healthz")
+def healthz():
+    """Keep-awake ping target. Touches no database, so Neon can still sleep while Render stays up."""
+    return {"ok": True}
+
+
 # ------------------------------------------------------------------ login + team
 def _client_ip(request):
     return auth.client_ip(request)

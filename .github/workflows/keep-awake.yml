@@ -1,0 +1,18 @@
+name: Keep server awake
+# Render Free sleeps after 15 minutes with no visitors. A light ping every 10 minutes keeps the first page fast.
+# /healthz does not touch the database, so the Neon database can still sleep and save its free hours.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: |
+          for i in 1 2 3; do
+            curl -fsS -m 90 https://getestatehawk.com/healthz && exit 0
+            sleep 10
+          done
+          exit 1
