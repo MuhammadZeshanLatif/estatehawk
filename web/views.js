@@ -37,7 +37,7 @@ export async function deals(el) {
   const prof = S.meta.settings.profile;
   el.innerHTML = `
   <div class="page-head">
-    <div><h1>${greeting()}, ${esc(((prof.name && prof.name !== 'Ashhad' ? prof.name : '') || S.meta.user?.name || 'there').split(' ')[0])}</h1><div class="sub">Here are your latest off-market opportunities from tax-delinquent records.</div></div>
+    <div><h1>${greeting()}, ${esc((S.meta.user?.name || prof.name || 'there').split(' ')[0])}</h1><div class="sub">Here are your latest off-market opportunities from tax-delinquent records.</div></div>
     <div class="right">
       <div class="row">${ic('pin', 18)}${countySelect('countySel')}</div>
       <div class="updated-box">${ic('cal', 18)}<div><div class="small" style="font-weight:600">${fmtDate(new Date())}</div><div class="tiny muted">Last updated ${ago(S.meta.last_sync)}</div></div>

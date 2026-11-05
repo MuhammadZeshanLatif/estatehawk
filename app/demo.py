@@ -85,7 +85,7 @@ def _seed_workflow(rnd):
                (p["id"], st, ts, fee, ts[:10] if st == "closed" else None))
         if st != "new":
             db.run("INSERT INTO activities(parcel_id,ts,kind,text,author) VALUES(?,?,?,?,?)",
-                   (p["id"], ts, rnd.choice(["email", "call", "sms", "letter"]), "First contact sent", "Ashhad"))
+                   (p["id"], ts, rnd.choice(["email", "call", "sms", "letter"]), "First contact sent", "Team"))
         if st in ("replied", "negotiating", "under_contract", "closed"):
             db.run("INSERT INTO activities(parcel_id,ts,kind,text,author) VALUES(?,?,?,?,?)",
                    (p["id"], ts, "reply", rnd.choice(["Can you send more details about the offer?", "I'm interested. What's your offer?",
