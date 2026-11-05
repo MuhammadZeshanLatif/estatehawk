@@ -5,7 +5,7 @@ on:
       ids:
         description: "County ids separated by spaces (e.g. 20). Empty = every Ohio county."
         required: false
-        default: "20"
+        default: ""
 jobs:
   fill:
     runs-on: ubuntu-latest
