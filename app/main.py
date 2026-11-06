@@ -513,6 +513,10 @@ def parcel_where(params):
             w += " AND p.property_type=?"; a.append(params["ptype"])
     if params.get("out_of_state") == "1":
         w += " AND p.mail_state IS NOT NULL AND p.mail_state != p.state"
+    if params.get("owner_status") == "available":
+        w += " AND TRIM(COALESCE(p.owner_name,'')) != ''"
+    elif params.get("owner_status") == "missing":
+        w += " AND TRIM(COALESCE(p.owner_name,'')) = ''"
     if params.get("new_days"):
         w += " AND p.first_seen>=?"; a.append((dt.date.today() - dt.timedelta(days=int(params["new_days"]))).isoformat())
     if params.get("q"):

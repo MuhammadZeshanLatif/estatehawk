@@ -33,7 +33,7 @@ export function popupHtml(p) {
 
 // ================================================================ DEALS (home)
 export async function deals(el) {
-  const st = { page: 1, per: 25, sort: 'score', min_score: '', min_owed: '', max_owed: '', min_years: '', ptype: 'homes', out_of_state: '', new_days: '', min_equity: '', q: '' };
+  const st = { page: 1, per: 25, sort: 'score', min_score: '', min_owed: '', max_owed: '', min_years: '', ptype: 'homes', out_of_state: '', owner_status: '', new_days: '', min_equity: '', q: '' };
   const prof = S.meta.settings.profile;
   el.innerHTML = `
   <div class="page-head">
@@ -128,10 +128,11 @@ export async function deals(el) {
     <div class="field"><label>Minimum est. equity</label><select class="select" id="mEq"><option value="">Any</option><option value="30000">$30K+</option><option value="50000">$50K+</option><option value="100000">$100K+</option></select></div>
     <div class="field"><label>Newly delinquent</label><select class="select" id="mNew"><option value="">Any time</option><option value="1">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select></div>
     <label class="row" style="margin:6px 0 14px"><input type="checkbox" id="mOos"> Out-of-state owners only</label>
+    <div class="field"><label>Owner name</label><select class="select" id="mOwner"><option value="">All leads</option><option value="available">Name available</option><option value="missing">Name missing</option></select></div>
     <div class="field"><label>Sort by</label><select class="select" id="mSort"><option value="score">Deal score</option><option value="newest">Newest first</option><option value="owed">Taxes owed</option><option value="equity">Est. equity</option><option value="years">Years behind</option></select></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mApply">Apply</button></div>`, (m, close) => {
-    $('#mType', m).value = st.ptype; $('#mEq', m).value = st.min_equity; $('#mNew', m).value = st.new_days; $('#mOos', m).checked = st.out_of_state === '1'; $('#mSort', m).value = st.sort;
-    $('#mApply', m).onclick = () => { st.ptype = $('#mType', m).value; st.min_equity = $('#mEq', m).value; st.new_days = $('#mNew', m).value; st.out_of_state = $('#mOos', m).checked ? '1' : ''; st.sort = $('#mSort', m).value; close(); reload(); };
+    $('#mType', m).value = st.ptype; $('#mEq', m).value = st.min_equity; $('#mNew', m).value = st.new_days; $('#mOos', m).checked = st.out_of_state === '1'; $('#mOwner', m).value = st.owner_status; $('#mSort', m).value = st.sort;
+    $('#mApply', m).onclick = () => { st.ptype = $('#mType', m).value; st.min_equity = $('#mEq', m).value; st.new_days = $('#mNew', m).value; st.out_of_state = $('#mOos', m).checked ? '1' : ''; st.owner_status = $('#mOwner', m).value; st.sort = $('#mSort', m).value; close(); reload(); };
   });
   const tbody = $('#leadTable tbody');
   const updBulk = () => { $('#bulk').classList.toggle('hide', !chosen.size); $('#bulkN').textContent = `${chosen.size} selected`; $('#bulkCmp').disabled = chosen.size < 2 || chosen.size > 4; $('#bulkCsv').href = '/api/parcels/export.csv?' + qs(); };
