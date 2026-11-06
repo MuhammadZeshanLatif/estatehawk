@@ -148,7 +148,7 @@ def fill_from_state(county, limit=1500, addr_limit=400):
     auditor record link; then a street address from the map point. Returns (placed, addressed)."""
     from .scraper import ohio_parcels as op
     rows = db.q("""SELECT id, parcel_number FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NULL
-                   AND COALESCE(street,'')='' LIMIT ?""", (county["id"], limit))
+                   AND (COALESCE(street,'')='' OR street NOT GLOB '[0-9]*') LIMIT ?""", (county["id"], limit))
     placed = addressed = 0
     if rows:
         by_pin = {}
@@ -171,7 +171,7 @@ def fill_from_state(county, limit=1500, addr_limit=400):
     # vacant land gets only city and zip. Rows that already have a city are not asked again.
     rings = {pid: info["rings"] for p, info in found.items() for pid in by_pin.get(p, [])} if rows else {}
     todo = db.q("""SELECT id, lat, lng FROM parcels WHERE county_id=? AND is_active=1 AND lat IS NOT NULL
-                   AND COALESCE(street,'')='' AND COALESCE(city,'')='' LIMIT ?""", (county["id"], addr_limit))
+                   AND (COALESCE(street,'')='' OR street NOT GLOB '[0-9]*') AND COALESCE(city,'')='' LIMIT ?""", (county["id"], addr_limit))
     s = __import__("requests").Session()
     for i, r in enumerate(todo):
         a = op.address(r["lat"], r["lng"], rings.get(r["id"]), s)

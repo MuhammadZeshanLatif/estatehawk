@@ -7,6 +7,7 @@ Per county: share of leads with an address, a map point, a county value and an o
 the last good download is.
 """
 import datetime as dt
+import re
 
 from . import db
 
@@ -45,7 +46,7 @@ def _day(ts):
 
 FIELDS = [  # (column test, what the reader misses without it)
     (lambda p: (p.get("owner_name") or "").strip(), "Owner name"),
-    (lambda p: (p.get("street") or "").strip(), "Street address"),
+    (lambda p: bool(re.match(r"^\d+\b", (p.get("street") or "").strip())), "Street address"),
     (lambda p: p.get("lat") is not None, "Map location"),
     (lambda p: p.get("appraised_total"), "County value"),
     (lambda p: p.get("mail_address") or p.get("mail_state"), "Owner mailing address"),
@@ -90,7 +91,7 @@ def counties(ids=None):
     """{county_id: {"n", "address", "map", "value", "mailing", "complete", "fresh_days", "fresh"}} for active leads."""
     where = f" AND county_id IN ({','.join(str(int(i)) for i in ids)})" if ids else ""
     rows = db.q(f"""SELECT county_id, COUNT(*) n,
-                    SUM(CASE WHEN COALESCE(street,'') <> '' THEN 1 ELSE 0 END) address,
+                    SUM(CASE WHEN street GLOB '[0-9]*' THEN 1 ELSE 0 END) address,
                     SUM(CASE WHEN lat IS NOT NULL THEN 1 ELSE 0 END) map,
                     SUM(CASE WHEN appraised_total IS NOT NULL AND appraised_total > 0 THEN 1 ELSE 0 END) value,
                     SUM(CASE WHEN COALESCE(mail_address,'') <> '' OR COALESCE(mail_state,'') <> '' THEN 1 ELSE 0 END) mailing

@@ -11,7 +11,7 @@ Finds tax-delinquent properties in Ohio counties every night, scores them as dea
 6. Jab chahein naya data: Deals par refresh button, ya Counties > Sync all / har county ke menu mein "Sync now". Waqt badalna: Settings > Profile > Nightly county sync time.
 
 ## Gemini API key (optional)
-Settings > Integrations > Gemini AI mein key dalein (ya `.env` file mein `GEMINI_API_KEY=`). Is se offer letter/email aur "Why this score" AI likhta hai. Key na ho to built-in template chalta hai.
+Settings > Integrations > Gemini AI mein primary aur backup keys dalein (ya `.env` file mein `GEMINI_API_KEY=` aur `GEMINI_API_KEY_BACKUP=`). Primary fail ho to backup khud try hoti hai. Independent quota ke liye doosri key alag Google project se banayein. Dono fail hon to offer letter/email built-in template se banta hai; "Why this score" AI explanation us waqt unavailable hoti hai.
 
 ## Screens (design/chatgpt ke mutabiq)
 Deals, Deal detail (tax history, why this score, offer draft, notes), Map, Alerts (rules + channels + daily digest), Counties (sync status, 30-day trend), Outreach (kanban, follow-ups, reply rate, batch letters), Reports (KPIs, charts, funnel, CSV/PDF), Settings (profile, scoring weights with live preview, integrations), Onboarding wizard, mobile layout.

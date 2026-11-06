@@ -9,8 +9,12 @@ import requests
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
+def keys():
+    return [v for v in dict.fromkeys((os.environ.get(k) or "").strip() for k in ("GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP")) if v]
+
+
 def key():
-    return os.environ.get("GEMINI_API_KEY", "").strip()
+    return keys()[0] if keys() else ""
 
 
 def model():
@@ -22,14 +26,25 @@ def enabled():
 
 
 def generate(prompt, max_tokens=900, temperature=0.6):
-    r = requests.post(API.format(model=model()), params={"key": key()}, timeout=60, json={
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
-    })
-    if r.status_code != 200:
-        raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:300]}")
-    data = r.json()
-    return "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
+    if not keys():
+        raise RuntimeError("Gemini is not configured")
+    errors = []
+    for credential in keys():
+        try:
+            r = requests.post(API.format(model=model()), params={"key": credential}, timeout=60, json={
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+            })
+            if r.status_code != 200:
+                raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:200]}")
+            data = r.json()
+            result = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"]).strip()
+            if result:
+                return result
+            raise RuntimeError("Gemini returned an empty answer")
+        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, RuntimeError) as e:
+            errors.append(str(e)[:200])
+    raise RuntimeError("Both Gemini keys failed: " + "; ".join(errors))
 
 
 def test():

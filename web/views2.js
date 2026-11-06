@@ -453,8 +453,8 @@ async function integrationsTab(body) {
   const sect = (name, key, on, inner, help) => `<div class="card card-pad" style="margin-bottom:18px"><div class="row between"><h3>${name}</h3><span class="small"><span class="status-dot ${on ? 'on' : ''}"></span>${on ? 'Connected' : 'Not connected'}</span></div>
     <div class="small muted" style="margin:4px 0 14px">${help}</div>${inner}<div class="row"><button class="btn primary sm" data-save>Save</button>${key ? `<button class="btn sm" data-test="${key}">Send test</button>` : ''}</div></div>`;
   body.innerHTML = `
-    ${sect('Gemini AI', 'gemini', c.gemini, `<div class="terms">${f('GEMINI_API_KEY', 'API key', 'AIza...', 'password')}${f('GEMINI_MODEL', 'Model', 'gemini-2.5-flash')}</div>`,
-      'Writes offer letters/emails and explains deal scores. Get a free key at aistudio.google.com > Get API key. Without a key, built-in templates are used.')}
+    ${sect('Gemini AI', 'gemini', c.gemini, `<div class="terms">${f('GEMINI_API_KEY', 'Primary API key', 'AIza...', 'password')}${f('GEMINI_API_KEY_BACKUP', 'Backup API key', 'AIza...', 'password')}${f('GEMINI_MODEL', 'Model', 'gemini-2.5-flash')}</div>`,
+      'Writes offer letters and explains deal scores. If the primary key fails, the backup key is tried automatically. Use a key from a different Google project for independent quota. If both fail, offer letters use the built-in template.')}
     ${sect('Email (Gmail SMTP)', 'email', c.email, `<div class="terms">${f('SMTP_HOST', 'SMTP host', 'smtp.gmail.com')}${f('SMTP_PORT', 'Port', '587')}${f('SMTP_USER', 'Username', 'you@gmail.com')}${f('SMTP_PASSWORD', 'App password', '16-letter app password', 'password')}${f('ALERT_EMAIL_TO', 'Send alerts to', 'you@gmail.com')}${f('SMTP_FROM', 'From (optional)', '')}</div>`,
       'For Gmail: turn on 2-step verification, then create an App password (myaccount.google.com > Security > App passwords).')}
     ${sect('Slack', 'slack', c.slack, f('SLACK_WEBHOOK_URL', 'Incoming webhook URL', 'https://hooks.slack.com/services/...', 'password'), 'Create an Incoming Webhook in your Slack workspace and paste its URL.')}

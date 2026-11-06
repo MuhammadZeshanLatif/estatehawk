@@ -253,12 +253,14 @@ export async function deal(el, [rawId]) {
   const outState = p.mail_state && p.mail_state !== p.state;
   const d = p.offer_defaults;
   const sugg = p.suggested_offer || 0;
+  const hasStreet = /^\d+\b/.test(p.street || '');
+  const propertyAddress = hasStreet ? title(p.street) : 'Address not listed by county';
   const label = p.score >= 85 ? 'High potential deal' : p.score >= 65 ? 'Good potential' : 'Lower priority';
   const stageLabel = (S.meta.stages.find((s) => s.key === p.stage) || {}).label;
   el.innerHTML = `
   <a class="small muted row gap6" href="#/deals" style="margin-bottom:12px">${ic('back', 15)} Back to Deals</a>
   <div class="page-head" style="margin-bottom:16px">
-    <div><h1 style="font-size:28px">${esc(title(p.street))}</h1><div class="sub" style="color:var(--ink2)">${[title(p.city), [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).map(esc).join(', ')} · ${esc(p.county_name)}</div></div>
+    <div><h1 style="font-size:28px">${esc(propertyAddress)}</h1><div class="sub" style="color:var(--ink2)">${[title(p.city), [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).map(esc).join(', ')} · ${esc(p.county_name)}</div></div>
     <div class="row" style="margin-left:24px"><span class="pill p-green" style="padding:6px 8px 6px 14px;font-size:13px">Deal score ${scorePill(p.score)}</span>
       ${!p.is_active ? '<span class="pill p-grey">Paid / off list</span>' : ''}${stageLabel ? `<span class="pill p-blue">${esc(stageLabel)}</span>` : ''}</div>
     <div class="right">
@@ -272,18 +274,18 @@ export async function deal(el, [rawId]) {
   <div class="detail-grid">
     <div class="col" style="gap:18px;min-width:0">
       <div>
-        <div class="gallery" id="gal"><span class="count" id="galCount">1 / ${p.photo_url ? 4 : 3}</span></div>
+        <div class="gallery" id="gal">${p.lat ? `<span class="count" id="galCount">1 / ${p.photo_url ? 4 : 3}</span>` : ''}</div>
         <div class="gal-tabs">
           ${p.photo_url ? `<button data-v="county" style="background-image:url('${esc(p.photo_url)}')"><span>County aerial</span></button>` : ''}
-          <button class="on" data-v="sat" style="background-image:url('${tileUrl(p.lat, p.lng, 18)}')"><span>Satellite</span></button>
+          ${p.lat ? `<button class="on" data-v="sat" style="background-image:url('${tileUrl(p.lat, p.lng, 18)}')"><span>Satellite</span></button>
           <button data-v="map" style="background-image:url('${tileUrl(p.lat, p.lng, 16).replace("World_Imagery", "World_Street_Map")}')"><span>Street map</span></button>
-          <button data-v="sv" style="background:#3E4A44"><span>Street View</span></button>
+          <button data-v="sv" style="background:#3E4A44"><span>Street View</span></button>` : ''}
         </div>
       </div>
       <div class="card card-pad"><h3 style="margin-bottom:6px">Property Details</h3>
         <div class="facts">
-          ${fact('pin', 'Address', `${esc(title(p.street))}<div class="small muted" style="font-weight:400">${[title(p.city), [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).map(esc).join(', ')}</div>`)}
-          ${fact('user', 'Owner', `${esc(title(p.owner_full_name || p.owner_name))}${outState ? `<div><span class="pill p-amber tiny" style="margin-top:4px">Out of state (${esc(p.mail_state)})</span></div>` : p.owner_occupied === 0 ? '<div><span class="pill p-grey tiny" style="margin-top:4px">Not owner-occupied</span></div>' : ''}`)}
+          ${fact('pin', 'Address', `${esc(propertyAddress)}<div class="small muted" style="font-weight:400">${[title(p.city), [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).map(esc).join(', ')}</div>`)}
+          ${fact('user', 'Owner', `${esc(title(p.owner_name || p.owner_full_name || 'Not listed'))}${outState ? `<div><span class="pill p-amber tiny" style="margin-top:4px">Out of state (${esc(p.mail_state)})</span></div>` : p.owner_occupied === 0 ? '<div><span class="pill p-grey tiny" style="margin-top:4px">Not owner-occupied</span></div>' : ''}`)}
           ${fact('house', 'Property type', `${esc(p.property_type || '--')}<div class="small muted" style="font-weight:400">${esc(title(p.land_use || ''))}</div>`)}
           ${fact('dollar', 'Taxes owed', money(due, 2))}
           ${fact('cal', 'Years behind', `${yrs(p.years_behind)} <span class="small muted" style="font-weight:400">${p.cert_year ? '(certified delinquent ' + p.cert_year + ')' : '(est.)'}</span>`)}
@@ -335,13 +337,13 @@ export async function deal(el, [rawId]) {
   photoBox.style.cssText = `position:absolute;inset:0;z-index:450;background:#1d2420 url('${(p.photo_url || '').replace(/'/g, '')}') center/contain no-repeat;display:none`;
   g.append(photoBox);
   const showMsg = !p.lat && !p.photo_url;
-  if (showMsg) { const m = document.createElement('div'); m.style.cssText = 'position:absolute;inset:0;z-index:460;display:grid;place-items:center;color:#556;background:#E9ECE6;font-size:13px;text-align:center;padding:20px'; m.textContent = 'Location not placed on the map yet. It appears after the next sync.'; g.append(m); }
+  if (showMsg) { const m = document.createElement('div'); m.className = 'map-unavailable'; m.innerHTML = `<div>${ic('pin', 24)}<b>Map location unavailable</b><span>${hasStreet ? 'We could not verify this address on the map.' : 'The county record has no usable street address or coordinates.'}</span>${p.property_url ? `<a class="btn sm" href="${esc(p.property_url)}" target="_blank" rel="noopener">Open county record ${ic('link', 13)}</a>` : `<span>Check parcel ${esc(p.parcel_number || '')} with the county assessor.</span>`}</div>`; g.append(m); }
   $$('.gal-tabs button').forEach((b, i) => b.onclick = () => {
     if (b.dataset.v === 'sv') return p.lat ? open(streetView(p), '_blank') : open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.street + ', ' + p.city + ' ' + p.state + ' ' + p.zip)}`, '_blank');
     $$('.gal-tabs button').forEach((x) => x.classList.toggle('on', x === b));
     photoBox.style.display = b.dataset.v === 'county' ? 'block' : 'none';
     if (b.dataset.v !== 'county') { gm.removeLayer(layer); layer = baseTiles(gm, b.dataset.v === 'sat' ? 'sat' : 'light'); gm.setZoom(b.dataset.v === 'sat' ? 18 : 16); }
-    $('#galCount').textContent = `${i + 1} / ${nTabs}`;
+    if ($('#galCount')) $('#galCount').textContent = `${i + 1} / ${nTabs}`;
   });
   if (p.photo_url) $('.gal-tabs button[data-v=county]').click();
   // full-screen map: bigger, drag, scroll to zoom, switch satellite / street map, Esc or the button to close
@@ -377,7 +379,7 @@ export async function deal(el, [rawId]) {
   $('#mSave').onclick = $('#listBtn').onclick;
   $('#moreBtn').onclick = (e) => { e.stopPropagation(); menu($('#moreBtn'), [
     ...S.meta.stages.map((s) => ({ label: 'Move to ' + s.label, icon: 'right', fn: () => moveStage(s.key) })),
-    '-', { label: 'Open in Google Maps', icon: 'pin', fn: () => open(gmaps(p)) },
+    '-', ...(p.lat || hasStreet ? [{ label: 'Open in Google Maps', icon: 'pin', fn: () => open(gmaps(p)) }] : []),
     ...(p.stage ? [{ label: 'Remove from pipeline', icon: 'x', danger: true, fn: () => moveStage('remove') }] : []),
   ]); };
   async function moveStage(stage) {
@@ -397,8 +399,9 @@ export async function deal(el, [rawId]) {
   function renderOffer(editing = false) {
     const oc = $('#offerCard');
     oc.innerHTML = `<h3 style="margin-bottom:12px">Offer Draft</h3>
-      <div class="offer-top"><div class="sugg"><div class="tiny muted">Suggested offer</div><b class="num">${money(offer?.price ?? sugg)}</b></div>
-        <div><div class="tiny muted">Est. equity</div><b class="num">${money(p.est_equity)}</b></div><div><div class="tiny muted">Est. value</div><b class="num">${money(p.appraised_total)}</b></div></div>
+      <div class="offer-top"><div class="sugg"><div class="tiny muted">${hasStreet ? 'Suggested offer' : 'Unverified offer estimate'}</div><b class="num">${money(offer?.price ?? sugg)}</b></div>
+        <div title="${esc(money(p.est_equity))}"><div class="tiny muted">Est. equity</div><b class="num">${kmoney(p.est_equity)}</b></div><div title="${esc(money(p.appraised_total))}"><div class="tiny muted">Est. value</div><b class="num">${kmoney(p.appraised_total)}</b></div></div>
+      ${!hasStreet ? '<p class="small muted" style="margin:10px 0 0">Confirm the parcel and county value before using this estimate in an offer.</p>' : ''}
       <details ${offer ? '' : 'open'} style="margin:14px 0 4px"><summary class="small" style="cursor:pointer;font-weight:600;color:var(--ink2)">Offer terms</summary>
         <div class="terms" style="margin-top:10px">
           <div class="field"><label>Offer price</label><input class="input num" id="oPrice" value="${Math.round(offer?.price ?? sugg)}"></div>
@@ -445,7 +448,7 @@ export async function deal(el, [rawId]) {
   renderOffer();
   $('#mOffer').onclick = () => { $('#offerCard').scrollIntoView({ behavior: 'smooth' }); };
   $('#mCall').onclick = () => modal(`<h2>Call owner</h2><p class="muted">County records do not include phone numbers. Use a skip tracing service with the mailing address below, then log the call here.</p>
-    <div class="card card-pad small">${esc(title(p.owner_full_name || p.owner_name))}<br>${esc(title(p.mail_address || ''))}</div>
+    <div class="card card-pad small">${esc(title(p.owner_name || p.owner_full_name || 'Not listed'))}<br>${esc(title(p.mail_address || ''))}</div>
     <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" data-close>Close</button><button class="btn primary" id="logCall">Log a call</button></div>`, (m, close) => {
     $('#logCall', m).onclick = async () => { await api(`/api/parcels/${encodeURIComponent(id)}/activity`, { method: 'POST', body: { kind: 'call', text: 'Called owner' } }); close(); deal(el, [rawId]); };
   });
@@ -576,7 +579,7 @@ export function taskModal(parcelId, done) {
 
 function ownerInfo(p) {
   // owner name is "LAST FIRST ..." in county data; mailing city/state is where the owner lives
-  const parts = (p.owner_full_name || '').trim() ? (p.owner_full_name || '').split(/\s*&\s*/)[0] : (p.owner_name || '').replace(/&.*/, '').trim().split(/\s+/).slice(0, 2).reverse().join(' ');
+  const parts = (p.owner_name || p.owner_full_name || '').replace(/&.*/, '').trim().split(/\s+/).slice(0, 2).reverse().join(' ');
   const company = /\b(LLC|INC|CORP|CO|LTD|TRUST|BANK|CHURCH|PROPERTIES|HOLDINGS|INVESTMENTS?)\b/i.test(p.owner_name || '');
   const name = company ? title((p.owner_name || '').replace(/&.*/, '').trim()) : title(parts.replace(/\b(ETAL|ET AL|TRUSTEE|TR)\b/gi, '').trim());
   const m = (p.mail_address || '').match(/,\s*([^,]+?)\s+([A-Z]{2})\s+\d{5}/);
@@ -610,7 +613,7 @@ const CHECK = { verified: ['p-green', 'check', 'Verified'], partial: ['p-amber',
 function dataCard(dc, locked) {
   if (!dc) return '';
   const [tone, icn, word] = CHECK[dc.status] || CHECK.partial;
-  const row = (k, v) => `<div class="row between" style="padding:7px 0;border-top:1px solid var(--line);gap:12px"><span class="small muted">${k}</span><span class="small" style="text-align:right">${v}</span></div>`;
+  const row = (k, v) => `<div class="row between data-row"><span class="small muted">${k}</span><span class="small" style="text-align:right">${v}</span></div>`;
   const d = (x) => x ? fmtDate(x, { month: 'short', day: 'numeric', year: 'numeric' }) : '--';
   return `<div class="card card-pad" id="dataCard"><div class="row between"><h3>Data sources</h3><span class="pill ${tone} tiny">${ic(icn, 12)} ${word}</span></div>
     <p class="small muted" style="margin:8px 0 10px">${esc(dc.note)}</p>

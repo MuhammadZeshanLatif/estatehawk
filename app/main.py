@@ -714,6 +714,7 @@ def parcel_detail(pid: str):
         if ll:
             db.run("UPDATE parcels SET lat=?, lng=? WHERE id=?", (ll[0], ll[1], pid))
             p["lat"], p["lng"] = ll
+            check = quality.lead(p, county)
     br = json.loads(p.get("score_breakdown") or "{}")
     p["score_parts"] = br.get("parts", {})
     p["reasons"] = scoring.reasons(p, br)
@@ -1264,7 +1265,7 @@ def letters(ids: str = ""):
         o = db.q1("SELECT * FROM offers WHERE parcel_id=? AND org_id=? ORDER BY id DESC LIMIT 1", (pid, OID()))
         if not p or not o:
             continue
-        to = H.escape(p.get("owner_full_name") or p.get("owner_name") or "")
+        to = H.escape(p.get("owner_name") or p.get("owner_full_name") or "")
         addr = H.escape(p.get("mail_address") or f"{p['street']}, {p['city']} {p['state']} {p['zip']}")
         pages.append(f"""<section><p class=from>{H.escape(prof.get('name') or '')}<br>{H.escape(prof.get('company') or '')}<br>
         {H.escape(prof.get('phone') or '')} {H.escape(prof.get('email') or '')}</p><p>{dt.date.today():%B %d, %Y}</p>
@@ -1299,7 +1300,7 @@ def lead_report(pid: str):
     facts = "".join([
         rec("Address", e(", ".join(x for x in (p.get("street"), p.get("city"), f"{p.get('state') or ''} {p.get('zip') or ''}".strip()) if x)), county_src),
         rec("Parcel number", e(p.get("parcel_number")), county_src),
-        rec("Owner on record", e(p.get("owner_full_name") or p.get("owner_name")), record_src),
+        rec("Owner on record", e(p.get("owner_name") or p.get("owner_full_name")), record_src),
         rec("Tax bill mailed to", e(p.get("mail_address")), record_src),
         rec("Taxes owed (county list)", m(p.get("amount_owed"), 2), county_src),
         rec("Total due (county record)", m(p.get("total_due"), 2), record_src),
@@ -1563,9 +1564,9 @@ async def preview_score(request: Request):
             "score": s, "parts": br["parts"], "factors": br["factors"], "labels": scoring.LABELS}
 
 
-ENV_KEYS = ["GEMINI_API_KEY", "GEMINI_MODEL", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM", "ALERT_EMAIL_TO",
+ENV_KEYS = ["GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP", "GEMINI_MODEL", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM", "ALERT_EMAIL_TO",
             "SLACK_WEBHOOK_URL", "TWILIO_SID", "TWILIO_TOKEN", "TWILIO_FROM", "TWILIO_WHATSAPP_FROM", "ALERT_PHONE_TO"]
-SECRET = {"GEMINI_API_KEY", "SMTP_PASSWORD", "TWILIO_TOKEN", "SLACK_WEBHOOK_URL"}
+SECRET = {"GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP", "SMTP_PASSWORD", "TWILIO_TOKEN", "SLACK_WEBHOOK_URL"}
 
 
 @app.get("/api/integrations")

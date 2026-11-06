@@ -12,7 +12,7 @@ def configured():
         "slack": bool(e("SLACK_WEBHOOK_URL")),
         "sms": bool(e("TWILIO_SID") and e("TWILIO_TOKEN") and e("TWILIO_FROM") and e("ALERT_PHONE_TO")),
         "whatsapp": bool(e("TWILIO_SID") and e("TWILIO_TOKEN") and e("TWILIO_WHATSAPP_FROM") and e("ALERT_PHONE_TO")),
-        "gemini": bool(e("GEMINI_API_KEY")),
+        "gemini": bool(e("GEMINI_API_KEY") or e("GEMINI_API_KEY_BACKUP")),
     }
 
 
