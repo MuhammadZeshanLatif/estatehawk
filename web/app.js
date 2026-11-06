@@ -412,19 +412,20 @@ export async function plansModal(note = '') {
     p.users == null ? 'Unlimited users' : `${p.users} ${p.users > 1 ? 'users' : 'user'}`,
     p.reveals ? `${p.reveals} leads in full` : 'Every lead in full: owner, address, contacts',
     p.export ? (p.export_day ? `CSV export (${p.export_day.toLocaleString()} leads a day) + letters` : 'CSV export + mail-merge letters') : 'No export', k === 'trial' ? `${p.days} days free` : 'Daily sync + alerts + AI offers'];
-  const intro = !isAdmin ? 'Only your company admin can change the plan. Ask them to pick one here.'
+  const intro = S.viewOrg ? 'You are viewing a customer account. That company’s admin can choose and pay for a plan from their own account.'
+    : S.meta?.org?.id === 1 ? 'Your EstateHawk owner account already has full access. Customer company admins can choose a paid plan from their accounts.'
+    : !isAdmin ? 'Only your company admin can change the plan. Ask them to pick one here.'
     : canBuy ? `Pay securely by card. Your plan turns on right after payment, and you can cancel anytime.${bill.mode === 'test' ? ' <b>Test mode:</b> use card 4111 1111 1111 1111, no real money is charged.' : ''}`
     : 'Pick a plan and we switch your account the same business day. We email you the payment link, nothing is charged now.';
   const pickBtn = (k, p) => !p.price || !isAdmin ? ''
     : `<button class="btn primary sm" data-${canBuy ? 'buy' : 'req'}="${k}" style="width:100%">Choose ${esc(p.label)}</button>`;
-  modal(`<h2>Plans</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0">${Object.entries(P).map(([k, p]) => `
-      <div class="card card-pad" style="display:flex;flex-direction:column;${k === cur ? 'border:2px solid var(--green)' : ''}"><b>${esc(p.label)}</b>
+  modal(`<div class="plans-dialog"><h2>Choose your plan</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
+    <div class="plans-grid">${Object.entries(P).map(([k, p]) => `
+      <div class="card card-pad plan-option ${k === cur ? 'is-current' : ''}"><b>${esc(p.label)}</b>
         <div style="font-size:24px;font-weight:700;margin:6px 0">${p.price ? '$' + p.price : 'Free'}<span class="small muted" style="font-weight:400">${p.price ? ' / month' : ''}</span></div>
         <ul class="small" style="padding-left:16px;margin:0 0 10px;line-height:1.7;flex:1">${feat(k, p).map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
         ${k === cur ? '<div class="pill p-green tiny" style="text-align:center">Current plan</div>' : pickBtn(k, p)}</div>`).join('')}</div>
-    <div class="row" style="justify-content:flex-end;gap:8px">${bill.has_portal && isAdmin ? '<button class="btn" id="mBill">Manage billing</button>' : ''}<button class="btn" data-close>Close</button>
-      <button class="btn" id="mAsk">${ic('mail', 15)} Ask a question</button></div>`, (el) => {
+    <div class="plans-actions">${bill.has_portal && isAdmin ? '<button class="btn" id="mBill">Manage billing</button>' : ''}<button class="btn" id="mAsk">${ic('mail', 15)} Ask a question</button><button class="btn" data-close>Close</button></div></div>`, (el) => {
     $$('[data-buy]', el).forEach((b) => b.onclick = async () => {
       const label = b.textContent; b.disabled = true; b.innerHTML = `<span class="spin" style="display:inline-flex">${ic('refresh', 14)}</span> Opening checkout...`;
       try { const r = await api('/api/billing/checkout', { method: 'POST', body: { plan: b.dataset.buy } }); location.href = r.url; }

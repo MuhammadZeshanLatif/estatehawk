@@ -63,7 +63,8 @@ export async function deals(el) {
         <button class="chip-btn" id="fMore">${ic('filter', 15)} More Filters</button>
         <span class="grow"></span>
         <span class="small muted" id="pageInfo"></span>
-        <div class="pager"><button class="btn sm" id="prev" aria-label="Previous page">${ic('left', 16)}</button><button class="btn sm" id="next" aria-label="Next page">${ic('right', 16)}</button></div>
+        <form class="lead-jump" id="leadJump"><label for="leadNumber">Go to lead</label><input class="input" id="leadNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="#" aria-label="Lead number"><button class="btn sm" type="submit">Go</button></form>
+        <div class="pager"><button class="btn sm" id="prev" aria-label="Previous page">${ic('left', 16)}</button><span class="small muted" id="pageNumber"></span><button class="btn sm" id="next" aria-label="Next page">${ic('right', 16)}</button></div>
       </div>
       <div id="ownerHelp" class="small muted" style="display:none;padding:0 20px 14px"></div>
       <div id="bulk" class="row hide" style="padding:0 20px 12px"><b class="small" id="bulkN"></b><button class="btn xs" id="bulkCmp" title="Pick 2 to 4 leads">${ic('chart', 14)} Compare</button><button class="btn xs" id="bulkPipe">${ic('plus', 14)} Add to pipeline</button><button class="btn xs" id="bulkOffer">${ic('letter', 14)} Draft offers</button><a class="btn xs" id="bulkCsv">${ic('download', 14)} Export CSV</a></div>
@@ -80,6 +81,7 @@ export async function deals(el) {
 
   const chosen = new Set();
   let leadRequest = 0;
+  let totalLeads = 0;
   const qs = () => {
     const o = { county: S.county, ...st };
     return Object.entries(o).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
@@ -98,6 +100,8 @@ export async function deals(el) {
   async function loadLeads() {
     const request = ++leadRequest;
     const r = await api('/api/parcels?' + qs());
+    if (request !== leadRequest) return;
+    totalLeads = r.total;
     const cn = S.county === 'all' ? 'all counties' : countyName(S.county);
     const active = [
       ['county', S.county !== 'all' && `County: ${cn}`],
@@ -131,6 +135,8 @@ export async function deals(el) {
     help.style.display = st.owner_status === 'missing' ? 'block' : 'none';
     help.textContent = st.owner_status === 'missing' ? 'Texas owner names are checked automatically against the official parcel map every 4 hours. If a name stays missing, open the lead, copy its parcel number, and search that county’s appraisal district records for the latest owner. Other states may use different county records.' : '';
     $('#pageInfo').textContent = r.total ? `${(r.page - 1) * r.per + 1} - ${Math.min(r.page * r.per, r.total)} of ${num(r.total)} leads` : '0 leads';
+    $('#pageNumber').textContent = `${r.page} / ${Math.max(1, Math.ceil(r.total / r.per))}`;
+    $('#leadNumber').max = String(r.total || 1);
     $('#prev').disabled = r.page <= 1; $('#next').disabled = r.page * r.per >= r.total;
     $('#leadTable tbody').innerHTML = r.rows.map((p) => `<tr data-id="${esc(p.id)}">
       <td><input type="checkbox" class="chk" aria-label="Select ${esc(p.street || p.parcel_number || 'this lead')}" ${chosen.has(p.id) ? 'checked' : ''}></td>
@@ -175,6 +181,13 @@ export async function deals(el) {
   let qt; $('#leadQ').oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { st.q = e.target.value; reload(); }, 250); };
   $('#prev').onclick = () => { st.page--; loadLeads(); };
   $('#next').onclick = () => { st.page++; loadLeads(); };
+  $('#leadJump').onsubmit = (e) => {
+    e.preventDefault();
+    const n = Number($('#leadNumber').value);
+    if (!Number.isSafeInteger(n) || n < 1 || n > totalLeads) return toast(`Enter a lead number from 1 to ${num(totalLeads)}.`, true);
+    st.page = Math.floor((n - 1) / st.per) + 1;
+    loadLeads();
+  };
   $('#fMore').onclick = () => modal(`<h2>More filters</h2><div style="height:14px"></div>
     <div class="field"><label>Property type</label><select class="select" id="mType"><option value="homes">Homes only (single + multi family)</option><option value="all">All property types</option><option>Vacant land</option><option>Commercial</option><option>Agricultural</option></select></div>
     <div class="field"><label>Minimum est. equity</label><select class="select" id="mEq"><option value="">Any</option><option value="30000">$30K+</option><option value="50000">$50K+</option><option value="100000">$100K+</option></select></div>

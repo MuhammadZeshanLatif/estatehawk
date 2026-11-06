@@ -154,6 +154,12 @@ textarea.input{height:auto;padding:10px;resize:vertical;line-height:1.55}
 input[type=checkbox]{width:16px;height:16px;accent-color:var(--green);cursor:pointer}
 .pager{display:flex;align-items:center;gap:6px}
 .pager .btn{width:34px;padding:0}
+.lead-jump{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.lead-jump label{font-size:12px;color:var(--mute)}
+.lead-jump .input{width:82px;height:34px;padding:5px 8px}
+.lead-jump .btn{height:34px}
+.lead-jump input::-webkit-inner-spin-button,.lead-jump input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.lead-jump input[type=number]{-moz-appearance:textfield}
 
 /* deals layout */
 .deals-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;margin-top:18px}
@@ -318,6 +324,15 @@ input[type=range]{accent-color:var(--green);width:100%}
 .modal{position:fixed;inset:0;background:rgba(17,24,22,.35);display:grid;place-items:center;z-index:2000;padding:16px}
 .modal[hidden]{display:none}
 .modal-card{background:#fff;border-radius:16px;width:min(560px,100%);max-height:90vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.2);padding:22px 24px}
+.modal:has(.plans-dialog){display:block;overflow-y:auto;overscroll-behavior:contain}
+.modal-card:has(.plans-dialog){width:min(900px,100%);max-height:none;overflow:visible;margin:clamp(8px,3vh,32px) auto;border-radius:18px}
+.plans-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
+.plan-option{display:flex;flex-direction:column;min-width:0}
+.plan-option.is-current{border:2px solid var(--green)}
+.plan-option .btn{margin-top:auto;min-height:38px}
+.plans-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding-top:4px}
+@media(max-width:760px){.plans-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.plans-grid{grid-template-columns:1fr}.modal-card:has(.plans-dialog){padding:18px}.plans-actions .btn{flex:1 1 auto}}
 #toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:3000}
 .toast{background:#13201A;color:#fff;border-radius:10px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.2);max-width:360px;font-size:13px;animation:tin .2s ease}
 .toast.err{background:#7A2410}
