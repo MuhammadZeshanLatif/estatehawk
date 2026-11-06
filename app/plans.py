@@ -34,6 +34,11 @@ def org_info(org_id):
         ends = o.get("trial_ends") or today()
         days_left = (dt.date.fromisoformat(ends[:10]) - dt.date.today()).days
         expired = days_left < 0
+    elif o["plan"] in ("starter", "pro", "agency"):
+        from . import billing
+        bill = billing.get(org_id)
+        if bill.get("status") == "canceling" and bill.get("period_end"):
+            expired = bill["period_end"][:10] < today()
     used = db.q1("SELECT COUNT(*) n FROM reveals WHERE org_id=?", (org_id,))["n"] if plan["reveals"] else 0
     users = db.q1("SELECT COUNT(*) n FROM users WHERE org_id=? AND active=1", (org_id,))["n"]
     return {"id": o["id"], "name": o["name"], "plan": o["plan"], "label": plan["label"], "limits": plan, "status": o["status"],

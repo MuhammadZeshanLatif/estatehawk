@@ -2,7 +2,7 @@
 
 Flow: a company admin picks a plan -> we create a Creem checkout -> the customer pays on Creem's page ->
 Creem sends a webhook (and the customer comes back to /app#/billing) -> the company's plan switches.
-Test mode (CREEM_MODE=test, the default) uses Creem's test server and test cards only.
+Live mode uses the approved EstateHawk Creem store and its real products.
 """
 import hashlib, hmac, json, os, time
 
@@ -15,7 +15,11 @@ _cache = {"at": 0, "map": {}}
 
 
 def mode():
-    return "live" if (os.environ.get("CREEM_MODE") or "test").lower() == "live" else "test"
+    return "test" if (os.environ.get("CREEM_MODE") or "live").lower() == "test" else "live"
+
+
+def matches_mode(value):
+    return not value or value in (("test", "sandbox") if mode() == "test" else ("prod", "live"))
 
 
 def base():
@@ -23,7 +27,7 @@ def base():
 
 
 def configured():
-    return bool(os.environ.get("CREEM_API_KEY"))
+    return bool(os.environ.get("CREEM_API_KEY") and os.environ.get("CREEM_WEBHOOK_SECRET"))
 
 
 def _api(method, path, **kw):
@@ -92,11 +96,13 @@ def save(org, **changes):
 
 
 def start_checkout(org, plan, email, site):
+    if not configured():
+        raise RuntimeError("Online payment is not fully configured yet")
     pid = products().get(plan)
     if not pid:
         raise RuntimeError(f"The {plan} plan is not available for online payment yet")
     j = _api("POST", "/checkouts", json={
-        "product_id": pid, "request_id": f"org{org}-{plan}-{int(time.time())}",
+        "product_id": pid, "request_id": f"org{org}-{plan}-{time.time_ns()}",
         "customer": {"email": email} if email else None,
         "success_url": f"{site}/app#/billing/return",
         "metadata": {"org_id": str(org), "plan": plan},
@@ -122,10 +128,10 @@ def set_plan(org, plan, status, sub_id=None, customer_id=None, period_end=None, 
             db.run("UPDATE orgs SET status='active' WHERE id=?", (org,))
         save(org, plan=plan or o["plan"], status="active", subscription_id=sub_id, customer_id=customer_id, period_end=period_end,
              pending_plan="", paid_since=get(org).get("paid_since") or time.strftime("%Y-%m-%d"))
-    elif status in ("scheduled_cancel",):
+    elif status in ("scheduled_cancel",) or (status == "canceled" and period_end and period_end[:10] >= time.strftime("%Y-%m-%d")):
         save(org, status="canceling", subscription_id=sub_id, period_end=period_end)
     elif status in ("canceled", "expired", "unpaid", "past_due", "paused"):
-        if status != "past_due":  # past_due: card retry still running, keep access for now
+        if status not in ("past_due", "expired"):  # Creem may retry after expiry; keep access during retries
             yesterday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
             db.run("UPDATE orgs SET plan='trial', trial_ends=? WHERE id=?", (yesterday, org))
             auth.audit("plan ended", f"{o['name']}: {o['plan']} ended ({status}, {source})", org=org)
@@ -158,21 +164,36 @@ def _pid(obj):
 def handle_event(ev):
     """One webhook event from Creem. Returns a short note for the log."""
     kind, obj = ev.get("eventType") or "", ev.get("object") or {}
+    if not matches_mode(obj.get("mode")):
+        return f"{kind}: ignored wrong mode"
     org = _org_from(obj)
     if not org:
         return f"{kind}: no company found"
     cust = obj.get("customer")
     cust_id = cust.get("id") if isinstance(cust, dict) else cust
     if kind == "checkout.completed":
+        meta = obj.get("metadata") or {}
+        b = get(org)
+        if (obj.get("status") != "completed" or (obj.get("order") or {}).get("status") != "paid"
+                or obj.get("id") != b.get("checkout_id") or meta.get("plan") != b.get("pending_plan")
+                or _pid(obj) != products().get(meta.get("plan"))):
+            raise ValueError("Checkout does not match the paid company plan")
         sub = obj.get("subscription")
         sub_id = sub.get("id") if isinstance(sub, dict) else sub
-        plan = (obj.get("metadata") or {}).get("plan") or plan_for_product(_pid(obj))
+        if not sub_id:
+            raise ValueError("Paid checkout has no subscription")
+        plan = meta["plan"]
         set_plan(org, plan, "completed", sub_id, cust_id, source="checkout")
     elif kind.startswith("subscription."):
+        b = get(org)
+        if obj.get("id") != b.get("subscription_id"):
+            raise ValueError("Subscription does not match company billing record")
         status = obj.get("status") or kind.split(".", 1)[1]
         if kind == "subscription.paid":
             status = "paid"
-        plan = (obj.get("metadata") or {}).get("plan") or plan_for_product(_pid(obj))
+        plan = plan_for_product(_pid(obj)) or b.get("plan")
+        if plan not in PLAN_PRODUCTS:
+            raise ValueError("Unknown paid product")
         set_plan(org, plan, status, obj.get("id"), cust_id, obj.get("current_period_end_date"), source=kind)
     elif kind == "refund.created":
         save(org, last_refund=time.strftime("%Y-%m-%d"))
@@ -194,11 +215,16 @@ def confirm(org):
     if not cid:
         return b
     j = _api("GET", "/checkouts", params={"checkout_id": cid})
-    if (j.get("status") or "") == "completed" and str((j.get("metadata") or {}).get("org_id")) == str(org):
+    meta = j.get("metadata") or {}
+    if (j.get("status") == "completed" and (j.get("order") or {}).get("status") == "paid"
+            and str(meta.get("org_id")) == str(org) and meta.get("plan") == b.get("pending_plan")
+            and _pid(j) == products().get(meta.get("plan")) and matches_mode(j.get("mode"))):
         sub = j.get("subscription")
         cust = j.get("customer")
-        set_plan(org, (j.get("metadata") or {}).get("plan") or plan_for_product(_pid(j)), "completed",
-                 sub.get("id") if isinstance(sub, dict) else sub, cust.get("id") if isinstance(cust, dict) else cust, source="return")
+        sub_id = sub.get("id") if isinstance(sub, dict) else sub
+        if sub_id:
+            set_plan(org, meta["plan"], "completed", sub_id,
+                     cust.get("id") if isinstance(cust, dict) else cust, source="return")
     return get(org)
 
 

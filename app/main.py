@@ -1665,7 +1665,8 @@ async def creem_webhook(request: Request):
     try:
         note = billing.handle_event(json.loads(raw))
     except Exception as e:
-        note = f"error {e}"
+        auth.audit("payment webhook failed", str(e)[:200], org=1)
+        raise HTTPException(503, "Payment event could not be processed")
     auth.audit("payment webhook", note, org=1)
     return {"ok": True}
 
