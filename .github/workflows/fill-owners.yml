@@ -1,0 +1,29 @@
+name: Fill Texas owner names
+
+on:
+  schedule:
+    - cron: "37 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Maximum leads to check this run
+        required: false
+        default: "300"
+
+concurrency: fill-owners
+
+jobs:
+  fill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TZ: Asia/Karachi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m app.cli fill-owners ${{ inputs.limit || '300' }}

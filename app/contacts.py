@@ -176,7 +176,8 @@ def run_batch(status_cb=None):
     today = dt.date.today().isoformat()
     used = db.q1("SELECT COUNT(*) n FROM parcels WHERE contact_checked LIKE ? AND contact_status IN ('found','private')", (today + "%",))["n"]
     left = max(0, int(cfg.get("per_day", 50)) - used)
-    rows = db.q("""SELECT p.* FROM parcels p WHERE p.is_active=1 AND p.demo=0 AND p.contact_status IS NULL AND p.score>=?
+    rows = db.q("""SELECT p.* FROM parcels p WHERE p.is_active=1 AND p.demo=0 AND p.contact_status IS NULL
+                   AND COALESCE(TRIM(p.owner_name),'') <> '' AND p.score>=?
                    ORDER BY p.score DESC LIMIT ?""", (int(cfg.get("min_score", 0)), left))
     done = found = 0
     for i, p in enumerate(rows):

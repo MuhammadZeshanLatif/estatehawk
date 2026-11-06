@@ -54,6 +54,10 @@ def main(argv):
     if cmd == "add-lgbs":
         print(add_lgbs())
         return 0
+    if cmd == "fill-owners":
+        from . import owner_lookup
+        print(owner_lookup.run_batch(int(argv[2]) if len(argv) > 2 else 300))
+        return 0
     if cmd == "_old-add-lgbs":
         # every county with Linebarger tax-sale listings (Texas + Philadelphia) becomes a county here
         from .scraper.files import FileClient

@@ -226,7 +226,8 @@ NEW_PARCEL_COLS = {"cert_year": "INTEGER", "beds": "INTEGER", "baths_full": "INT
                    "stories": "REAL", "photo_url": "TEXT", "enrich_v": "INTEGER DEFAULT 0",
                    "contact_status": "TEXT", "contact_checked": "TEXT",
                    "flood_zone": "TEXT", "flood_sfha": "INTEGER", "flood_checked": "TEXT",
-                   "sale_date": "TEXT", "min_bid": "REAL", "sale_status": "TEXT"}
+                   "sale_date": "TEXT", "min_bid": "REAL", "sale_status": "TEXT",
+                   "owner_source": "TEXT", "owner_checked": "TEXT"}
 
 
 def con():

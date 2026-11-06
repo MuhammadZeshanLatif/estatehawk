@@ -44,6 +44,7 @@ def _day(ts):
 
 
 FIELDS = [  # (column test, what the reader misses without it)
+    (lambda p: (p.get("owner_name") or "").strip(), "Owner name"),
     (lambda p: (p.get("street") or "").strip(), "Street address"),
     (lambda p: p.get("lat") is not None, "Map location"),
     (lambda p: p.get("appraised_total"), "County value"),
@@ -68,7 +69,7 @@ def lead(p, county):
     elif differs:
         status, note = "conflict", "The amount on the county list and on the county property record do not match."
     elif missing:
-        status, note = "partial", f"On the latest county list. The county did not publish: {', '.join(m.lower() for m in missing)}."
+        status, note = "partial", f"On the latest list. The source did not provide: {', '.join(m.lower() for m in missing)}."
     else:
         status, note = "verified", "On the latest county list, with an address, map location and county value."
     return {
@@ -76,6 +77,7 @@ def lead(p, county):
         "source": source_name(county.get("host")), "list_url": list_url(county.get("host")),
         "record_url": p.get("property_url"),
         "first_seen": _day(p.get("first_seen")), "last_seen": seen, "record_read": _day(p.get("enriched_at")),
+        "owner_source": p.get("owner_source"), "owner_checked": _day(p.get("owner_checked")),
         "county_last_sync": county.get("last_sync"), "county_status": county.get("sync_status"),
         "amount_list": a_list, "amount_record": a_rec, "amount_differs": differs,
         "missing": missing,

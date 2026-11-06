@@ -553,12 +553,13 @@ function dataCard(dc, locked) {
     <p class="small muted" style="margin:8px 0 10px">${esc(dc.note)}</p>
     ${row('Source', dc.list_url ? `<a href="${esc(dc.list_url)}" target="_blank" rel="noopener" style="color:var(--green)">${esc(dc.source)} ${ic('link', 12)}</a>` : esc(dc.source))}
     ${dc.record_url ? row('County property record', `<a href="${esc(dc.record_url)}" target="_blank" rel="noopener" style="color:var(--green)">Open record ${ic('link', 12)}</a>`) : locked ? row('County property record', '<span class="muted">Shown after you open this lead</span>') : ''}
+    ${dc.owner_source && !locked ? row('Owner name source', `<a href="https://geographic.texas.gov/stratmap/land-parcels" target="_blank" rel="noopener" style="color:var(--green)">${esc(dc.owner_source)} ${ic('link', 12)}</a>`) : ''}
     ${row('First on the list', d(dc.first_seen))}
     ${row('Last confirmed on the list', d(dc.last_seen))}
     ${dc.record_read ? row('Property record read', d(dc.record_read)) : ''}
     ${row('County last downloaded', dc.county_last_sync ? `${d(dc.county_last_sync)} <span class="muted">(${ago(dc.county_last_sync)})</span>` : '--')}
     ${dc.amount_record ? row('Amount: list / county record', `${money(dc.amount_list, 2)} / ${money(dc.amount_record, 2)}${dc.amount_differs ? ` <span class="pill p-red tiny">differ</span>` : ` <span class="pill p-green tiny">match</span>`}`) : ''}
-    ${dc.missing.length ? row('Not published by the county', esc(dc.missing.join(', '))) : ''}
+    ${dc.missing.length ? row('Missing from source', esc(dc.missing.join(', '))) : ''}
     ${dc.estimates.length ? row('Estimates, not county facts', esc(dc.estimates.join(', '))) : ''}
   </div>`;
 }
