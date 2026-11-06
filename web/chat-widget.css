@@ -1,0 +1,38 @@
+#eh-chat{--eh-green:#14532d;--eh-ink:#17251d;--eh-muted:#66746b;position:fixed;right:22px;bottom:22px;z-index:1900;font:14px/1.45 Inter,Arial,sans-serif;color:var(--eh-ink)}
+#eh-chat *{box-sizing:border-box}
+#eh-chat button,#eh-chat input{font:inherit}
+#eh-chat .eh-chat-launcher{display:flex;align-items:center;gap:9px;background:var(--eh-green);color:#fff;border:1px solid #257041;border-radius:999px;padding:9px 15px 9px 8px;box-shadow:0 12px 32px rgba(8,54,27,.24);cursor:pointer;font-weight:700}
+#eh-chat .eh-chat-launcher:hover{background:#1d653b;transform:translateY(-2px)}
+#eh-chat .eh-chat-launcher img{width:31px;height:31px;padding:4px;border-radius:50%;background:#fff}
+#eh-chat .eh-chat-launcher i{display:block;width:8px;height:8px;border-radius:50%;background:#92eead;box-shadow:0 0 0 3px rgba(146,238,173,.18)}
+#eh-chat .eh-chat-panel{position:absolute;right:0;bottom:62px;width:min(390px,calc(100vw - 24px));height:min(570px,calc(100dvh - 100px));display:flex;flex-direction:column;background:#fff;border:1px solid #dce6de;border-radius:20px;overflow:hidden;box-shadow:0 22px 65px rgba(8,39,20,.23)}
+#eh-chat .eh-chat-panel[hidden]{display:none}
+#eh-chat .eh-chat-head{display:flex;align-items:center;gap:11px;padding:16px;background:linear-gradient(135deg,#14532d,#24794b);color:#fff;flex:none}
+#eh-chat .eh-chat-mark{display:grid;place-items:center;width:40px;height:40px;background:#fff;border-radius:12px;flex:none}
+#eh-chat .eh-chat-mark img{width:30px;height:30px}
+#eh-chat .eh-chat-head strong,#eh-chat .eh-chat-head small{display:block}
+#eh-chat .eh-chat-head strong{font-size:15px}
+#eh-chat .eh-chat-head small{font-size:11px;color:#d5f0dc;margin-top:2px}
+#eh-chat .eh-chat-close{margin-left:auto;align-self:flex-start;background:rgba(255,255,255,.14);border:0;border-radius:8px;color:#fff;font-size:22px;line-height:28px;width:30px;height:30px;cursor:pointer}
+#eh-chat .eh-chat-close:hover{background:rgba(255,255,255,.25)}
+#eh-chat .eh-chat-messages{flex:1;min-height:0;overflow-y:auto;padding:18px 14px 10px;background:linear-gradient(180deg,#f6faf7,#fff 40%);scrollbar-width:thin;scrollbar-color:#c8d8cd transparent}
+#eh-chat .eh-chat-message{display:flex;margin:0 0 12px}
+#eh-chat .eh-chat-message.user{justify-content:flex-end}
+#eh-chat .eh-chat-bubble{max-width:88%;padding:11px 13px;border-radius:15px;background:#fff;border:1px solid #e3eae4;box-shadow:0 2px 6px rgba(0,0,0,.035);white-space:pre-wrap;overflow-wrap:anywhere}
+#eh-chat .eh-chat-message.bot .eh-chat-bubble{border-top-left-radius:5px}
+#eh-chat .eh-chat-message.user .eh-chat-bubble{background:#14532d;color:#fff;border-color:#14532d;border-top-right-radius:5px}
+#eh-chat .eh-chat-typing{color:#6b7d70;font-size:12px;margin:0 0 12px;padding-left:6px}
+#eh-chat .eh-chat-nudge{display:flex;flex-direction:column;gap:6px;margin:0 0 14px 10px;padding:10px 12px;border-left:3px solid #2c9855;background:#f0f8f2;border-radius:0 10px 10px 0;font-size:12px;max-width:88%}
+#eh-chat .eh-chat-nudge a{color:#14532d;font-weight:700;text-decoration:none}
+#eh-chat .eh-chat-nudge a:hover{text-decoration:underline}
+#eh-chat .eh-chat-suggestions{display:flex;flex-wrap:wrap;gap:7px;padding:0 0 12px 8px;flex:none}
+#eh-chat .eh-chat-suggestions:empty{display:none}
+#eh-chat .eh-chat-suggestions button{border:1px solid #bcd8c4;border-radius:999px;background:#f4faf5;color:#14532d;white-space:nowrap;padding:7px 10px;cursor:pointer;font-size:12px}
+#eh-chat .eh-chat-suggestions button:hover{background:#e2f1e5}
+#eh-chat .eh-chat-form{display:flex;gap:8px;margin:0 13px;padding:10px 0;border-top:1px solid #e5ebe6;flex:none}
+#eh-chat .eh-chat-form input{flex:1;min-width:0;height:42px;border:1px solid #d5e1d8;border-radius:11px;padding:0 12px;color:#17251d;background:#fff;outline:none}
+#eh-chat .eh-chat-form input:focus{border-color:#2f8e50;box-shadow:0 0 0 3px rgba(47,142,80,.12)}
+#eh-chat .eh-chat-form button{width:42px;height:42px;border:0;border-radius:11px;background:#14532d;color:#fff;cursor:pointer;font-size:18px}
+#eh-chat .eh-chat-form button:disabled{opacity:.5;cursor:default}
+#eh-chat .eh-chat-foot{padding:0 14px 11px;color:#88958b;font-size:10px;text-align:center;flex:none}
+@media(max-width:650px){#eh-chat{right:12px;bottom:12px}#eh-chat.eh-chat-app{bottom:72px}#eh-chat .eh-chat-panel{width:min(390px,calc(100vw - 48px));height:min(570px,calc(100dvh - 96px))}#eh-chat.eh-chat-app .eh-chat-panel{height:min(520px,calc(100dvh - 150px))}}

@@ -25,13 +25,13 @@ def enabled():
     return bool(key())
 
 
-def generate(prompt, max_tokens=900, temperature=0.6):
+def generate(prompt, max_tokens=900, temperature=0.6, timeout=60):
     if not keys():
         raise RuntimeError("Gemini is not configured")
     errors = []
     for credential in keys():
         try:
-            r = requests.post(API.format(model=model()), params={"key": credential}, timeout=60, json={
+            r = requests.post(API.format(model=model()), params={"key": credential}, timeout=timeout, json={
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
             })

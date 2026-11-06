@@ -13,6 +13,9 @@ Finds tax-delinquent properties in Ohio counties every night, scores them as dea
 ## Gemini API key (optional)
 Settings > Integrations > Gemini AI mein primary aur backup keys dalein (ya `.env` file mein `GEMINI_API_KEY=` aur `GEMINI_API_KEY_BACKUP=`). Primary fail ho to backup khud try hoti hai. Independent quota ke liye doosri key alag Google project se banayein. Dono fail hon to offer letter/email built-in template se banta hai; "Why this score" AI explanation us waqt unavailable hoti hai.
 
+## Website help chat
+Marketing pages aur signed-in app dono mein EstateHawk help chat hai. Pehli visit par welcome message aur sawalon ke options khulte hain. Chat sirf EstateHawk features/plans par jawab deta hai; signed-in user ka plan server se check hota hai. Public visitors ke liye 12 aur signed-in users ke liye 40 questions per hour ki limit hai; Gemini unavailable ho to built-in help jawab deta hai. Chat ko parcel ya owner records nahin bheje jate.
+
 ## Screens (design/chatgpt ke mutabiq)
 Deals, Deal detail (tax history, why this score, offer draft, notes), Map, Alerts (rules + channels + daily digest), Counties (sync status, 30-day trend), Outreach (kanban, follow-ups, reply rate, batch letters), Reports (KPIs, charts, funnel, CSV/PDF), Settings (profile, scoring weights with live preview, integrations), Onboarding wizard, mobile layout.
 

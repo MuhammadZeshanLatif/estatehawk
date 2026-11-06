@@ -4,8 +4,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -60,6 +61,38 @@ async def canonical_host(request, call_next):
 def healthz():
     """Keep-awake ping target. Touches no database, so Neon can still sleep while Render stays up."""
     return {"ok": True}
+
+
+async def _chat_reply(request: Request, signed_in=False):
+    if int(request.headers.get("content-length") or 0) > 12000:
+        raise HTTPException(413, "Question is too long")
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Write a question about EstateHawk")
+    question = str(body.get("question") or "").strip() if isinstance(body, dict) else ""
+    if not 2 <= len(question) <= 1000:
+        raise HTTPException(400, "Write a question of up to 1,000 characters")
+    history = body.get("history") if isinstance(body, dict) else None
+    history = [str(x)[:200] for x in history[-2:] if isinstance(x, str)] if isinstance(history, list) else []
+    user = ctx.get().get("user") if signed_in else None
+    identity = f'user:{user["id"]}' if user else f'ip:{auth.client_ip(request)}'
+    if not chat.check_limit(identity, signed_in):
+        raise HTTPException(429, "Chat limit reached for now. Please try again later.")
+    plan = INFO()["plan"] if signed_in else None
+    role = user.get("role") if user else None
+    reply = await run_in_threadpool(chat.answer, question, history, plan, role)
+    return {"reply": reply, "suggestion": chat.nudge(plan)}
+
+
+@app.post("/api/public/chat")
+async def public_chat(request: Request):
+    return await _chat_reply(request)
+
+
+@app.post("/api/chat")
+async def signed_chat(request: Request):
+    return await _chat_reply(request, signed_in=True)
 
 
 # ------------------------------------------------------------------ login + team

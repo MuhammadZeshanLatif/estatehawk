@@ -131,8 +131,8 @@ def page(request, path, title, desc, body, schema=None, js=False, noindex=False,
             f'<meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#1A4A30">'
             f'<link rel="icon" href="/site/logo-mark.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/icon-180.png">'
             f'<link rel="preload" href="/site/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/site/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>'
-            f'<style>{site_ui.CSS}</style><script type="application/ld+json">{json.dumps(org, separators=(",", ":"))}</script>{ld}</head>'
-            f'<body>{header(path)}<main id="main">{body}</main>{footer()}{JS}</body></html>')
+            f'<style>{site_ui.CSS}</style><link rel="stylesheet" href="/static/chat-widget.css"><script type="application/ld+json">{json.dumps(org, separators=(",", ":"))}</script>{ld}</head>'
+            f'<body>{header(path)}<main id="main">{body}</main>{footer()}{JS}<script src="/static/chat-widget.js" defer></script></body></html>')
 
 
 def crumbs(request, items):
