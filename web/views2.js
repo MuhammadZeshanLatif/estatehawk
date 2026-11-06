@@ -345,7 +345,7 @@ export async function settings(el, [tab = 'scoring']) {
       ${SUPER ? `<div class="field"><label>Nightly county sync time</label><select class="select" id="sTime" style="width:140px">${Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`).map((t) => `<option ${t === s.sync_time ? 'selected' : ''}>${t}</option>`).join('')}</select><div class="hint">Hosted: the daily sync runs on GitHub Actions at 08:17 Pakistan time.</div></div>` : ''}
       <button class="btn primary" id="pSave">Save changes</button></div>
       ${SUPER ? `<div class="card card-pad"><h3>Demo data</h3><p class="small muted">Made-up owners and addresses so you can try every screen before the first real county sync.</p>
-        <div class="row"><button class="btn" id="dSeed">${ic('db', 15)} Load demo data</button><button class="btn danger" id="dClear">${ic('x', 15)} Remove demo data</button></div>
+        <div class="demo-actions"><button class="btn" id="dSeed">${ic('db', 15)} Load demo data</button><button class="btn danger" id="dClear">${ic('x', 15)} Remove demo data</button></div>
         <h3 style="margin-top:22px">Setup wizard</h3><p class="small muted">Run the first-time setup again (profile, counties, alerts).</p><a class="btn" href="#/welcome">${ic('sparkle', 15)} Open setup</a></div>` : ''}</div>`;
     $('#photoChoose').onclick = () => $('#photoFile').click();
     $('#photoFile').onchange = async (e) => {

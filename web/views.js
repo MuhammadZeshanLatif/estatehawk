@@ -635,12 +635,13 @@ export async function mapView(el) {
   try { Object.assign(st, JSON.parse(localStorage.getItem('eh_map_v2') || '{}')); } catch (e) { }
   const CAP = 3000, PER = 20;
   el.style.padding = '18px 20px 20px';
-  const opt = (pairs, val) => pairs.map(([v, l]) => `<option value="${v}" ${String(val) === String(v) ? 'selected' : ''}>${l}</option>`).join('');
+  const opt = (pairs, val) => pairs.map(([v, l]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  const choice = (id, pairs, val, label) => `<button type="button" class="map-choice" id="${id}Choice" data-choice="${id}" aria-label="${label}" aria-haspopup="menu"><span class="map-choice-label">${esc(pairs.find(([v]) => String(v) === String(val))?.[1] || pairs[0][1])}</span>${ic('chev', 14)}</button><select id="${id}" hidden aria-hidden="true" tabindex="-1">${opt(pairs, val)}</select>`;
   el.innerHTML = `<div class="map-wrap">
     <div class="map-list">
       <div style="padding:14px 16px 6px">
         <div class="row between"><h2 id="mapCount" style="font-size:17px">Properties</h2>
-          <select class="select" id="mSort" style="height:32px">${opt([['score', 'Best deal score'], ['owed', 'Most taxes owed'], ['equity', 'Most equity'], ['years', 'Most years behind'], ['newest', 'Newest']], st.sort)}</select></div>
+          ${choice('mSort', [['score', 'Best deal score'], ['owed', 'Most taxes owed'], ['equity', 'Most equity'], ['years', 'Most years behind'], ['newest', 'Newest']], st.sort, 'Sort properties')}</div>
         <div class="tiny muted" id="mapSub" style="margin-top:2px"></div>
         <label class="row tiny" style="margin-top:8px;gap:6px;cursor:pointer"><input type="checkbox" id="mInView" ${st.inview ? 'checked' : ''}> Only list what is visible on the map</label>
       </div>
@@ -648,21 +649,29 @@ export async function mapView(el) {
       <div class="row" style="justify-content:center;padding:10px;border-top:1px solid var(--line)"><button class="btn sm" id="mPrev">${ic('left', 15)}</button><span class="small muted" id="mPage" style="min-width:90px;text-align:center"></span><button class="btn sm" id="mNext">${ic('right', 15)}</button></div></div>
     <div class="map-area"><div id="bigMap"></div>
       <div class="map-filters">
-        ${countySelect('mCounty')}
+        ${choice('mCounty', [['all', 'All counties'], ...S.meta.counties.map((c) => [String(c.id), `${c.name}, ${c.state}`])], S.county, 'County')}
         <div class="search" style="width:200px;height:36px">${ic('search', 15)}<input id="mQ" placeholder="Address or owner" value="${esc(st.q)}"></div>
-        <select class="select" id="fs" title="Deal score">${opt([['', 'Score: any'], ['40', 'Score: 40+'], ['60', 'Score: 60+'], ['80', 'Score: 80+']], st.min_score)}</select>
-        <select class="select" id="fo" title="Taxes owed">${opt([['', 'Owed: any'], ['0-2000', 'Owed: under $2K'], ['2000-10000', 'Owed: $2K-$10K'], ['10000-', 'Owed: $10K+']], st.owed)}</select>
-        <select class="select" id="fe" title="Estimated equity">${opt([['', 'Equity: any'], ['10000', 'Equity: $10K+'], ['30000', 'Equity: $30K+'], ['50000', 'Equity: $50K+'], ['100000', 'Equity: $100K+']], st.min_equity)}</select>
-        <select class="select" id="fy" title="Years behind on taxes">${opt([['', 'Years behind: any'], ['2', '2+ years'], ['3', '3+ years'], ['5', '5+ years']], st.min_years)}</select>
-        <select class="select" id="ft" title="Property type">${opt([['all', 'Type: all'], ['homes', 'Homes'], ['Vacant land', 'Vacant land'], ['Commercial', 'Commercial'], ['Agricultural', 'Agricultural']], st.ptype)}</select>
-        <button class="btn sm" id="fClear" title="Remove all filters">${ic('x', 14)} Reset</button>
+        ${choice('fs', [['', 'Score: any'], ['40', 'Score: 40+'], ['60', 'Score: 60+'], ['80', 'Score: 80+']], st.min_score, 'Deal score')}
+        ${choice('fo', [['', 'Owed: any'], ['0-2000', 'Owed: under $2K'], ['2000-10000', 'Owed: $2K-$10K'], ['10000-', 'Owed: $10K+']], st.owed, 'Taxes owed')}
+        ${choice('fe', [['', 'Equity: any'], ['10000', 'Equity: $10K+'], ['30000', 'Equity: $30K+'], ['50000', 'Equity: $50K+'], ['100000', 'Equity: $100K+']], st.min_equity, 'Estimated equity')}
+        ${choice('fy', [['', 'Years behind: any'], ['2', '2+ years'], ['3', '3+ years'], ['5', '5+ years']], st.min_years, 'Years behind on taxes')}
+        ${choice('ft', [['all', 'Type: all'], ['homes', 'Homes'], ['Vacant land', 'Vacant land'], ['Commercial', 'Commercial'], ['Agricultural', 'Agricultural']], st.ptype, 'Property type')}
+        <button class="btn sm" id="fClear" aria-label="Remove all filters">${ic('x', 14)} Reset</button>
         <span class="grow"></span><span class="small muted" id="resN"></span>
-        <button class="btn sm" id="saveSearch" title="Open the map with these filters next time">${ic('bookmark', 15)} Save search</button>
+        <button class="btn sm" id="saveSearch">${ic('bookmark', 15)} Save search</button>
       </div>
       <div class="map-loading" id="mLoad">${ic('refresh', 15)} Loading properties...</div>
       <div class="legend"><span><i style="background:#1F7A45"></i>Score 85+</span><span><i style="background:${AMBER}"></i>65-84</span><span><i style="background:${GREY}"></i>Below 65</span><span class="muted">Click a pin or a card for details</span></div>
     </div></div>`;
+  $('.map-wrap', el).prepend($('.map-filters', el));
   const L = window.L;
+  const syncChoice = (id) => { const select = $('#' + id), label = $('#' + id + 'Choice .map-choice-label'); if (label) label.textContent = select.selectedOptions[0]?.textContent || ''; };
+  $$('[data-choice]', el).forEach((button) => button.onclick = () => {
+    const select = $('#' + button.dataset.choice);
+    menu(button, [...select.options].map((option) => ({ label: option.textContent, icon: option.selected ? 'check' : '', fn: () => {
+      select.value = option.value; syncChoice(select.id); select.dispatchEvent(new Event('change', { bubbles: true }));
+    } })));
+  });
   const map = L.map('bigMap', { zoomControl: false, preferCanvas: true }).setView([39.5, -90], 5);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   baseTiles(map);
@@ -718,7 +727,7 @@ export async function mapView(el) {
     const card = $(`.pcard[data-id="${CSS.escape(id)}"]`); if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
   const save = () => { try { localStorage.setItem('eh_map_v2', JSON.stringify(st)); } catch (e) { } };
-  const reset = () => { Object.assign(st, DEF, { sort: st.sort, inview: st.inview }); $('#fs').value = ''; $('#fe').value = ''; $('#fy').value = ''; $('#ft').value = 'all'; $('#fo').value = ''; $('#mQ').value = ''; load(); };
+  const reset = () => { Object.assign(st, DEF, { sort: st.sort, inview: st.inview }); for (const id of ['fs', 'fe', 'fy', 'ft', 'fo']) { $('#' + id).value = id === 'ft' ? 'all' : ''; syncChoice(id); } $('#mQ').value = ''; load(); };
   $('#mItems').onclick = (e) => {
     if (e.target.closest('[data-reset]')) return reset();
     if (e.target.closest('a')) return;
@@ -736,7 +745,7 @@ export async function mapView(el) {
   $('#fClear').onclick = reset;
   $('#saveSearch').onclick = () => { save(); toast('Saved. The map opens with these filters next time.'); };
   let mt; map.on('moveend', () => { clearTimeout(mt); mt = setTimeout(() => { if (st.inview) { page = 1; list(); } }, 150); });
-  const fitH = () => { const w = $('.map-wrap'); if (w && innerWidth > 900) { w.style.height = Math.max(560, innerHeight - w.getBoundingClientRect().top - window.scrollY - 18) + 'px'; map.invalidateSize(); } };
+  const fitH = () => { const w = $('.map-wrap', el); if (!w) return; w.style.height = innerWidth > 900 ? Math.max(560, innerHeight - w.getBoundingClientRect().top - 18) + 'px' : ''; map.invalidateSize(); };
   fitH(); addEventListener('resize', fitH);
   await load();
   setTimeout(() => { map.invalidateSize(); list(); }, 60);

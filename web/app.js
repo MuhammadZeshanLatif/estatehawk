@@ -181,6 +181,7 @@ export function menu(anchor, items) {
   setTimeout(() => document.addEventListener('click', closeMenus, { once: true }), 0);
 }
 export function closeMenus() { $$('.dropdown.floating').forEach((d) => d.remove()); $$('.dropdown.open').forEach((d) => d.classList.remove('open')); }
+window.addEventListener('resize', closeMenus);
 
 // ---------- global state ----------
 export const S = { meta: null, user: null, viewOrg: (() => { try { return +localStorage.getItem('eh_view_org') || null; } catch (e) { return null; } })(), county: localStorage.getItem('eh_county') || 'all' };
@@ -282,7 +283,6 @@ function renderChrome() {
     try { const r = await api('/api/auth/resend-verify', { method: 'POST' }); toast(r.already ? 'Your email is already confirmed.' : 'Sent. Check your inbox and spam folder.'); }
     catch (err) { toast(err.message, true); e.target.disabled = false; }
   };
-  if (tourActive) highlightTour();
 }
 
 function initTopbar() {
@@ -584,31 +584,26 @@ const TOUR_STEPS = [
   { route: 'outreach', title: 'Follow up with owners', text: 'Move leads through your pipeline and keep track of calls, letters and next steps.' },
   { route: 'reports', title: 'Track your progress', text: 'Reports summarize your leads and outreach activity.' },
 ];
-let tourStarted = false, tourActive = false, tourStepRoute = '';
-function highlightTour() {
-  $$('.tour-target').forEach((el) => el.classList.remove('tour-target'));
-  const target = [`#nav a[href="#/${tourStepRoute}"]`, `#tabbar a[href="#/${tourStepRoute}"]`]
-    .map((selector) => $(selector)).find((el) => el && el.getClientRects().length);
-  if (target) target.classList.add('tour-target');
-}
+let tourStarted = false, tourActive = false, tourStepRoute = '', tourClose = null, tourCard = null;
 function startTour(force = false) {
   if (tourActive || (!force && tourStarted)) return;
   tourStarted = tourActive = true;
   let step = 0;
   const card = document.createElement('div'); card.className = 'tour-card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', 'Welcome tour');
-  document.body.append(card);
+  document.body.append(card); tourCard = card;
   const finish = async () => {
-    card.remove(); tourActive = false; tourStepRoute = ''; highlightTour();
+    card.remove(); tourActive = false; tourStepRoute = ''; tourClose = tourCard = null;
     if (!S.user.tour_seen) {
       S.user.tour_seen = 1;
       try { await api('/api/auth/tour-seen', { method: 'POST' }); } catch (e) { console.error(e); }
     }
   };
+  tourClose = finish;
   const draw = () => {
     const s = TOUR_STEPS[step];
     tourStepRoute = s.route;
-    if (location.hash !== '#/' + s.route) location.hash = '#/' + s.route;
-    highlightTour();
+    if (location.hash !== '#/' + s.route) { card.style.visibility = 'hidden'; location.hash = '#/' + s.route; }
+    else card.style.visibility = '';
     card.innerHTML = `<div class="tour-progress">${step + 1} of ${TOUR_STEPS.length}</div><h2>${esc(s.title)}</h2><p>${esc(s.text)}</p><div class="tour-actions"><button class="btn sm ghost" id="tourSkip">Skip tour</button><div class="row gap6">${step ? '<button class="btn sm" id="tourBack">Back</button>' : ''}<button class="btn sm primary" id="tourNext">${step === TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}</button></div></div>`;
     $('#tourSkip', card).onclick = finish;
     if ($('#tourBack', card)) $('#tourBack', card).onclick = () => { step--; draw(); };
@@ -633,6 +628,7 @@ async function route() {
   if (!S.meta) { $('#view').innerHTML = LOADER; await refreshMeta(); }
   if (S.meta.org?.expired && !S.meta.super && name !== 'billing') { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
   if (!S.meta.settings.onboarded && S.meta.super && name !== 'welcome') { location.hash = '#/welcome'; return; }
+  if (!S.user?.tour_seen && S.meta.settings.onboarded && !tourStarted && name !== 'deals' && name !== 'welcome') { location.hash = '#/deals'; return; }
   if (name === 'admin' && !S.meta.super) { location.hash = '#/deals'; return; }
   const fn = routes[name] || V.deals;
   document.body.classList.toggle('onboarding', name === 'welcome');
@@ -649,6 +645,8 @@ async function route() {
   view.innerHTML = LOADER;  // shown until the page has its data (never a blank screen)
   try {
     cleanup = await fn(view, rest.map(decodeURIComponent));
+    if (tourActive && name !== tourStepRoute) await tourClose?.();
+    if (tourActive && name === tourStepRoute && tourCard) tourCard.style.visibility = '';
     if (!S.user?.tour_seen && S.meta.settings.onboarded && name !== 'welcome') startTour();
   } catch (e) {
     console.error(e);
