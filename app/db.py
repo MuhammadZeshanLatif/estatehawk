@@ -347,6 +347,10 @@ def columns(c, table):
 
 def migrate(c):
     """One-time upgrade of a single-team database to companies. Existing data becomes company #1 (EstateHawk HQ)."""
+    if "avatar" not in columns(c, "users"):
+        c.execute("ALTER TABLE users ADD COLUMN avatar TEXT")
+    if "tour_seen" not in columns(c, "users"):
+        c.execute("ALTER TABLE users ADD COLUMN tour_seen INTEGER DEFAULT 0")
     if "token_ver" not in columns(c, "users"):  # session version: logout / password change ends old sessions
         c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
     if "email_verified" not in columns(c, "users"):  # accounts made before this are trusted; new email signups confirm

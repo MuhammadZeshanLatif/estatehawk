@@ -190,6 +190,26 @@ export async function refreshMeta() {
   renderChrome();
   return S.meta;
 }
+let avatarVersion = 0;
+export const avatarUrl = () => `/api/auth/avatar?v=${avatarVersion}`;
+export async function uploadProfilePhoto(file) {
+  if (!file || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10_000_000)
+    throw new Error('Choose a JPG, PNG or WebP photo under 10 MB.');
+  const image = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const c = canvas.getContext('2d');
+    c.fillStyle = '#fff'; c.fillRect(0, 0, 256, 256);
+    const side = Math.min(image.width, image.height);
+    c.drawImage(image, (image.width - side) / 2, (image.height - side) / 2, side, side, 0, 0, 256, 256);
+    await api('/api/auth/avatar', { method: 'PUT', body: { image: canvas.toDataURL('image/jpeg', .82) } });
+    S.user.has_avatar = 1; avatarVersion = Date.now(); renderChrome();
+  } finally { image.close(); }
+}
+export async function removeProfilePhoto() {
+  await api('/api/auth/avatar', { method: 'DELETE' });
+  S.user.has_avatar = 0; avatarVersion = Date.now(); renderChrome();
+}
 // Move a Leaflet map to the given points; with none, go to the chosen county (or all counties) and say why it is empty.
 export function fitMap(map, pts, county = S.county, note = null) {
   const L = window.L;
@@ -247,7 +267,7 @@ function renderChrome() {
   if ($('#upBtn')) $('#upBtn').onclick = () => plansModal();
   const name = S.user?.name || m.settings.profile?.name || 'You';
   $('#userName').textContent = name;
-  $('#avatar').textContent = name.trim()[0]?.toUpperCase() || 'U';
+  $('#avatar').innerHTML = S.user?.has_avatar ? `<img src="${avatarUrl()}" alt="">` : esc(name.trim()[0]?.toUpperCase() || 'U');
   $('#userBtn').style.visibility = '';
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
   const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
@@ -262,6 +282,7 @@ function renderChrome() {
     try { const r = await api('/api/auth/resend-verify', { method: 'POST' }); toast(r.already ? 'Your email is already confirmed.' : 'Sent. Check your inbox and spam folder.'); }
     catch (err) { toast(err.message, true); e.target.disabled = false; }
   };
+  if (tourActive) highlightTour();
 }
 
 function initTopbar() {
@@ -318,6 +339,7 @@ function initTopbar() {
       { label: 'Integrations', icon: 'link', fn: () => location.hash = '#/settings/integrations' },
       '-',
       { label: 'Setup wizard', icon: 'sparkle', fn: () => location.hash = '#/welcome' },
+      { label: 'Take a tour', icon: 'help', fn: () => startTour(true) },
       '-',
       ...(['admin', 'superadmin'].includes(S.user?.role) ? [{ label: 'Team & logins', icon: 'user', fn: teamModal }] : []),
       ...(S.meta?.super ? [{ label: 'Admin panel', icon: 'shield', fn: () => location.hash = '#/admin' }] : []),
@@ -553,6 +575,47 @@ const routes = {
   deals: V.deals, deal: V.deal, map: V.mapView, alerts: V.alerts, counties: V.counties, outreach: V.outreach,
   reports: V.reports, settings: V.settings, welcome: V.welcome, admin: V.admin, billing: billingView, auctions: V.auctions,
 };
+const TOUR_STEPS = [
+  { route: 'deals', title: 'Welcome to EstateHawk', text: 'Your leads are here. Open a property to review its owner, tax details and deal score.' },
+  { route: 'deals', title: 'Find the right leads', text: 'Choose a county and use filters to narrow the list. The cards show how many leads match.' },
+  { route: 'map', title: 'Explore the map', text: 'See where properties are located and open a deal directly from its map pin.' },
+  { route: 'alerts', title: 'Stay up to date', text: 'New leads and important changes appear in Alerts.' },
+  { route: 'counties', title: 'Manage counties', text: 'Check which counties are connected and when their data was last updated.' },
+  { route: 'outreach', title: 'Follow up with owners', text: 'Move leads through your pipeline and keep track of calls, letters and next steps.' },
+  { route: 'reports', title: 'Track your progress', text: 'Reports summarize your leads and outreach activity.' },
+];
+let tourStarted = false, tourActive = false, tourStepRoute = '';
+function highlightTour() {
+  $$('.tour-target').forEach((el) => el.classList.remove('tour-target'));
+  const target = [`#nav a[href="#/${tourStepRoute}"]`, `#tabbar a[href="#/${tourStepRoute}"]`]
+    .map((selector) => $(selector)).find((el) => el && el.getClientRects().length);
+  if (target) target.classList.add('tour-target');
+}
+function startTour(force = false) {
+  if (tourActive || (!force && tourStarted)) return;
+  tourStarted = tourActive = true;
+  let step = 0;
+  const card = document.createElement('div'); card.className = 'tour-card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', 'Welcome tour');
+  document.body.append(card);
+  const finish = async () => {
+    card.remove(); tourActive = false; tourStepRoute = ''; highlightTour();
+    if (!S.user.tour_seen) {
+      S.user.tour_seen = 1;
+      try { await api('/api/auth/tour-seen', { method: 'POST' }); } catch (e) { console.error(e); }
+    }
+  };
+  const draw = () => {
+    const s = TOUR_STEPS[step];
+    tourStepRoute = s.route;
+    if (location.hash !== '#/' + s.route) location.hash = '#/' + s.route;
+    highlightTour();
+    card.innerHTML = `<div class="tour-progress">${step + 1} of ${TOUR_STEPS.length}</div><h2>${esc(s.title)}</h2><p>${esc(s.text)}</p><div class="tour-actions"><button class="btn sm ghost" id="tourSkip">Skip tour</button><div class="row gap6">${step ? '<button class="btn sm" id="tourBack">Back</button>' : ''}<button class="btn sm primary" id="tourNext">${step === TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}</button></div></div>`;
+    $('#tourSkip', card).onclick = finish;
+    if ($('#tourBack', card)) $('#tourBack', card).onclick = () => { step--; draw(); };
+    $('#tourNext', card).onclick = () => step === TOUR_STEPS.length - 1 ? finish() : (step++, draw());
+  };
+  draw();
+}
 let cleanup = null;
 let routeSeq = 0;
 async function route() {
@@ -586,6 +649,7 @@ async function route() {
   view.innerHTML = LOADER;  // shown until the page has its data (never a blank screen)
   try {
     cleanup = await fn(view, rest.map(decodeURIComponent));
+    if (!S.user?.tour_seen && S.meta.settings.onboarded && name !== 'welcome') startTour();
   } catch (e) {
     console.error(e);
     if (my !== routeSeq) return;  // an older page failed after the user moved on: keep the page they are on

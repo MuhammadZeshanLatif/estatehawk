@@ -1,4 +1,4 @@
-import csv, datetime as dt, io, json, os, re
+import base64, binascii, csv, datetime as dt, io, json, os, re
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -73,6 +73,63 @@ def auth_me(request: Request):
     if not u:
         return JSONResponse({"user": None, "setup": not auth.users_exist(), "google": google_auth.configured()}, status_code=401)
     return {"user": u, "org": plans.org_info(u.get("org_id") or 1)}
+
+
+@app.get("/api/auth/avatar")
+def auth_avatar(request: Request):
+    """Serve only the signed-in user's photo, never a teammate's or another organization's."""
+    user = auth.current(request)
+    if not user:
+        raise HTTPException(401, "Please log in")
+    uid = user["id"]
+    row = db.q1("SELECT avatar FROM users WHERE id=?", (uid,))
+    if not row or not row["avatar"]:
+        raise HTTPException(404, "No profile photo")
+    return Response(base64.b64decode(row["avatar"]), media_type="image/jpeg",
+                    headers={"Cache-Control": "private, no-store"})
+
+
+@app.put("/api/auth/avatar")
+async def upload_avatar(request: Request):
+    """Small JPEGs are stored with the account so they survive Render restarts."""
+    user = auth.current(request)
+    if not user:
+        raise HTTPException(401, "Please log in")
+    if int(request.headers.get("content-length") or 0) > 400_000:
+        raise HTTPException(413, "Photo is too large")
+    raw = await request.body()
+    if len(raw) > 400_000:
+        raise HTTPException(413, "Photo is too large")
+    try:
+        payload = json.loads(raw)
+        data = payload.get("image", "") if isinstance(payload, dict) else ""
+        if not isinstance(data, str) or not data.startswith("data:image/jpeg;base64,"):
+            raise ValueError()
+        photo = base64.b64decode(data.split(",", 1)[1], validate=True)
+    except (ValueError, TypeError, binascii.Error):
+        raise HTTPException(400, "Choose a JPEG, PNG or WebP photo")
+    if len(photo) > 250_000 or len(photo) < 100 or not photo.startswith(b"\xff\xd8\xff") or not photo.endswith(b"\xff\xd9"):
+        raise HTTPException(400, "Photo could not be saved. Choose another image")
+    db.run("UPDATE users SET avatar=? WHERE id=?", (base64.b64encode(photo).decode(), user["id"]))
+    return {"ok": True, "has_avatar": True}
+
+
+@app.delete("/api/auth/avatar")
+def delete_avatar(request: Request):
+    user = auth.current(request)
+    if not user:
+        raise HTTPException(401, "Please log in")
+    db.run("UPDATE users SET avatar=NULL WHERE id=?", (user["id"],))
+    return {"ok": True, "has_avatar": False}
+
+
+@app.post("/api/auth/tour-seen")
+def tour_seen(request: Request):
+    user = auth.current(request)
+    if not user:
+        raise HTTPException(401, "Please log in")
+    db.run("UPDATE users SET tour_seen=1 WHERE id=?", (user["id"],))
+    return {"ok": True}
 
 
 @app.post("/api/auth/setup")

@@ -81,7 +81,7 @@ def read_token(tok):
     try:
         if not hmac.compare_digest(sig, good) or int(exp) < time.time():
             return None
-        u = db.q1("SELECT id, email, name, role, active, org_id, token_ver, email_verified FROM users WHERE id=?", (int(uid),))
+        u = db.q1("SELECT id, email, name, role, active, org_id, token_ver, email_verified, tour_seen, CASE WHEN avatar IS NULL THEN 0 ELSE 1 END AS has_avatar FROM users WHERE id=?", (int(uid),))
     except ValueError:
         return None
     if not u or not u["active"] or int(u.get("token_ver") or 0) != int(ver):

@@ -1,7 +1,7 @@
 // Alerts, Counties, Outreach, Reports, Settings, Onboarding
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb,
-  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg,
+  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg, avatarUrl, uploadProfilePhoto, removeProfilePhoto,
 } from './app.js';
 import { alertIcon, baseTiles, taskModal, scoreColor } from './views.js';
 
@@ -334,6 +334,7 @@ export async function settings(el, [tab = 'scoring']) {
   if (tab === 'profile') {
     const p = s.profile, o = s.offer_defaults;
     body.innerHTML = `<div class="settings-cols"><div class="card card-pad"><h3 style="margin-bottom:14px">Investor profile</h3><div class="small muted" style="margin:-8px 0 14px">Auto-filled into every offer letter and email.</div>
+      <div class="profile-photo-row"><span class="avatar profile-photo" id="profilePhoto">${S.user?.has_avatar ? `<img src="${avatarUrl()}" alt="Your profile photo">` : esc(((S.user?.name || p.name || 'U').trim()[0] || 'U').toUpperCase())}</span><div><b class="small">Profile photo</b><div class="small muted">Shown beside your name in EstateHawk.</div><div class="row wrap gap6" style="margin-top:8px"><button class="btn sm" id="photoChoose">${S.user?.has_avatar ? 'Change photo' : 'Upload photo'}</button>${S.user?.has_avatar ? '<button class="btn sm ghost" id="photoRemove">Remove</button>' : ''}</div></div><input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden aria-label="Choose profile photo"></div>
       <div class="terms"><div class="field"><label>Your name</label><input class="input" id="pName" value="${esc(p.name)}"></div><div class="field"><label>Company</label><input class="input" id="pCo" value="${esc(p.company)}"></div>
       <div class="field"><label>Email</label><input class="input" id="pEmail" value="${esc(p.email)}"></div><div class="field"><label>Phone</label><input class="input" id="pPhone" value="${esc(p.phone)}"></div></div>
       <h3 style="margin:10px 0 14px">Offer defaults</h3>
@@ -346,6 +347,17 @@ export async function settings(el, [tab = 'scoring']) {
       ${SUPER ? `<div class="card card-pad"><h3>Demo data</h3><p class="small muted">Made-up owners and addresses so you can try every screen before the first real county sync.</p>
         <div class="row"><button class="btn" id="dSeed">${ic('db', 15)} Load demo data</button><button class="btn danger" id="dClear">${ic('x', 15)} Remove demo data</button></div>
         <h3 style="margin-top:22px">Setup wizard</h3><p class="small muted">Run the first-time setup again (profile, counties, alerts).</p><a class="btn" href="#/welcome">${ic('sparkle', 15)} Open setup</a></div>` : ''}</div>`;
+    $('#photoChoose').onclick = () => $('#photoFile').click();
+    $('#photoFile').onchange = async (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      $('#photoChoose').disabled = true;
+      try { await uploadProfilePhoto(file); toast('Profile photo saved'); settings(el, ['profile']); }
+      catch (err) { toast(err.message || 'Photo could not be saved', true); $('#photoChoose').disabled = false; }
+    };
+    if ($('#photoRemove')) $('#photoRemove').onclick = async () => {
+      try { await removeProfilePhoto(); toast('Profile photo removed'); settings(el, ['profile']); }
+      catch (err) { toast(err.message || 'Photo could not be removed', true); }
+    };
     $('#pSave').onclick = async () => {
       const profile = { ...p, name: $('#pName').value, company: $('#pCo').value, email: $('#pEmail').value, phone: $('#pPhone').value };
       const offer_defaults = { ...o, discount_pct: +$('#oDisc').value || 65, financing: $('#oFin').value, closing_days: +$('#oDays').value || 21, earnest: +$('#oEarn').value || 0, seller_credits: $('#oCred').value };
