@@ -186,8 +186,12 @@ window.addEventListener('resize', closeMenus);
 // ---------- global state ----------
 export const S = { meta: null, user: null, viewOrg: (() => { try { return +localStorage.getItem('eh_view_org') || null; } catch (e) { return null; } })(), county: localStorage.getItem('eh_county') || 'all' };
 export function setCounty(c) { S.county = String(c); try { localStorage.setItem('eh_county', S.county); } catch (e) { } }
+function clearAccountSelection() {
+  try { localStorage.removeItem('eh_county'); localStorage.removeItem('eh_view_org'); } catch (e) { }
+}
 export async function refreshMeta() {
   S.meta = await api('/api/meta');
+  if (S.county !== 'all' && !S.meta.counties.some((c) => String(c.id) === S.county)) setCounty('all');
   renderChrome();
   return S.meta;
 }
@@ -273,7 +277,7 @@ function renderChrome() {
   $('#bellDot').classList.toggle('on', m.unread_alerts > 0);
   const viewing = S.viewOrg && m.super && o.id !== 1 ? `<div class="demo-banner" style="background:#EEF4FF;border-color:#C7D7FE">${ic('shield', 16)}<span>You are viewing <b>${esc(o.name)}</b> as super admin (${esc(o.label)}).</span><button class="btn xs" style="margin-left:auto" id="exitView">Back to my dashboard</button></div>` : '';
   const trial = o.plan === 'trial' && !viewing ? `<div class="demo-banner">${ic('lock', 16)}<span><b>Free trial:</b> ${o.days_left >= 0 ? o.days_left + ' days left' : 'ended'}. You can open ${o.reveals_left} more leads in full. Paid plans show every lead, owner and contact.</span><button class="btn xs primary" style="margin-left:auto" id="bannerUp">See plans</button></div>` : '';
-  const verify = m.user && m.user.email_verified === 0 && !viewing ? `<div class="demo-banner" style="background:#FFF6E6">${ic('mail', 16)}<span><b>Confirm your email</b> to open your free leads. We sent a link to ${esc(m.user.email)}.</span><button class="btn xs" style="margin-left:auto" id="bannerVerify">Resend link</button></div>` : '';
+  const verify = m.user && m.user.email_verified === 0 && !viewing ? `<div class="demo-banner" style="background:#FFF6E6">${ic('mail', 16)}<span><b>Confirm your email</b> to reveal owner and address details. You can browse the lead list now. We sent a link to ${esc(m.user.email)}.</span><button class="btn xs" style="margin-left:auto" id="bannerVerify">Resend link</button></div>` : '';
   $('#banner').innerHTML = verify + viewing + trial + (m.settings.demo && m.super ? `<div class="demo-banner">${ic('alert', 16)}<span><b>Demo data</b> is shown (made-up owners and addresses). Run a real county sync from Counties, then remove demo data in Settings.</span>
     <a class="btn xs" style="margin-left:auto" href="#/settings/profile">Manage</a></div>` : '');
   if ($('#exitView')) $('#exitView').onclick = () => setViewOrg(null);
@@ -344,7 +348,7 @@ function initTopbar() {
       ...(['admin', 'superadmin'].includes(S.user?.role) ? [{ label: 'Team & logins', icon: 'user', fn: teamModal }] : []),
       ...(S.meta?.super ? [{ label: 'Admin panel', icon: 'shield', fn: () => location.hash = '#/admin' }] : []),
       { label: 'Change password', icon: 'sliders', fn: passwordModal },
-      { label: 'Log out', icon: 'right', fn: async () => { await api('/api/auth/logout', { method: 'POST' }); location.reload(); } },
+      { label: 'Log out', icon: 'right', fn: async () => { await api('/api/auth/logout', { method: 'POST' }); clearAccountSelection(); location.reload(); } },
     ]);
   };
   $('#helpBtn').onclick = () => modal(`<h2>How EstateHawk works</h2>
@@ -401,6 +405,18 @@ export async function showLogin() {
 }
 
 const CONTACT = 'support@getestatehawk.com';
+export function exportUpgradeDialog() {
+  modal(`<div class="ask" style="max-width:430px"><div class="ask-icon">${ic('download', 24)}</div><h2>Export your leads</h2>
+    <p class="muted">CSV exports are included with paid plans. Upgrade to download your leads and use mail-merge letters.</p>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:22px"><button class="btn" data-close>Maybe later</button><button class="btn primary" id="exportPlans">See plans</button></div></div>`, (el, close) => {
+    $('#exportPlans', el).onclick = () => { close(); plansModal(); };
+  });
+}
+export function guardExportClick(event) {
+  if (S.meta?.org?.limits?.export) return;
+  event.preventDefault();
+  exportUpgradeDialog();
+}
 export async function plansModal(note = '') {
   const P = (S.meta && S.meta.plans) || {};
   const cur = S.meta?.org?.plan;
@@ -510,7 +526,7 @@ export function showExpired(msg) {
     <a class="btn primary" href="mailto:${CONTACT}?subject=${encodeURIComponent('EstateHawk upgrade')}">Contact us</a>
     <button class="btn" id="exOut">Log out</button></div></div></div>`;
   $('#exPlans').onclick = () => plansModal();
-  $('#exOut').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); location.reload(); };
+  $('#exOut').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); clearAccountSelection(); location.reload(); };
 }
 
 function passwordModal() {

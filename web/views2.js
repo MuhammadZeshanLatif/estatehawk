@@ -1,7 +1,7 @@
 // Alerts, Counties, Outreach, Reports, Settings, Onboarding
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb,
-  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg, avatarUrl, uploadProfilePhoto, removeProfilePhoto,
+  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, teamModal, setViewOrg, avatarUrl, uploadProfilePhoto, removeProfilePhoto, guardExportClick,
 } from './app.js';
 import { alertIcon, baseTiles, taskModal, scoreColor } from './views.js';
 
@@ -276,6 +276,7 @@ export async function reports(el) {
     <div class="card" style="margin-top:18px"><div class="card-head" style="padding-bottom:10px"><h3>Top deals this month</h3><a class="btn sm right" href="#/outreach">View all deals</a></div>
       <div style="overflow-x:auto"><table class="table"><thead><tr><th>#</th><th>Property</th><th>Owner</th><th class="hide-m">County</th><th class="r">Est. value</th><th class="r hide-m">Est. equity</th><th class="r">Fee</th><th class="hide-m">Date</th><th>Status</th></tr></thead><tbody id="topT"></tbody></table></div></div>`;
   const COLORS = ['#1F6B3A', '#E0A030', '#8C938F', '#5B8DEF', '#B36BD6', '#2BA59A'];
+  $('#rCsv').addEventListener('click', guardExportClick);
   let chart;
   async function load() {
     const r = await api(`/api/reports?days=${days}&county=${S.county}`);

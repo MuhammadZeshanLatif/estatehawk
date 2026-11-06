@@ -1,7 +1,7 @@
 // EstateHawk screens. Each view(el, params) renders into el and may return a cleanup function.
 import {
   $, $$, esc, ic, api, money, kmoney, num, title, yrs, scorePill, ago, fmtDate, tileUrl, place, thumb, streetView, gmaps, homeLine,
-  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap,
+  toast, modal, menu, ask, askFee, S, setCounty, refreshMeta, countySelect, countyName, watchSync, plansModal, fitMap, guardExportClick,
 } from './app.js';
 export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
 import { loadResearch, lockedResearch, compareModal } from './research.js';
@@ -212,6 +212,7 @@ export async function deals(el) {
   });
   const tbody = $('#leadTable tbody');
   const updBulk = () => { $('#bulk').classList.toggle('hide', !chosen.size); $('#bulkN').textContent = `${chosen.size} selected`; $('#bulkCmp').disabled = chosen.size < 2 || chosen.size > 4; $('#bulkCsv').href = '/api/parcels/export.csv?' + qs(); };
+  $('#bulkCsv').addEventListener('click', guardExportClick);
   tbody.onclick = (e) => {
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const id = tr.dataset.id;

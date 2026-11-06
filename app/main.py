@@ -566,11 +566,15 @@ def apply_mask(rows):
     info = INFO()
     if not info["limits"]["reveals"]:
         return rows
+    if (ctx.get().get("user") or {}).get("email_verified") == 0:
+        return [plans.mask(r) for r in rows]
     seen = plans.revealed_set(info, [r["id"] for r in rows]) or set()
     return [r if r["id"] in seen else plans.mask(r) for r in rows]
 
 
 def require_unlocked(pid):
+    if INFO()["limits"]["reveals"] and (ctx.get().get("user") or {}).get("email_verified") == 0:
+        raise HTTPException(403, "Confirm your email before opening owner and address details.")
     if plans.is_locked(INFO(), pid):
         raise HTTPException(403, "Reveal this lead first (free trial).")
 
@@ -915,13 +919,13 @@ async def parcel_calc(pid: str, request: Request):
 def reveal(pid: str):
     get_parcel(pid)
     info = INFO()
+    me = ctx.get().get("user") or {}
+    if info["limits"]["reveals"] and me.get("email_verified") == 0:
+        raise HTTPException(403, "Confirm your email first: open the link we sent you, or resend it from the banner at the top.")
     if not plans.is_locked(info, pid):
         return {"ok": True, "reveals_left": info["reveals_left"]}
     if info["reveals_left"] is not None and info["reveals_left"] <= 0:
         raise HTTPException(402, f"You have opened all {info['limits']['reveals']} free leads. Upgrade to see every lead.")
-    me = ctx.get().get("user") or {}
-    if me.get("email_verified") == 0:
-        raise HTTPException(403, "Confirm your email first: open the link we sent you, or resend it from the banner at the top.")
     db.run("INSERT INTO reveals(org_id,parcel_id,ts) VALUES(?,?,?)", (OID(), pid, jobs.now()))
     return {"ok": True, "reveals_left": plans.org_info(OID())["reveals_left"]}
 
