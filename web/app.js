@@ -193,7 +193,7 @@ function bindPasswordToggles(root = document) {
     button.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); button.setAttribute('aria-pressed', String(show));
   });
 }
-const passwordRule = (value) => typeof value === 'string' && value.length >= 9 && value.length <= 128 && /[A-Za-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9\s]/.test(value);
+const passwordRule = (value) => typeof value === 'string' && value.length >= 15 && value.length <= 128;
 
 // ---------- global state ----------
 export const S = { meta: null, user: null, viewOrg: (() => { try { return +localStorage.getItem('eh_view_org') || null; } catch (e) { return null; } })(), county: localStorage.getItem('eh_county') || 'all' };
@@ -402,7 +402,7 @@ export async function showLogin() {
     ${setup ? '<div class="field"><label>Your name</label><input class="input" id="lName" autocomplete="name"></div>' : ''}
     <div class="field"><label>Email</label><input class="input" id="lEmail" type="email" autocomplete="username" required></div>
     <div class="field"><label>Password</label>${passwordInput('lPw', setup ? 'new-password' : 'current-password')}</div>
-    ${setup ? `<div class="field"><label>Confirm password</label>${passwordInput('lConfirm')}</div><p class="tiny muted">Use 9–128 characters with a letter, a number and a special character.</p>` : ''}
+    ${setup ? `<div class="field"><label>Confirm password</label>${passwordInput('lConfirm')}</div><p class="tiny muted">Use 15–128 characters. A memorable phrase works well.</p>` : ''}
     <div class="small" id="lErr" style="color:#B42318;min-height:18px"></div>
     <button class="btn primary" style="width:100%;margin-top:6px">${setup ? 'Create admin account' : 'Log in'}</button>
     ${setup ? '' : '<p class="small" style="margin:12px 0 0"><a href="/forgot-password">Forgot password?</a></p>'}
@@ -410,7 +410,7 @@ export async function showLogin() {
   bindPasswordToggles($('#loginForm'));
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();
-    if (setup && (!passwordRule($('#lPw').value) || $('#lPw').value !== $('#lConfirm').value)) { $('#lErr').textContent = !passwordRule($('#lPw').value) ? 'Use 9–128 characters with a letter, a number and a special character.' : 'Passwords do not match.'; return; }
+    if (setup && (!passwordRule($('#lPw').value) || $('#lPw').value !== $('#lConfirm').value)) { $('#lErr').textContent = !passwordRule($('#lPw').value) ? 'Use 15–128 characters. A memorable phrase works well.' : 'Passwords do not match.'; return; }
     const body = { email: $('#lEmail').value, password: $('#lPw').value, confirm_password: $('#lConfirm')?.value, name: $('#lName')?.value };
     const r = await fetch(setup ? '/api/auth/setup' : '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { location.hash = '#/deals'; location.reload(); return; }
@@ -549,13 +549,13 @@ function passwordModal() {
     <div class="field"><label>Current password</label>${passwordInput('pOld', 'current-password')}</div>
     <div class="field"><label>New password</label>${passwordInput('pNew')}</div>
     <div class="field"><label>Confirm new password</label>${passwordInput('pConfirm')}</div>
-    <p class="tiny muted">Use 9–128 characters with a letter, a number and a special character.</p>
+    <p class="tiny muted">Use 15–128 characters. A memorable phrase works well.</p>
     <p class="small" id="pError" role="alert" style="color:var(--red)"></p>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="pSave">Save</button></div>`, (m, close) => {
     bindPasswordToggles(m);
     $('#pSave', m).onclick = async () => {
       const value = $('#pNew', m).value;
-      if (!passwordRule(value) || value !== $('#pConfirm', m).value) { $('#pError', m).textContent = !passwordRule(value) ? 'Use 9–128 characters with a letter, a number and a special character.' : 'Passwords do not match.'; return; }
+      if (!passwordRule(value) || value !== $('#pConfirm', m).value) { $('#pError', m).textContent = !passwordRule(value) ? 'Use 15–128 characters. A memorable phrase works well.' : 'Passwords do not match.'; return; }
       try { await api('/api/auth/password', { method: 'POST', body: { old: $('#pOld', m).value, new: value, confirm_new: $('#pConfirm', m).value } }); close(); toast('Password changed'); }
       catch (e) { $('#pError', m).textContent = e.message; }
     };
@@ -567,24 +567,24 @@ export async function teamModal() {
   const lim = S.meta?.org?.limits?.users;
   modal(`<h2>Team & logins</h2><p class="muted small">Everyone here can log in to ${esc(S.meta?.org?.name || 'your company')}. Notes, deals and offers are shared inside your team only.${lim ? ` Your plan allows ${lim} user(s).` : ''}</p>
     <div style="max-height:260px;overflow:auto">${users.map((u) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line);gap:8px">
-      <div class="grow" style="min-width:0"><b>${esc(u.name)}</b> <span class="pill tiny">${u.role}</span>${u.active ? '' : ' <span class="pill tiny" style="background:#FEE4E2;color:#B42318">blocked</span>'}<div class="tiny muted ellip">${esc(u.email)} · last login ${u.last_login ? esc(fmtDate(u.last_login)) : 'never'}</div></div>
-      ${u.id === S.user.id ? '' : `<button class="btn xs" data-reset="${u.id}">Reset password</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button>`}</div>`).join('')}</div>
+      <div class="grow" style="min-width:0"><b>${esc(u.name)}</b> <span class="pill tiny">${u.role}</span>${u.active ? '' : ' <span class="pill tiny" style="background:#FEE4E2;color:#B42318">blocked</span>'}<div class="tiny muted ellip">${esc(u.email)}${u.phone ? ' · ' + esc(u.phone) : ''} · last login ${u.last_login ? esc(fmtDate(u.last_login)) : 'never'}</div></div>
+      ${u.id === S.user.id ? '' : `<button class="btn xs" data-reset="${u.id}">Send reset link</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button>`}</div>`).join('')}</div>
     <h3 style="margin:16px 0 8px">Add a person</h3>
     <div class="terms"><div class="field"><label for="uName">Name</label><input class="input" id="uName"></div><div class="field"><label for="uEmail">Email</label><input class="input" id="uEmail" type="email"></div></div>
-    <div class="terms"><div class="field"><label for="uPw">Temporary password (optional)</label><input class="input" id="uPw" placeholder="Empty = we email them an invite link"></div>
+    <div class="terms"><div class="field"><label for="uPhone">Phone (optional)</label><input class="input" id="uPhone" type="tel" autocomplete="tel"></div>
       <div class="field"><label for="uRole">Role</label><select class="select" id="uRole"><option value="member">Member</option><option value="admin">Admin</option></select></div></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Close</button><button class="btn primary" id="uAdd">Add</button></div>`, (m, close) => {
     $('#uAdd', m).onclick = async () => {
       try {
-        const pw = $('#uPw', m).value.trim();
-        const r = await api('/api/users', { method: 'POST', body: { name: $('#uName', m).value, email: $('#uEmail', m).value, password: pw, role: $('#uRole', m).value } });
-        toast(r.invite_sent ? `Added. We emailed ${$('#uEmail', m).value} a link to set their password.` : (pw ? `Added. Send them the link, their email and password: ${pw}` : 'Added, but the invite email could not be sent. Use Reset password and share it.'), !r.invite_sent && !pw); close(); teamModal();
+        const r = await api('/api/users', { method: 'POST', body: { name: $('#uName', m).value, email: $('#uEmail', m).value, phone: $('#uPhone', m).value, role: $('#uRole', m).value } });
+        toast(r.invite_sent ? `Added. We emailed ${$('#uEmail', m).value} a link to set their password.` : 'Added, but the invite email could not be sent. Check mail settings and send a reset link.', !r.invite_sent); close(); teamModal();
       } catch (e) { toast(e.message, true); }
     };
     $$('[data-act]', m).forEach((b) => b.onclick = async () => { await api('/api/users/' + b.dataset.act, { method: 'PUT', body: { active: b.dataset.on === '1' } }); close(); teamModal(); });
     $$('[data-reset]', m).forEach((b) => b.onclick = async () => {
-      const pw = Math.random().toString(36).slice(2, 8) + 'Eh!' + Math.floor(Math.random() * 90 + 10);
-      await api('/api/users/' + b.dataset.reset, { method: 'PUT', body: { password: pw } }); toast('New password: ' + pw);
+      b.disabled = true;
+      try { await api('/api/users/' + b.dataset.reset + '/reset-link', { method: 'POST' }); toast('Password reset link sent to the user.'); }
+      catch (e) { toast(e.message, true); } finally { b.disabled = false; }
     });
   });
 }

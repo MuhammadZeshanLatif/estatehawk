@@ -540,7 +540,7 @@ const human = (a) => { for (const [re, l] of ACTION) if (re.test(a)) return l ||
 
 export async function admin(el, [tab = 'companies']) {
   const [st, orgs] = await Promise.all([api('/api/admin/stats'), api('/api/admin/orgs')]);
-  const T = [['companies', 'Companies'], ['users', 'All users'], ['activity', 'Activity log']];
+  const T = [['companies', 'Companies'], ['users', 'All users'], ['messages', `Contact messages${st.new_messages ? ` (${st.new_messages})` : ''}`], ['activity', 'Activity log']];
   el.innerHTML = `<div class="page-head"><div><h1>Admin</h1><div class="sub">Every company, user and action across EstateHawk.</div></div>
     <div class="right"><button class="btn primary" id="newOrg">${ic('plus', 16)} New company</button></div></div>
     <div class="stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
@@ -564,17 +564,26 @@ export async function admin(el, [tab = 'companies']) {
   }
   if (tab === 'users') {
     const us = await api('/api/admin/users');
-    body.innerHTML = `<div class="card" style="overflow:auto"><table class="table"><thead><tr><th>User</th><th>Company</th><th>Role</th><th>Last login</th><th></th></tr></thead><tbody>
-      ${us.map((u) => `<tr style="${u.active ? '' : 'opacity:.55'}"><td><b>${esc(u.name)}</b><div class="tiny muted">${esc(u.email)}</div></td><td>${esc(u.org_name || '')}</td><td><span class="pill tiny">${esc(u.role)}</span></td>
+    body.innerHTML = `<div class="card" style="overflow:auto"><table class="table"><thead><tr><th>User</th><th>Email</th><th>Phone</th><th>Company</th><th>Role</th><th>Last login</th><th></th></tr></thead><tbody>
+      ${us.map((u) => `<tr style="${u.active ? '' : 'opacity:.55'}"><td><b>${esc(u.name)}</b></td><td class="small"><a href="mailto:${encodeURIComponent(u.email)}">${esc(u.email)}</a></td><td class="small">${u.phone ? `<a href="tel:${esc(u.phone.replace(/[^+0-9]/g, ''))}">${esc(u.phone)}</a>` : '<span class="muted">Not provided</span>'}</td><td>${esc(u.org_name || '')}</td><td><span class="pill tiny">${esc(u.role)}</span></td>
         <td class="small muted">${u.last_login ? ago(u.last_login) : 'never'}</td>
-        <td>${u.role === 'superadmin' ? '' : `<div class="row gap4" style="flex-wrap:nowrap"><button class="btn xs" data-reset="${u.id}">Reset password</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button></div>`}</td></tr>`).join('')}
+        <td>${u.role === 'superadmin' ? '' : `<div class="row gap4" style="flex-wrap:nowrap"><button class="btn xs" data-reset="${u.id}">Send reset link</button><button class="btn xs" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Block' : 'Unblock'}</button></div>`}</td></tr>`).join('')}
       </tbody></table></div>`;
     $$('[data-act]', body).forEach((b) => b.onclick = async () => { await api('/api/admin/users/' + b.dataset.act, { method: 'PUT', body: { active: b.dataset.on === '1' } }); admin(el, [tab]); });
     $$('[data-reset]', body).forEach((b) => b.onclick = async () => {
-      const pw = Math.random().toString(36).slice(2, 8) + 'Eh!' + Math.floor(Math.random() * 90 + 10);
-      await api('/api/admin/users/' + b.dataset.reset, { method: 'PUT', body: { password: pw } });
-      modal(`<h2>New password</h2><p>Send this to the user:</p><div class="card card-pad" style="font-family:ui-monospace,monospace">${esc(pw)}</div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" data-close>Done</button></div>`);
+      b.disabled = true;
+      try { await api('/api/admin/users/' + b.dataset.reset + '/reset-link', { method: 'POST' }); toast('Password reset link sent to the user.'); }
+      catch (e) { toast(e.message, true); } finally { b.disabled = false; }
     });
+  }
+  if (tab === 'messages') {
+    const messages = await api('/api/admin/contact-messages');
+    body.innerHTML = `<div class="grid" style="gap:12px">${messages.map((m) => `<article class="card card-pad" style="border-left:4px solid ${m.status === 'new' ? 'var(--green)' : 'var(--line)'}">
+      <div class="row between wrap gap6"><div><b>${esc(m.name || 'Website visitor')}</b> <span class="tiny muted">${esc(fmtDate(m.created, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</span></div><span class="pill tiny ${m.status === 'new' ? 'p-green' : 'p-grey'}">${m.status === 'new' ? 'New' : 'Read'}</span></div>
+      <div class="small" style="margin:9px 0"><a href="mailto:${encodeURIComponent(m.email)}">${esc(m.email)}</a>${m.phone ? ` · <a href="tel:${esc(m.phone.replace(/[^+0-9]/g, ''))}">${esc(m.phone)}</a>` : ''}</div>
+      <p class="small" style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 12px">${esc(m.message)}</p>
+      <div class="row gap6"><a class="btn xs" href="mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent('Re: Your EstateHawk message')}">Reply by email</a>${m.status === 'new' ? `<button class="btn xs" data-read="${m.id}">Mark as read</button>` : ''}</div></article>`).join('') || '<div class="card card-pad muted">No contact messages yet.</div>'}</div>`;
+    $$('[data-read]', body).forEach((b) => b.onclick = async () => { try { await api('/api/admin/contact-messages/' + b.dataset.read + '/read', { method: 'POST' }); admin(el, ['messages']); } catch (e) { toast(e.message, true); } });
   }
   if (tab === 'activity') {
     body.innerHTML = `<div class="row gap6" style="margin-bottom:10px"><select class="select" id="aOrg" style="width:220px"><option value="">All companies</option>${orgs.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>
@@ -593,7 +602,8 @@ export async function admin(el, [tab = 'companies']) {
   function orgModal(o) {
     const P = S.meta.plans, all = S.meta.counties;
     const isNew = !o;
-    const pw = Math.random().toString(36).slice(2, 8) + 'Eh!' + Math.floor(Math.random() * 90 + 10);
+    const pwChars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const pw = Array.from(crypto.getRandomValues(new Uint8Array(20)), (n) => pwChars[n % pwChars.length]).join('');
     const chosen = new Set(o ? (o.counties || all.map((c) => c.id)) : []);
     modal(`<h2>${isNew ? 'New company' : 'Edit ' + esc(o.name)}</h2><div style="height:10px"></div>
       <div class="terms"><div class="field"><label>Company name</label><input class="input" id="oName" value="${esc(o?.name || '')}"></div>

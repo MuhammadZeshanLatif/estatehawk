@@ -71,24 +71,24 @@ var b=document.querySelector('.menu-btn');if(b)b.onclick=function(){var o=h.clas
 document.querySelectorAll('form[data-api]').forEach(function(f){f.addEventListener('submit',async function(e){e.preventDefault();
 var m=f.querySelector('.msg'),btn=f.querySelector('button[type=submit]'),t=btn.innerHTML;m.className='msg';btn.disabled=true;btn.textContent='Please wait...';
 var d={};new FormData(f).forEach(function(v,k){d[k]=v});
-if(f.dataset.passwordRules){var p=d.password||'',error=p.length<9||p.length>128?'Use 9 to 128 characters.':!/[A-Za-z]/.test(p)||!/[0-9]/.test(p)||!(/[^A-Za-z0-9\\s]/.test(p))?'Add a letter, a number, and a special character.':d.confirm_password!==p?'Passwords do not match.':'';
+if(f.dataset.passwordRules){var p=d.password||'',error=p.length<15||p.length>128?'Use 15 to 128 characters. A memorable phrase works well.':d.confirm_password!==p?'Passwords do not match.':'';
 if(error){m.className='msg err';m.textContent=error;btn.disabled=false;btn.innerHTML=t;return}}
 try{var r=await fetch(f.dataset.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});var j=await r.json().catch(function(){return{}});
 if(!r.ok)throw new Error(j.detail||'Something went wrong. Please try again.');
 if(f.dataset.next){location.href=f.dataset.next;return}m.className='msg ok';m.textContent=f.dataset.ok||'Thanks!';f.reset();}
 catch(err){m.className='msg err';m.textContent=err.message}btn.disabled=false;btn.innerHTML=t;})});
 var q=new URLSearchParams(location.search),fm=document.querySelector('form .msg'),cm=document.getElementById('c-msg');if(cm&&q.get('topic')==='county'&&!cm.value){cm.value='Please add this county (name and state): ';}if(q.get('error')&&fm){fm.className='msg err';fm.textContent=q.get('error')}
-document.querySelectorAll('a.g-btn[data-signup]').forEach(function(a){a.addEventListener('click',function(e){var s=document.getElementById('s-county'),c=document.getElementById('s-company');
+document.querySelectorAll('a.g-btn[data-signup]').forEach(function(a){a.addEventListener('click',function(e){var s=document.getElementById('s-county'),c=document.getElementById('s-company'),p=document.getElementById('s-phone');
 if(!s.value){e.preventDefault();fm.className='msg err';fm.textContent='Choose your first county first, then continue with Google.';s.focus();return}
-a.href='/api/auth/google/start?mode=signup&county_id='+encodeURIComponent(s.value)+'&company='+encodeURIComponent(c?c.value:'')})});
+a.href='/api/auth/google/start?mode=signup&county_id='+encodeURIComponent(s.value)+'&company='+encodeURIComponent(c?c.value:'')+'&phone='+encodeURIComponent(p?p.value:'')})});
 document.querySelectorAll('[data-toggle-password]').forEach(function(b){b.addEventListener('click',function(){var i=document.getElementById(b.dataset.togglePassword),show=i.type==='password';i.type=show?'text':'password';b.querySelector('span').textContent=show?'Hide':'Show';b.setAttribute('aria-label',show?'Hide password':'Show password');b.setAttribute('aria-pressed',show?'true':'false')})});})();
 </script>"""
 
 
 def password_fields(prefix):
     eye = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
-    return (f'<div class="field"><label for="{prefix}-pw">Password</label><div class="pw-wrap"><input id="{prefix}-pw" name="password" type="password" autocomplete="new-password" minlength="9" maxlength="128" required><button type="button" class="pw-toggle" data-toggle-password="{prefix}-pw" aria-label="Show password" aria-pressed="false">{eye}<span>Show</span></button></div>'
-            f'<p class="pw-hint">9–128 characters, including a letter, a number and a special character.</p></div>'
+    return (f'<div class="field"><label for="{prefix}-pw">Password</label><div class="pw-wrap"><input id="{prefix}-pw" name="password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required><button type="button" class="pw-toggle" data-toggle-password="{prefix}-pw" aria-label="Show password" aria-pressed="false">{eye}<span>Show</span></button></div>'
+            f'<p class="pw-hint">Use 15–128 characters. A memorable phrase is fine; numbers and symbols are optional.</p></div>'
             f'<div class="field"><label for="{prefix}-confirm">Confirm password</label><div class="pw-wrap"><input id="{prefix}-confirm" name="confirm_password" type="password" autocomplete="new-password" required><button type="button" class="pw-toggle" data-toggle-password="{prefix}-confirm" aria-label="Show password" aria-pressed="false">{eye}<span>Show</span></button></div></div>')
 
 GOOGLE_G = ('<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>'
@@ -447,6 +447,7 @@ def contact(request):
             f'<section class="sec-tight"><div class="wrap"><form class="form" data-api="/api/public/contact" data-ok="Thanks! We got your message and will reply soon." novalidate>'
             f'<div class="msg" role="status"></div><div class="field"><label for="c-name">Name</label><input id="c-name" name="name" autocomplete="name" required></div>'
             f'<div class="field"><label for="c-email">Email</label><input id="c-email" name="email" type="email" autocomplete="email" required></div>'
+            f'<div class="field"><label for="c-phone">Phone <span class="pw-hint">(optional)</span></label><input id="c-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+1 555 123 4567"></div>'
             f'<div class="field"><label for="c-msg">Message</label><textarea id="c-msg" name="message" required></textarea></div>'
             f'<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
             f'<button class="btn btn-green btn-block" type="submit">Send message {ic("send")}</button>'
@@ -466,7 +467,7 @@ def legal(request, kind):
     if kind == "privacy":
         t, d = "Privacy policy", "How EstateHawk collects, uses and protects your information."
         txt = """<p>EstateHawk ("we") provides software that organizes public property tax records. This policy explains what we collect about our users.</p>
-<h2>What we collect</h2><ul><li>Account details you give us: name, email, company and password (stored hashed).</li><li>What you do in the app, such as notes, pipeline stages and searches, so the product works.</li><li>Basic technical logs (IP address, browser) for security.</li></ul>
+<h2>What we collect</h2><ul><li>Account details you give us: name, email, company, optional phone number and password (stored hashed, never shown to administrators).</li><li>Messages you submit through our contact form or plan request, so our support team can reply.</li><li>What you do in the app, such as notes, pipeline stages and searches, so the product works.</li><li>Basic technical logs (IP address, browser) for security.</li></ul>
 <h2>Property data</h2><p>Property and owner information in EstateHawk comes from public records published by county governments and from public contact lookups. You are responsible for using it lawfully, including do-not-call and anti-spam rules.</p>
 <h2>How we use your information</h2><p>To run your account, send alerts you ask for, provide support and keep the service secure. We do not sell your personal information.</p>
 <h2>Your choices</h2><p>You can update or delete your account at any time by contacting us at """ + CONTACT_EMAIL + """.</p>"""
@@ -555,6 +556,7 @@ def signup(request):
             f'{google_button("Sign up with Google", signup=True)}'
             f'<div class="field"><label for="s-name">Your name</label><input id="s-name" name="name" autocomplete="name" required></div>'
             f'<div class="field"><label for="s-email">Work email</label><input id="s-email" name="email" type="email" autocomplete="email" required></div>'
+            f'<div class="field"><label for="s-phone">Phone <span class="pw-hint">(optional)</span></label><input id="s-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="+1 555 123 4567"></div>'
             f'{password_fields("s")}'
             f'<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
             f'<button class="btn btn-green btn-block" type="submit">Create my account {ic("arrow")}</button>'

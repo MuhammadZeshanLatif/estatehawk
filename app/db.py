@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE COLLATE NOCASE, name TEXT, pw TEXT,
   role TEXT DEFAULT 'member', active INTEGER DEFAULT 1, created TEXT, last_login TEXT
 );
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT NOT NULL, phone TEXT,
+  message TEXT NOT NULL, created TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new'
+);
 """
 
 
@@ -102,7 +106,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
 # tables whose INSERT should hand back the new id, and the conflict keys used for INSERT OR REPLACE
-_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users", "orgs", "audit_log"}
+_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users", "orgs", "audit_log", "contact_messages"}
 _PK = {"parcels": ["id"], "snapshots": ["parcel_id", "date"], "pipeline": ["org_id", "parcel_id"], "settings": ["key"],
        "org_counties": ["org_id", "county_id"], "reveals": ["org_id", "parcel_id"], "alert_reads": ["org_id", "alert_id"],
        "org_settings": ["org_id", "key"]}
@@ -355,6 +359,8 @@ def migrate(c):
         c.execute("ALTER TABLE users ADD COLUMN token_ver INTEGER DEFAULT 0")
     if "email_verified" not in columns(c, "users"):  # accounts made before this are trusted; new email signups confirm
         c.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 1")
+    if "phone" not in columns(c, "users"):
+        c.execute("ALTER TABLE users ADD COLUMN phone TEXT")
     for t in ("activities", "tasks", "offers", "users"):
         if "org_id" not in columns(c, t):
             c.execute(f"ALTER TABLE {t} ADD COLUMN org_id INTEGER")

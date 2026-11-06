@@ -26,10 +26,11 @@ WHEN_EXPIRED = ("/api/meta", "/api/plans", "/api/auth/", "/api/billing")
 
 
 def password_error(pw):
-    if not isinstance(pw, str) or not 9 <= len(pw) <= 128:
-        return "Use 9 to 128 characters for your password."
-    if not re.search(r"[A-Za-z]", pw) or not re.search(r"[0-9]", pw) or not re.search(r"[^A-Za-z0-9\s]", pw):
-        return "Use at least one letter, one number, and one special character."
+    if not isinstance(pw, str) or not 15 <= len(pw) <= 128:
+        return "Use 15 to 128 characters. A memorable phrase works well."
+    simple = re.sub(r"[^a-z0-9]", "", pw.lower())
+    if any(word in simple for word in ("password", "qwerty", "123456", "letmein", "welcome", "estatehawk")):
+        return "Choose a less common password or phrase."
     return None
 
 
@@ -90,7 +91,7 @@ def read_token(tok):
     try:
         if not hmac.compare_digest(sig, good) or int(exp) < time.time():
             return None
-        u = db.q1("SELECT id, email, name, role, active, org_id, token_ver, email_verified, tour_seen, CASE WHEN avatar IS NULL THEN 0 ELSE 1 END AS has_avatar FROM users WHERE id=?", (int(uid),))
+        u = db.q1("SELECT id, email, phone, name, role, active, org_id, token_ver, email_verified, tour_seen, CASE WHEN avatar IS NULL THEN 0 ELSE 1 END AS has_avatar FROM users WHERE id=?", (int(uid),))
     except ValueError:
         return None
     if not u or not u["active"] or int(u.get("token_ver") or 0) != int(ver):

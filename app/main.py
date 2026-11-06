@@ -100,6 +100,13 @@ def _client_ip(request):
     return auth.client_ip(request)
 
 
+def _optional_phone(raw):
+    phone = str(raw or "").strip()
+    if phone and (len(phone) > 30 or len(re.sub(r"\D", "", phone)) < 7 or not re.fullmatch(r"[+0-9() .-]+", phone)):
+        raise HTTPException(400, "Enter a valid phone number, or leave it blank.")
+    return phone
+
+
 @app.get("/api/auth/me")
 def auth_me(request: Request):
     u = auth.current(request)
@@ -233,7 +240,7 @@ async def auth_signup(request: Request):
         cid = 0
     if not _county_ok(cid):
         raise HTTPException(400, "Choose your first county.")
-    uid = _new_trial(request, name, email, auth.hash_pw(pw), b.get("company"), cid, ip, "website")
+    uid = _new_trial(request, name, email, auth.hash_pw(pw), b.get("company"), cid, ip, "website", _optional_phone(b.get("phone")))
     resp = JSONResponse({"ok": True})
     auth.set_cookie(resp, request, uid)
     return resp
@@ -257,15 +264,15 @@ def _county_ok(cid):
     return bool(r and r["n"] and (r["good"] or 0) >= 0.6 * r["n"])
 
 
-def _new_trial(request, name, email, pw_hash, company, cid, ip, how):
+def _new_trial(request, name, email, pw_hash, company, cid, ip, how, phone=""):
     """A new company on the 14-day trial with one county, its admin login, and the welcome email. Returns the user id."""
     ends = (dt.date.today() + dt.timedelta(days=plans.PLANS["trial"]["days"])).isoformat()
     company = (company or "").strip()[:80] or f"{name}'s team"
     oid = db.run("INSERT INTO orgs(name,plan,status,trial_ends,created,notes) VALUES(?,?,?,?,?,?)",
                  (company, "trial", "active", ends, jobs.now(), "Signed up on the website" + (" with Google" if how == "google" else "")))
     db.run("INSERT INTO org_counties(org_id, county_id) VALUES(?,?)", (oid, cid))
-    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id,email_verified) VALUES(?,?,?,?,?,?,?)",
-                 (email, name, pw_hash, "admin", jobs.now(), oid, 1 if how == "google" else 0))
+    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id,email_verified,phone) VALUES(?,?,?,?,?,?,?,?)",
+                 (email, name, pw_hash, "admin", jobs.now(), oid, 1 if how == "google" else 0, phone))
     u = db.q1("SELECT * FROM users WHERE email=?", (email,))
     auth.audit("signed up", f"{company} ({email}) trial" + (" via Google" if how == "google" else ""), user=u, org=oid, ip=ip)
     cname = (db.q1("SELECT name FROM counties WHERE id=?", (cid,)) or {}).get("name", "your county")
@@ -291,13 +298,17 @@ def _back(path, msg=None):
 
 
 @app.get("/api/auth/google/start")
-def google_start(request: Request, county_id: str = "", company: str = "", mode: str = "login"):
+def google_start(request: Request, county_id: str = "", company: str = "", phone: str = "", mode: str = "login"):
     from fastapi.responses import RedirectResponse
     if not google_auth.configured():
         return _back("/login", "Google sign-in is not turned on yet. Use your email and password.")
     auth.throttle(_client_ip(request))
     cid = int(county_id) if county_id.isdigit() and _county_ok(int(county_id)) else None
-    url, cookie = google_auth.start(site.base_url(request), cid, company)
+    try:
+        phone = _optional_phone(phone)
+    except HTTPException:
+        return _back("/signup", "Enter a valid phone number, or leave it blank.")
+    url, cookie = google_auth.start(site.base_url(request), cid, company, phone)
     r = RedirectResponse(url, status_code=303)
     https = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
     r.set_cookie(google_auth.COOKIE, cookie, max_age=600, httponly=True, samesite="lax", secure=https, path="/api/auth/google")
@@ -330,7 +341,7 @@ def google_callback(request: Request, code: str = "", state: str = "", error: st
     else:
         if not p["county"] or not _county_ok(p["county"]):
             return _back("/signup?google=1", "No account with that Google email yet. Choose your first county, then continue with Google.")
-        uid = _new_trial(request, p["name"], p["email"], "", p["company"], p["county"], ip, "google")
+        uid = _new_trial(request, p["name"], p["email"], "", p["company"], p["county"], ip, "google", p["phone"])
     r = _back("/app")
     auth.set_cookie(r, request, uid)
     return r
@@ -347,10 +358,13 @@ async def public_contact(request: Request):
     if "@" not in email or len(msg) < 3:
         raise HTTPException(400, "Enter your email and a message.")
     nm = (b.get('name') or '').strip()[:80]
-    auth.audit("website message", f"{nm} <{email}>: {msg}", org=1, ip=ip)
+    phone = _optional_phone(b.get("phone"))
+    db.run("INSERT INTO contact_messages(name,email,phone,message,created) VALUES(?,?,?,?,?)",
+           (nm, email, phone, msg, jobs.now()))
+    auth.audit("website message", f"{nm} <{email}>", org=1, ip=ip)
     auth.failed(ip)  # counts toward the hourly limit, stops floods
     mailer.send(os.environ.get("SUPPORT_EMAIL") or "support@getestatehawk.com", f"Website message from {nm or email}", "New website message",
-                [f"<b>From:</b> {mailer.esc(nm)} &lt;{mailer.esc(email)}&gt;", mailer.esc(msg).replace("\n", "<br>")], reply_to=email,
+                [f"<b>From:</b> {mailer.esc(nm)} &lt;{mailer.esc(email)}&gt;" + (f" · {mailer.esc(phone)}" if phone else ""), mailer.esc(msg).replace("\n", "<br>")], reply_to=email,
                 foot="Sent from the contact form on getestatehawk.com.")
     mailer.send(email, "We got your message", "Thanks for writing to EstateHawk",
                 ["We got your message and will reply within one business day.", f"<i>{mailer.esc(msg[:600])}</i>"],
@@ -464,7 +478,7 @@ def _team_org():
 
 @app.get("/api/users")
 def users_list():
-    return db.q("SELECT id, email, name, role, active, created, last_login FROM users WHERE org_id=? ORDER BY id", (_team_org(),))
+    return db.q("SELECT id, email, phone, name, role, active, created, last_login FROM users WHERE org_id=? ORDER BY id", (_team_org(),))
 
 
 def _user_in_my_org(uid):
@@ -476,14 +490,33 @@ def _user_in_my_org(uid):
     return u
 
 
+def _send_support_reset(user, request):
+    if not user or not user["active"]:
+        raise HTTPException(404, "Active user not found")
+    link = f"{site.base_url(request)}/reset-password?token={auth.make_reset(user['id'])}"
+    sent = mailer.send(user["email"], "Reset your EstateHawk password", "Reset your password",
+                       ["EstateHawk support sent you a secure link to choose a new password.",
+                        "The link works once and expires after a short time. If you did not request help, ignore this email."],
+                       ("Choose a new password", link))
+    if not sent:
+        raise HTTPException(503, "Email could not be sent. Check the mail settings and try again.")
+    auth.audit("password reset link sent", user["email"])
+    return {"ok": True}
+
+
+@app.post("/api/users/{uid}/reset-link")
+def team_user_reset_link(uid: int, request: Request):
+    return _send_support_reset(_user_in_my_org(uid), request)
+
+
 @app.post("/api/users")
 async def users_add(request: Request):
     b = await request.json()
     email, pw = (b.get("email") or "").strip().lower(), b.get("password") or ""
     if "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(400, "Enter a valid email")
-    if pw and len(pw) < 8:
-        raise HTTPException(400, "A temporary password needs at least 8 characters (or leave it empty to send an invite link)")
+    if pw and (error := auth.password_error(pw)):
+        raise HTTPException(400, error)
     if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
         raise HTTPException(400, "This email already has an account")
     info = ctx.get()["org"]
@@ -491,9 +524,9 @@ async def users_add(request: Request):
     if limit and info["users"] >= limit and not ctx.get().get("super"):
         raise HTTPException(402, f"Your {info['label']} plan allows {limit} user(s). Upgrade to add more.")
     import secrets as _s
-    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,?)",
+    uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id,phone) VALUES(?,?,?,?,?,?,?)",
                  (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw or _s.token_urlsafe(24)),
-                  b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now(), _team_org()))
+                  b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now(), _team_org(), _optional_phone(b.get("phone"))))
     me = ctx.get().get("user") or {}
     link = f"{site.base_url(request)}/reset-password?invite=1&token={auth.make_reset(uid, 'invite')}"
     sent = mailer.send(email, f"{me.get('name') or 'Your team'} invited you to EstateHawk", "You are invited to EstateHawk",
@@ -514,8 +547,8 @@ async def users_edit(uid: int, request: Request):
     if b.get("role") in ("admin", "member"):
         db.run("UPDATE users SET role=? WHERE id=?", (b["role"], uid))
     if b.get("password"):
-        if len(b["password"]) < 8:
-            raise HTTPException(400, "Password needs at least 8 characters")
+        if error := auth.password_error(b["password"]):
+            raise HTTPException(400, error)
         db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["password"]), uid))
         auth.end_sessions(uid)
     return {"ok": True}
@@ -1714,6 +1747,9 @@ async def billing_request(request: Request):
     if db.q1("SELECT 1 FROM org_settings WHERE org_id=? AND key=?", (OID(), key)):
         return {"ok": True, "again": True}  # same request twice today: no second email
     db.run("INSERT INTO org_settings(org_id,key,value) VALUES(?,?,?)", (OID(), key, msg[:300]))
+    db.run("INSERT INTO contact_messages(name,email,phone,message,created) VALUES(?,?,?,?,?)",
+           (u.get("name") or "", u.get("email") or "", u.get("phone") or "",
+            (f"Plan request: {label}. " if label else "") + msg, jobs.now()))
     auth.audit("upgrade request", f"{label or 'message'}: {msg[:300]}")
     details = [f"<b>Company:</b> {mailer.esc(o.get('name') or '')} (id {OID()}), now on {mailer.esc(o.get('label') or o.get('plan') or '')}",
                f"<b>From:</b> {mailer.esc(u.get('name') or '')} &lt;{mailer.esc(u.get('email') or '')}&gt;"]
@@ -1811,8 +1847,10 @@ async def admin_org_create(request: Request):
     name = (b.get("name") or "").strip()
     email, pw = (b.get("email") or "").strip().lower(), b.get("password") or ""
     plan = b.get("plan") if b.get("plan") in plans.PLANS else "trial"
-    if not name or "@" not in email or len(pw) < 8:
-        raise HTTPException(400, "Company name, admin email and a temporary password (8+ characters) are needed")
+    if not name or "@" not in email:
+        raise HTTPException(400, "Company name and admin email are needed")
+    if error := auth.password_error(pw):
+        raise HTTPException(400, error)
     if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
         raise HTTPException(400, "This email already has an account")
     limit = plans.PLANS[plan]["counties"]
@@ -1860,8 +1898,27 @@ async def admin_org_edit(oid: int, request: Request):
 
 @app.get("/api/admin/users")
 def admin_users():
-    return db.q("""SELECT u.id, u.email, u.name, u.role, u.active, u.created, u.last_login, u.org_id, o.name org_name, o.plan
+    return db.q("""SELECT u.id, u.email, u.phone, u.name, u.role, u.active, u.created, u.last_login, u.org_id, o.name org_name, o.plan
                    FROM users u LEFT JOIN orgs o ON o.id=u.org_id ORDER BY u.org_id, u.id""")
+
+
+@app.post("/api/admin/users/{uid}/reset-link")
+def admin_user_reset_link(uid: int, request: Request):
+    user = db.q1("SELECT id,email,active FROM users WHERE id=?", (uid,))
+    return _send_support_reset(user, request)
+
+
+@app.get("/api/admin/contact-messages")
+def admin_contact_messages():
+    return db.q("SELECT id,name,email,phone,message,created,status FROM contact_messages ORDER BY id DESC LIMIT 500")
+
+
+@app.post("/api/admin/contact-messages/{message_id}/read")
+def admin_contact_message_read(message_id: int):
+    if not db.q1("SELECT 1 FROM contact_messages WHERE id=?", (message_id,)):
+        raise HTTPException(404, "Message not found")
+    db.run("UPDATE contact_messages SET status='read' WHERE id=?", (message_id,))
+    return {"ok": True}
 
 
 @app.put("/api/admin/users/{uid}")
@@ -1875,6 +1932,8 @@ async def admin_user_edit(uid: int, request: Request):
     if "active" in b:
         db.run("UPDATE users SET active=? WHERE id=?", (1 if b["active"] else 0, uid))
     if b.get("password"):
+        if error := auth.password_error(b["password"]):
+            raise HTTPException(400, error)
         db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["password"]), uid))
     if b.get("role") in ("admin", "member") and u["role"] != "superadmin":
         db.run("UPDATE users SET role=? WHERE id=?", (b["role"], uid))
@@ -1900,7 +1959,8 @@ def admin_stats():
     orgs = db.q("SELECT plan, status, trial_ends FROM orgs WHERE id<>1")
     today = dt.date.today().isoformat()
     week = (dt.datetime.now() - dt.timedelta(days=7)).isoformat(sep=" ")
-    return {"companies": len(orgs),
+    return {"new_messages": db.q1("SELECT COUNT(*) n FROM contact_messages WHERE status='new'")["n"],
+            "companies": len(orgs),
             "trials": sum(1 for o in orgs if o["plan"] == "trial" and (o["trial_ends"] or "") >= today),
             "paying": sum(1 for o in orgs if o["plan"] in ("starter", "pro", "agency") and o["status"] == "active"),
             "mrr": sum(plans.PLANS[o["plan"]]["price"] for o in orgs if o["plan"] in ("starter", "pro", "agency") and o["status"] == "active"),

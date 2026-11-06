@@ -44,10 +44,10 @@ def _unsign(val):
         return None
 
 
-def start(base, county_id=None, company=""):
+def start(base, county_id=None, company="", phone=""):
     """URL to send the visitor to, and the signed cookie that remembers the state (10 minutes)."""
     state = secrets.token_urlsafe(24)
-    cookie = _sign({"state": state, "county": county_id, "company": (company or "")[:80], "exp": int(time.time()) + 600})
+    cookie = _sign({"state": state, "county": county_id, "company": (company or "")[:80], "phone": (phone or "")[:30], "exp": int(time.time()) + 600})
     q = {"client_id": os.environ["GOOGLE_CLIENT_ID"], "redirect_uri": redirect_uri(base), "response_type": "code",
          "scope": "openid email profile", "state": state, "prompt": "select_account", "access_type": "online"}
     return f"{AUTH_URL}?{urlencode(q)}", cookie
@@ -70,4 +70,4 @@ def finish(base, code, state, cookie):
     if str(p.get("email_verified")).lower() != "true" or not p.get("email"):
         raise ValueError("Your Google email is not verified yet.")
     return {"email": p["email"].strip().lower(), "name": (p.get("name") or p.get("given_name") or p["email"].split("@")[0])[:80],
-            "county": saved.get("county"), "company": saved.get("company") or ""}
+            "county": saved.get("county"), "company": saved.get("company") or "", "phone": saved.get("phone") or ""}
