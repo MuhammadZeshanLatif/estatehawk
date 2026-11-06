@@ -450,7 +450,7 @@ export async function plansModal(note = '') {
     : 'Pick a plan and we switch your account the same business day. We email you the payment link, nothing is charged now.';
   const pickBtn = (k, p) => !p.price || !isAdmin ? ''
     : `<button class="btn primary sm" data-${canBuy ? 'buy' : 'req'}="${k}" style="width:100%">Choose ${esc(p.label)}</button>`;
-  modal(`<div class="plans-dialog"><h2>Choose your plan</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
+  modal(`<div class="plans-dialog"><button class="plans-close" type="button" data-close aria-label="Close plans">${ic('x', 20)}</button><h2>Choose your plan</h2>${note ? `<p class="small" style="color:#B42318">${esc(note)}</p>` : ''}<p class="muted small">${intro}</p>
     <div class="plans-grid">${Object.entries(P).map(([k, p]) => `
       <div class="card card-pad plan-option ${k === cur ? 'is-current' : ''}"><b>${esc(p.label)}</b>
         <div style="font-size:24px;font-weight:700;margin:6px 0">${p.price ? '$' + p.price : 'Free'}<span class="small muted" style="font-weight:400">${p.price ? ' / month' : ''}</span></div>

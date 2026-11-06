@@ -22,9 +22,6 @@
 #eh-chat .eh-chat-message.bot .eh-chat-bubble{border-top-left-radius:5px}
 #eh-chat .eh-chat-message.user .eh-chat-bubble{background:#14532d;color:#fff;border-color:#14532d;border-top-right-radius:5px}
 #eh-chat .eh-chat-typing{color:#6b7d70;font-size:12px;margin:0 0 12px;padding-left:6px}
-#eh-chat .eh-chat-nudge{display:flex;flex-direction:column;gap:6px;margin:0 0 14px 10px;padding:10px 12px;border-left:3px solid #2c9855;background:#f0f8f2;border-radius:0 10px 10px 0;font-size:12px;max-width:88%}
-#eh-chat .eh-chat-nudge a{color:#14532d;font-weight:700;text-decoration:none}
-#eh-chat .eh-chat-nudge a:hover{text-decoration:underline}
 #eh-chat .eh-chat-suggestions{display:flex;flex-wrap:wrap;gap:7px;padding:0 0 12px 8px;flex:none}
 #eh-chat .eh-chat-suggestions:empty{display:none}
 #eh-chat .eh-chat-suggestions button{border:1px solid #bcd8c4;border-radius:999px;background:#f4faf5;color:#14532d;white-space:nowrap;padding:7px 10px;cursor:pointer;font-size:12px}

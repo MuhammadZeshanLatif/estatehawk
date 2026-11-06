@@ -82,7 +82,7 @@ async def _chat_reply(request: Request, signed_in=False):
     plan = INFO()["plan"] if signed_in else None
     role = user.get("role") if user else None
     reply = await run_in_threadpool(chat.answer, question, history, plan, role)
-    return {"reply": reply, "suggestion": chat.nudge(plan)}
+    return {"reply": reply}
 
 
 @app.post("/api/public/chat")

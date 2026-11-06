@@ -6,11 +6,11 @@
   if (appPage) root.classList.add('eh-chat-app');
   root.innerHTML = `<button class="eh-chat-launcher" type="button" aria-label="Open EstateHawk help" aria-expanded="false"><img src="/static/icon.svg" alt=""><span>Ask EstateHawk</span><i></i></button>
     <section class="eh-chat-panel" role="dialog" aria-label="EstateHawk assistant" hidden>
-      <header class="eh-chat-head"><span class="eh-chat-mark"><img src="/static/icon.svg" alt=""></span><span><strong>EstateHawk assistant</strong><small>Here to help you get more from EstateHawk</small></span><button type="button" class="eh-chat-close" aria-label="Close chat">×</button></header>
+      <header class="eh-chat-head"><span class="eh-chat-mark"><img src="/static/icon.svg" alt=""></span><span><strong>EstateHawk assistant</strong><small>Help with EstateHawk features</small></span><button type="button" class="eh-chat-close" aria-label="Close chat">×</button></header>
       <div class="eh-chat-messages" role="log" aria-live="polite"></div>
       <div class="eh-chat-suggestions"></div>
       <form class="eh-chat-form"><input type="text" maxlength="1000" autocomplete="off" placeholder="Ask about EstateHawk..." aria-label="Your question"><button type="submit" aria-label="Send message">➤</button></form>
-      <div class="eh-chat-foot">EstateHawk features & plans only · Please don't share private details</div>
+      <div class="eh-chat-foot">EstateHawk help · Please don't share private details</div>
     </section>`;
   document.body.append(root);
   const panel = root.querySelector('.eh-chat-panel');
@@ -31,8 +31,8 @@
     return line;
   };
   const showSuggestions = () => {
-    const prompts = signedIn ? ['How do I filter leads?', 'What does my plan include?', 'How do I draft an offer?']
-      : ['How does EstateHawk work?', 'Compare plans', 'How are owner contacts found?'];
+    const prompts = signedIn ? ['How do I filter leads?', 'How do I find owner contacts?', 'How do I draft an offer?']
+      : ['How does EstateHawk work?', 'How can I find leads?', 'How are owner contacts found?'];
     suggestions.replaceChildren();
     prompts.forEach((label) => {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
@@ -69,12 +69,6 @@
       if (!response.ok) throw new Error(data.detail || 'Please try again.');
       typing.remove(); addMessage('bot', data.reply || 'How may I help you with EstateHawk?');
       userQuestions.push(question);
-      if (data.suggestion) {
-        const callout = document.createElement('div'); callout.className = 'eh-chat-nudge';
-        const text = document.createElement('span'); text.textContent = data.suggestion.text;
-        const link = document.createElement('a'); link.href = signedIn ? (appPage ? '#/billing' : '/app#/billing') : '/pricing'; link.textContent = data.suggestion.label + ' →';
-        callout.append(text, link); messages.append(callout); messages.scrollTop = messages.scrollHeight;
-      }
     } catch (error) {
       typing.remove(); addMessage('bot', error.message || 'Please try again shortly.');
     } finally {

@@ -335,6 +335,7 @@ input[type=range]{accent-color:var(--green);width:100%}
 .modal-card{background:#fff;border-radius:16px;width:min(560px,100%);max-height:90vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.2);padding:22px 24px}
 .modal:has(.plans-dialog){display:block;overflow-y:auto;overscroll-behavior:contain}
 .modal-card:has(.plans-dialog){width:min(900px,100%);max-height:none;overflow:visible;margin:clamp(8px,3vh,32px) auto;border-radius:18px}
+.plans-dialog{position:relative}.plans-dialog h2{padding-right:44px}.plans-close{position:absolute;top:0;right:0;width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:9px;background:#f3f5f2;color:var(--ink2);cursor:pointer}.plans-close:hover{background:#e7eee8;color:var(--green)}.plans-close:focus-visible{outline:2px solid var(--green);outline-offset:2px}
 .plans-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
 .plan-option{display:flex;flex-direction:column;min-width:0}
 .plan-option.is-current{border:2px solid var(--green)}
