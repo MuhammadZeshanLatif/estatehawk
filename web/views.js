@@ -59,6 +59,8 @@ export async function deals(el) {
         <span class="small muted" id="pageInfo"></span>
         <div class="pager"><button class="btn sm" id="prev" aria-label="Previous page">${ic('left', 16)}</button><button class="btn sm" id="next" aria-label="Next page">${ic('right', 16)}</button></div>
       </div>
+      <div id="activeFilters" class="row gap6" style="display:none;flex-wrap:wrap;padding:0 20px 14px"></div>
+      <div id="ownerHelp" class="small muted" style="display:none;padding:0 20px 14px"></div>
       <div id="bulk" class="row hide" style="padding:0 20px 12px"><b class="small" id="bulkN"></b><button class="btn xs" id="bulkCmp" title="Pick 2 to 4 leads">${ic('chart', 14)} Compare</button><button class="btn xs" id="bulkPipe">${ic('plus', 14)} Add to pipeline</button><button class="btn xs" id="bulkOffer">${ic('letter', 14)} Draft offers</button><a class="btn xs" id="bulkCsv">${ic('download', 14)} Export CSV</a></div>
       <div style="overflow-x:auto"><table class="table" id="leadTable"><thead><tr>
         <th style="width:32px"><input type="checkbox" id="allChk" aria-label="Select all leads on this page"></th><th>Property</th><th class="hide-m">Owner</th><th class="r">Taxes Owed</th>
@@ -90,7 +92,32 @@ export async function deals(el) {
   async function loadLeads() {
     const r = await api('/api/parcels?' + qs());
     const cn = S.county === 'all' ? 'all counties' : countyName(S.county);
-    $('#leadSub').textContent = `Tax-delinquent properties in ${cn}`;
+    const active = [
+      ['min_score', st.min_score && `Score ${st.min_score}+`],
+      ['owed', (st.min_owed || st.max_owed) && 'Taxes owed'],
+      ['min_years', st.min_years && `${st.min_years}+ years behind`],
+      ['ptype', st.ptype !== 'homes' && `Property: ${st.ptype}`],
+      ['min_equity', st.min_equity && `Equity $${Number(st.min_equity).toLocaleString()}+`],
+      ['new_days', st.new_days && `New in ${st.new_days} days`],
+      ['out_of_state', st.out_of_state && 'Out-of-state owners'],
+      ['owner_status', st.owner_status && (st.owner_status === 'missing' ? 'Name missing' : 'Name available')],
+      ['q', st.q && `Search: ${st.q}`],
+    ].filter(([, label]) => label);
+    const baseParams = new URLSearchParams(qs());
+    for (const [key] of active) {
+      if (key === 'owed') { baseParams.delete('min_owed'); baseParams.delete('max_owed'); }
+      else baseParams.delete(key);
+    }
+    baseParams.set('per', '1');
+    const base = active.length ? await api('/api/parcels?' + baseParams) : r;
+    $('#leadSub').textContent = `${num(r.total)} matching leads in ${cn}${active.length ? ` · ${num(base.total)} total leads` : ''}`;
+    const badges = $('#activeFilters');
+    badges.style.display = active.length ? 'flex' : 'none';
+    badges.innerHTML = active.length ? `<b class="small">Filters applied:</b> ${active.map(([, label]) => `<span class="pill p-green tiny" style="padding:5px 9px">${esc(label)}</span>`).join('')}` : '';
+    $('#fMore').style.background = active.length ? '#DCFCE7' : '';
+    const help = $('#ownerHelp');
+    help.style.display = st.owner_status === 'missing' ? 'block' : 'none';
+    help.textContent = st.owner_status === 'missing' ? 'Texas owner names are checked automatically against the official parcel map every 4 hours. If a name stays missing, open the lead, copy its parcel number, and search that county’s appraisal district records for the latest owner. Other states may use different county records.' : '';
     $('#pageInfo').textContent = r.total ? `${(r.page - 1) * r.per + 1} - ${Math.min(r.page * r.per, r.total)} of ${num(r.total)} leads` : '0 leads';
     $('#prev').disabled = r.page <= 1; $('#next').disabled = r.page * r.per >= r.total;
     $('#leadTable tbody').innerHTML = r.rows.map((p) => `<tr data-id="${esc(p.id)}">
