@@ -79,6 +79,7 @@ export async function deals(el) {
   </div>`;
 
   const chosen = new Set();
+  let leadRequest = 0;
   const qs = () => {
     const o = { county: S.county, ...st };
     return Object.entries(o).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
@@ -95,6 +96,7 @@ export async function deals(el) {
     ].map(([i, t, l, v, f, href]) => `<a class="card stat" ${href ? `href="${href}"` : ''}><span class="ico ${t}">${ic(i, 21)}</span><div><div class="lbl">${l}</div><div class="val num">${v}</div>${f}</div></a>`).join('');
   }
   async function loadLeads() {
+    const request = ++leadRequest;
     const r = await api('/api/parcels?' + qs());
     const cn = S.county === 'all' ? 'all counties' : countyName(S.county);
     const active = [
@@ -118,9 +120,10 @@ export async function deals(el) {
     baseParams.delete('ptype');
     baseParams.set('per', '1');
     const base = active.length ? await api('/api/parcels?' + baseParams) : r;
+    if (request !== leadRequest) return;
     $('#leadSub').textContent = `${num(r.total)} matching leads in ${cn}${active.length ? ` · ${num(base.total)} total leads` : ''}`;
     $('#filterSummary').style.display = active.length ? 'block' : 'none';
-    $('#filterChips').innerHTML = active.map(([, label]) => `<span class="pill p-green" style="padding:7px 11px">${esc(label)}</span>`).join('');
+    $('#filterChips').innerHTML = active.map(([key, label]) => `<span class="pill p-green applied-filter">${esc(label)}<button type="button" class="applied-filter-remove" data-filter="${esc(key)}" aria-label="Remove ${esc(label)} filter" title="Remove ${esc(label)} filter">${ic('x', 12)}</button></span>`).join('');
     $('#filterTotal').textContent = num(base.total);
     $('#filterMatching').textContent = num(r.total);
     $('#fMore').style.background = active.length ? '#DCFCE7' : '';
@@ -152,6 +155,19 @@ export async function deals(el) {
     $('#todayAlerts').innerHTML = al.rows.map((a) => `<a class="alert-row" href="${a.parcel_id ? '#/deal/' + encodeURIComponent(a.parcel_id) : '#/alerts'}">${alertIcon(a.type)}<div class="grow"><b>${esc(a.title)}</b><div class="tiny muted">${esc(a.county_name || '')}</div></div><span class="tiny muted">${ago(a.ts)}</span></a>`).join('') || '<div class="empty small">No alerts yet</div>';
   }
   const reload = () => { st.page = 1; loadLeads(); };
+  $('#filterChips').onclick = (e) => {
+    const button = e.target.closest('.applied-filter-remove');
+    if (!button) return;
+    const key = button.dataset.filter;
+    if (key === 'county') { setCounty('all'); $('#countySel').value = 'all'; loadStats(); loadSide(); }
+    else if (key === 'owed') { st.min_owed = ''; st.max_owed = ''; $('#fOwed').value = ''; }
+    else if (key === 'ptype') st.ptype = 'all';
+    else if (key === 'q') { st.q = ''; $('#leadQ').value = ''; clearTimeout(qt); }
+    else if (key in st) st[key] = '';
+    if (key === 'min_score') $('#fScore').value = '';
+    if (key === 'min_years') $('#fYears').value = '';
+    reload();
+  };
   $('#countySel').onchange = (e) => { setCounty(e.target.value); loadStats(); reload(); loadSide(); };
   $('#fScore').onchange = (e) => { st.min_score = e.target.value; reload(); };
   $('#fOwed').onchange = (e) => { const [a, b] = (e.target.value || '-').split('-'); st.min_owed = a; st.max_owed = b; reload(); };
