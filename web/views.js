@@ -46,6 +46,12 @@ export async function deals(el) {
     </div>
   </div>
   <div class="grid stats" id="stats">${'<div class="card stat skeleton" style="height:96px"></div>'.repeat(4)}</div>
+  <div id="filterSummary" class="card" style="display:none;margin-top:18px;padding:18px 20px">
+    <div class="row between" style="flex-wrap:wrap;gap:14px">
+      <div><h2 style="margin:0 0 10px">Applied filters</h2><div id="filterChips" class="row gap6" style="flex-wrap:wrap"></div></div>
+      <div class="row" style="gap:24px;flex-wrap:wrap"><div><div class="small muted">Total leads</div><div id="filterTotal" class="num" style="font-size:26px;font-weight:700"></div></div><div><div class="small muted">Matching leads</div><div id="filterMatching" class="num" style="font-size:26px;font-weight:700;color:var(--green-ink)"></div></div></div>
+    </div>
+  </div>
   <div class="deals-grid">
     <div class="card" style="min-width:0">
       <div class="card-head" style="padding-top:20px"><div><h2>Property Leads</h2><div class="small muted" id="leadSub"></div></div>
@@ -59,7 +65,6 @@ export async function deals(el) {
         <span class="small muted" id="pageInfo"></span>
         <div class="pager"><button class="btn sm" id="prev" aria-label="Previous page">${ic('left', 16)}</button><button class="btn sm" id="next" aria-label="Next page">${ic('right', 16)}</button></div>
       </div>
-      <div id="activeFilters" class="row gap6" style="display:none;flex-wrap:wrap;padding:0 20px 14px"></div>
       <div id="ownerHelp" class="small muted" style="display:none;padding:0 20px 14px"></div>
       <div id="bulk" class="row hide" style="padding:0 20px 12px"><b class="small" id="bulkN"></b><button class="btn xs" id="bulkCmp" title="Pick 2 to 4 leads">${ic('chart', 14)} Compare</button><button class="btn xs" id="bulkPipe">${ic('plus', 14)} Add to pipeline</button><button class="btn xs" id="bulkOffer">${ic('letter', 14)} Draft offers</button><a class="btn xs" id="bulkCsv">${ic('download', 14)} Export CSV</a></div>
       <div style="overflow-x:auto"><table class="table" id="leadTable"><thead><tr>
@@ -93,10 +98,11 @@ export async function deals(el) {
     const r = await api('/api/parcels?' + qs());
     const cn = S.county === 'all' ? 'all counties' : countyName(S.county);
     const active = [
+      ['county', S.county !== 'all' && `County: ${cn}`],
       ['min_score', st.min_score && `Score ${st.min_score}+`],
-      ['owed', (st.min_owed || st.max_owed) && 'Taxes owed'],
+      ['owed', (st.min_owed || st.max_owed) && (st.max_owed ? (st.min_owed && st.min_owed !== '0' ? `Taxes owed $${Number(st.min_owed).toLocaleString()}–$${Number(st.max_owed).toLocaleString()}` : `Taxes owed under $${Number(st.max_owed).toLocaleString()}`) : `Taxes owed over $${Number(st.min_owed).toLocaleString()}`)],
       ['min_years', st.min_years && `${st.min_years}+ years behind`],
-      ['ptype', st.ptype !== 'homes' && `Property: ${st.ptype}`],
+      ['ptype', st.ptype === 'homes' ? 'Homes only' : st.ptype !== 'all' && `Property: ${st.ptype}`],
       ['min_equity', st.min_equity && `Equity $${Number(st.min_equity).toLocaleString()}+`],
       ['new_days', st.new_days && `New in ${st.new_days} days`],
       ['out_of_state', st.out_of_state && 'Out-of-state owners'],
@@ -105,15 +111,18 @@ export async function deals(el) {
     ].filter(([, label]) => label);
     const baseParams = new URLSearchParams(qs());
     for (const [key] of active) {
+      if (key === 'county') continue;
       if (key === 'owed') { baseParams.delete('min_owed'); baseParams.delete('max_owed'); }
       else baseParams.delete(key);
     }
+    baseParams.delete('ptype');
     baseParams.set('per', '1');
     const base = active.length ? await api('/api/parcels?' + baseParams) : r;
     $('#leadSub').textContent = `${num(r.total)} matching leads in ${cn}${active.length ? ` · ${num(base.total)} total leads` : ''}`;
-    const badges = $('#activeFilters');
-    badges.style.display = active.length ? 'flex' : 'none';
-    badges.innerHTML = active.length ? `<b class="small">Filters applied:</b> ${active.map(([, label]) => `<span class="pill p-green tiny" style="padding:5px 9px">${esc(label)}</span>`).join('')}` : '';
+    $('#filterSummary').style.display = active.length ? 'block' : 'none';
+    $('#filterChips').innerHTML = active.map(([, label]) => `<span class="pill p-green" style="padding:7px 11px">${esc(label)}</span>`).join('');
+    $('#filterTotal').textContent = num(base.total);
+    $('#filterMatching').textContent = num(r.total);
     $('#fMore').style.background = active.length ? '#DCFCE7' : '';
     const help = $('#ownerHelp');
     help.style.display = st.owner_status === 'missing' ? 'block' : 'none';
