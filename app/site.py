@@ -71,6 +71,8 @@ var b=document.querySelector('.menu-btn');if(b)b.onclick=function(){var o=h.clas
 document.querySelectorAll('form[data-api]').forEach(function(f){f.addEventListener('submit',async function(e){e.preventDefault();
 var m=f.querySelector('.msg'),btn=f.querySelector('button[type=submit]'),t=btn.innerHTML;m.className='msg';btn.disabled=true;btn.textContent='Please wait...';
 var d={};new FormData(f).forEach(function(v,k){d[k]=v});
+if(f.dataset.passwordRules){var p=d.password||'',error=p.length<9||p.length>128?'Use 9 to 128 characters.':!/[A-Za-z]/.test(p)||!/[0-9]/.test(p)||!(/[^A-Za-z0-9\\s]/.test(p))?'Add a letter, a number, and a special character.':d.confirm_password!==p?'Passwords do not match.':'';
+if(error){m.className='msg err';m.textContent=error;btn.disabled=false;btn.innerHTML=t;return}}
 try{var r=await fetch(f.dataset.api,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});var j=await r.json().catch(function(){return{}});
 if(!r.ok)throw new Error(j.detail||'Something went wrong. Please try again.');
 if(f.dataset.next){location.href=f.dataset.next;return}m.className='msg ok';m.textContent=f.dataset.ok||'Thanks!';f.reset();}
@@ -78,8 +80,16 @@ catch(err){m.className='msg err';m.textContent=err.message}btn.disabled=false;bt
 var q=new URLSearchParams(location.search),fm=document.querySelector('form .msg'),cm=document.getElementById('c-msg');if(cm&&q.get('topic')==='county'&&!cm.value){cm.value='Please add this county (name and state): ';}if(q.get('error')&&fm){fm.className='msg err';fm.textContent=q.get('error')}
 document.querySelectorAll('a.g-btn[data-signup]').forEach(function(a){a.addEventListener('click',function(e){var s=document.getElementById('s-county'),c=document.getElementById('s-company');
 if(!s.value){e.preventDefault();fm.className='msg err';fm.textContent='Choose your first county first, then continue with Google.';s.focus();return}
-a.href='/api/auth/google/start?mode=signup&county_id='+encodeURIComponent(s.value)+'&company='+encodeURIComponent(c?c.value:'')})});})();
+a.href='/api/auth/google/start?mode=signup&county_id='+encodeURIComponent(s.value)+'&company='+encodeURIComponent(c?c.value:'')})});
+document.querySelectorAll('[data-toggle-password]').forEach(function(b){b.addEventListener('click',function(){var i=document.getElementById(b.dataset.togglePassword),show=i.type==='password';i.type=show?'text':'password';b.querySelector('span').textContent=show?'Hide':'Show';b.setAttribute('aria-label',show?'Hide password':'Show password');b.setAttribute('aria-pressed',show?'true':'false')})});})();
 </script>"""
+
+
+def password_fields(prefix):
+    eye = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    return (f'<div class="field"><label for="{prefix}-pw">Password</label><div class="pw-wrap"><input id="{prefix}-pw" name="password" type="password" autocomplete="new-password" minlength="9" maxlength="128" required><button type="button" class="pw-toggle" data-toggle-password="{prefix}-pw" aria-label="Show password" aria-pressed="false">{eye}<span>Show</span></button></div>'
+            f'<p class="pw-hint">9–128 characters, including a letter, a number and a special character.</p></div>'
+            f'<div class="field"><label for="{prefix}-confirm">Confirm password</label><div class="pw-wrap"><input id="{prefix}-confirm" name="confirm_password" type="password" autocomplete="new-password" required><button type="button" class="pw-toggle" data-toggle-password="{prefix}-confirm" aria-label="Show password" aria-pressed="false">{eye}<span>Show</span></button></div></div>')
 
 GOOGLE_G = ('<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>'
             '<path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>'
@@ -482,15 +492,33 @@ def legal(request, kind):
 
 
 def login(request):
+    eye = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
     body = (f'<section class="sec" style="padding-top:56px"><div class="wrap"><form class="form" data-api="/api/auth/login" data-next="/app" novalidate>'
             f'<h1>Welcome back</h1><p class="sub">Sign in to your EstateHawk account.</p><div class="msg" role="alert"></div>'
             f'{google_button("Continue with Google")}'
             f'<div class="field"><label for="l-email">Email</label><input id="l-email" name="email" type="email" autocomplete="email" required></div>'
-            f'<div class="field"><label for="l-pw">Password</label><input id="l-pw" name="password" type="password" autocomplete="current-password" required></div>'
+            f'<div class="field"><label for="l-pw">Password</label><div class="pw-wrap"><input id="l-pw" name="password" type="password" autocomplete="current-password" required><button type="button" class="pw-toggle" data-toggle-password="l-pw" aria-label="Show password" aria-pressed="false">{eye}<span>Show</span></button></div></div>'
             f'<p class="alt" style="margin:-6px 0 14px;text-align:right"><a href="/forgot-password">Forgot password?</a></p>'
             f'<button class="btn btn-green btn-block" type="submit">Sign in {ic("arrow")}</button>'
             f'<p class="alt">New to EstateHawk? <a href="/signup">Start a free trial</a></p></form></div></section>')
     return page(request, "/login", "Sign in | EstateHawk", "Sign in to your EstateHawk account.", body, noindex=True)
+
+
+def check_email(request, email):
+    body = (f'<section class="sec" style="padding-top:56px"><div class="wrap"><div class="form" style="text-align:center">'
+            f'<div style="font-size:36px;margin-bottom:8px">✉</div><h1>Check your email</h1>'
+            f'<p class="sub">We sent a confirmation link to <b>{esc(email)}</b>. Open it to activate your dashboard.</p>'
+            f'<p class="pw-hint">Check your spam folder if needed. This page will continue automatically after confirmation.</p>'
+            f'<div class="msg" id="verify-msg" role="status"></div>'
+            f'<button class="btn btn-green btn-block" type="button" id="verify-resend" style="margin-top:20px">Resend confirmation email</button>'
+            f'<button class="btn btn-line btn-block" type="button" id="verify-logout" style="margin-top:10px">Use another account</button>'
+            f'</div></div></section><script>(function(){{'
+            f'var msg=document.getElementById("verify-msg"),resend=document.getElementById("verify-resend");'
+            f'resend.onclick=async function(){{resend.disabled=true;try{{var r=await fetch("/api/auth/resend-verify",{{method:"POST"}});if(!r.ok)throw Error((await r.json()).detail||"Could not resend.");msg.className="msg ok";msg.textContent="A fresh confirmation link is on its way."}}catch(e){{msg.className="msg err";msg.textContent=e.message}}resend.disabled=false}};'
+            f'document.getElementById("verify-logout").onclick=async function(){{await fetch("/api/auth/logout",{{method:"POST"}});location.href="/login"}};'
+            f'setInterval(async function(){{try{{var r=await fetch("/api/auth/me",{{cache:"no-store"}});if(r.ok&&(await r.json()).user.email_verified!==0)location.href="/app#/deals"}}catch(e){{}}}},5000);'
+            f'}})();</script>')
+    return page(request, "/check-email", "Confirm your email | EstateHawk", "Confirm your email to open EstateHawk.", body, noindex=True)
 
 
 def forgot(request):
@@ -506,10 +534,10 @@ def forgot(request):
 def reset(request):
     invite = request.query_params.get("invite") == "1"
     title = "Choose your password" if invite else "Choose a new password"
-    body = (f'<section class="sec" style="padding-top:56px"><div class="wrap"><form class="form" data-api="/api/auth/reset" data-next="/app" novalidate>'
+    body = (f'<section class="sec" style="padding-top:56px"><div class="wrap"><form class="form" data-api="/api/auth/reset" data-next="/app" data-password-rules="1" novalidate>'
             f'<h1>{title}</h1><p class="sub">{"Welcome to EstateHawk. Pick a password to finish setting up your login." if invite else "Pick a new password for your EstateHawk account."}</p><div class="msg" role="alert"></div>'
             f'<input type="hidden" name="token" value="{esc(request.query_params.get("token", ""))}">'
-            f'<div class="field"><label for="r-pw">New password</label><input id="r-pw" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>'
+            f'{password_fields("r")}'
             f'<button class="btn btn-green btn-block" type="submit">Save password and sign in {ic("arrow")}</button>'
             f'<p class="alt"><a href="/forgot-password">Need a new link?</a></p></form></div></section>')
     return page(request, "/reset-password", f"{title} | EstateHawk", "Choose a password for your EstateHawk account.", body, noindex=True)
@@ -520,14 +548,14 @@ def signup(request):
     # only counties whose leads come with an address or a map point: a new trial must see photos and real addresses
     ready = [c for c in s["counties"] if c.get("good", 0) >= 0.6 * c["n"]]
     opts = "".join(f'<option value="{c["id"]}">{esc(c["name"])}, {c["state"]} ({c["n"]:,} leads)</option>' for c in sorted(ready, key=lambda c: (c["state"], c["name"])))
-    body = (f'<section class="sec" style="padding-top:46px"><div class="wrap"><form class="form" data-api="/api/auth/signup" data-next="/app" novalidate>'
+    body = (f'<section class="sec" style="padding-top:46px"><div class="wrap"><form class="form" data-api="/api/auth/signup" data-next="/check-email" data-password-rules="1" novalidate>'
             f'<h1>Start your free trial</h1><p class="sub">14 days free. One county. No credit card.</p><div class="msg" role="alert"></div>'
             f'<div class="field"><label for="s-county">Your first county</label><select id="s-county" name="county_id" required><option value="">Choose a county</option>{opts}</select></div>'
             f'<div class="field"><label for="s-company">Company (optional)</label><input id="s-company" name="company" autocomplete="organization"></div>'
             f'{google_button("Sign up with Google", signup=True)}'
             f'<div class="field"><label for="s-name">Your name</label><input id="s-name" name="name" autocomplete="name" required></div>'
             f'<div class="field"><label for="s-email">Work email</label><input id="s-email" name="email" type="email" autocomplete="email" required></div>'
-            f'<div class="field"><label for="s-pw">Password</label><input id="s-pw" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>'
+            f'{password_fields("s")}'
             f'<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
             f'<button class="btn btn-green btn-block" type="submit">Create my account {ic("arrow")}</button>'
             f'<p class="alt" style="font-size:13px;color:var(--muted)">By signing up you agree to our <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.</p>'

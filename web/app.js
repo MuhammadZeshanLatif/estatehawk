@@ -42,6 +42,7 @@ const P = {
   card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>', sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   print: '<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5z"/>', menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   letter: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 13h6"/>', note: '<path d="M4 4h16v12l-4 4H4z"/><path d="M16 20v-4h4"/>',
 };
 export const ic = (n, s = 18) => `<svg class="ic" data-i="${n}" aria-hidden="true" focusable="false" viewBox="0 0 24 24" style="width:${s}px;height:${s}px">${P[n] || ''}</svg>`;
@@ -182,6 +183,17 @@ export function menu(anchor, items) {
 }
 export function closeMenus() { $$('.dropdown.floating').forEach((d) => d.remove()); $$('.dropdown.open').forEach((d) => d.classList.remove('open')); }
 window.addEventListener('resize', closeMenus);
+function passwordInput(id, autocomplete = 'new-password') {
+  return `<div class="password-wrap"><input class="input" type="password" id="${id}" autocomplete="${autocomplete}"><button class="password-toggle" type="button" data-password-toggle="${id}" aria-label="Show password" aria-pressed="false">${ic('eye', 16)}</button></div>`;
+}
+function bindPasswordToggles(root = document) {
+  $$('[data-password-toggle]', root).forEach((button) => button.onclick = () => {
+    const input = $('#' + button.dataset.passwordToggle, root);
+    const show = input.type === 'password'; input.type = show ? 'text' : 'password';
+    button.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); button.setAttribute('aria-pressed', String(show));
+  });
+}
+const passwordRule = (value) => typeof value === 'string' && value.length >= 9 && value.length <= 128 && /[A-Za-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9\s]/.test(value);
 
 // ---------- global state ----------
 export const S = { meta: null, user: null, viewOrg: (() => { try { return +localStorage.getItem('eh_view_org') || null; } catch (e) { return null; } })(), county: localStorage.getItem('eh_county') || 'all' };
@@ -389,14 +401,17 @@ export async function showLogin() {
     ${gBtn}
     ${setup ? '<div class="field"><label>Your name</label><input class="input" id="lName" autocomplete="name"></div>' : ''}
     <div class="field"><label>Email</label><input class="input" id="lEmail" type="email" autocomplete="username" required></div>
-    <div class="field"><label>Password</label><input class="input" id="lPw" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required minlength="${setup ? 8 : 1}"></div>
+    <div class="field"><label>Password</label>${passwordInput('lPw', setup ? 'new-password' : 'current-password')}</div>
+    ${setup ? `<div class="field"><label>Confirm password</label>${passwordInput('lConfirm')}</div><p class="tiny muted">Use 9–128 characters with a letter, a number and a special character.</p>` : ''}
     <div class="small" id="lErr" style="color:#B42318;min-height:18px"></div>
     <button class="btn primary" style="width:100%;margin-top:6px">${setup ? 'Create admin account' : 'Log in'}</button>
     ${setup ? '' : '<p class="small" style="margin:12px 0 0"><a href="/forgot-password">Forgot password?</a></p>'}
   </form></div>`;
+  bindPasswordToggles($('#loginForm'));
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();
-    const body = { email: $('#lEmail').value, password: $('#lPw').value, name: $('#lName')?.value };
+    if (setup && (!passwordRule($('#lPw').value) || $('#lPw').value !== $('#lConfirm').value)) { $('#lErr').textContent = !passwordRule($('#lPw').value) ? 'Use 9–128 characters with a letter, a number and a special character.' : 'Passwords do not match.'; return; }
+    const body = { email: $('#lEmail').value, password: $('#lPw').value, confirm_password: $('#lConfirm')?.value, name: $('#lName')?.value };
     const r = await fetch(setup ? '/api/auth/setup' : '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { location.hash = '#/deals'; location.reload(); return; }
     let msg = 'Could not log in'; try { msg = (await r.json()).detail || msg; } catch (x) { }
@@ -531,12 +546,18 @@ export function showExpired(msg) {
 
 function passwordModal() {
   modal(`<h2>Change password</h2><div style="height:10px"></div>
-    <div class="field"><label>Current password</label><input class="input" type="password" id="pOld"></div>
-    <div class="field"><label>New password (8+ characters)</label><input class="input" type="password" id="pNew"></div>
+    <div class="field"><label>Current password</label>${passwordInput('pOld', 'current-password')}</div>
+    <div class="field"><label>New password</label>${passwordInput('pNew')}</div>
+    <div class="field"><label>Confirm new password</label>${passwordInput('pConfirm')}</div>
+    <p class="tiny muted">Use 9–128 characters with a letter, a number and a special character.</p>
+    <p class="small" id="pError" role="alert" style="color:var(--red)"></p>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="pSave">Save</button></div>`, (m, close) => {
+    bindPasswordToggles(m);
     $('#pSave', m).onclick = async () => {
-      try { await api('/api/auth/password', { method: 'POST', body: { old: $('#pOld', m).value, new: $('#pNew', m).value } }); close(); toast('Password changed'); }
-      catch (e) { toast(e.message, true); }
+      const value = $('#pNew', m).value;
+      if (!passwordRule(value) || value !== $('#pConfirm', m).value) { $('#pError', m).textContent = !passwordRule(value) ? 'Use 9–128 characters with a letter, a number and a special character.' : 'Passwords do not match.'; return; }
+      try { await api('/api/auth/password', { method: 'POST', body: { old: $('#pOld', m).value, new: value, confirm_new: $('#pConfirm', m).value } }); close(); toast('Password changed'); }
+      catch (e) { $('#pError', m).textContent = e.message; }
     };
   });
 }
@@ -630,6 +651,21 @@ function startTour(force = false) {
 }
 let cleanup = null;
 let routeSeq = 0;
+let verifyPoll = null;
+function showEmailPending() {
+  ['#sidebar', '#topbar', '#banner'].forEach((s) => { if ($(s)) $(s).style.display = 'none'; });
+  if ($('#tabbar')) $('#tabbar').style.visibility = 'hidden';
+  const view = $('#view'); view.style.maxWidth = 'none';
+  view.innerHTML = `<div style="min-height:80vh;display:grid;place-items:center;padding:24px"><div class="card card-pad" style="width:min(460px,100%);text-align:center">
+    <div style="color:var(--green);margin-bottom:12px">${ic('mail', 36)}</div><h1 style="margin:0 0 10px">Check your email</h1>
+    <p class="muted">We sent a confirmation link to <b>${esc(S.user.email)}</b>. Open the link to activate your dashboard.</p>
+    <p class="small muted">Check your spam folder if it has not arrived. This page will open your dashboard automatically after confirmation.</p>
+    <div class="row" style="justify-content:center;gap:8px;margin-top:22px"><button class="btn primary" id="verifyResend">Resend email</button><button class="btn" id="verifyLogout">Use another account</button></div>
+    <p class="small" id="verifyStatus" role="status" style="min-height:20px;margin-top:14px"></p></div></div>`;
+  $('#verifyResend').onclick = async () => { const b = $('#verifyResend'); b.disabled = true; try { await api('/api/auth/resend-verify', { method: 'POST' }); $('#verifyStatus').textContent = 'A fresh confirmation link is on its way.'; } catch (e) { $('#verifyStatus').textContent = e.message; } finally { b.disabled = false; } };
+  $('#verifyLogout').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); clearAccountSelection(); location.href = '/login'; };
+  if (!verifyPoll) verifyPoll = setInterval(async () => { try { const r = await fetch('/api/auth/me', { cache: 'no-store' }); if (!r.ok) return; const data = await r.json(); if (data.user?.email_verified !== 0) { clearInterval(verifyPoll); verifyPoll = null; location.href = '/app#/deals'; } } catch (e) { } }, 5000);
+}
 async function route() {
   const my = ++routeSeq;
   closeMenus();
@@ -640,6 +676,8 @@ async function route() {
     if (!r.ok) { showLogin(); return; }
     S.user = (await r.json()).user;
   }
+  if (S.user.email_verified === 0) { showEmailPending(); return; }
+  if (verifyPoll) { clearInterval(verifyPoll); verifyPoll = null; }
   ['#sidebar', '#topbar'].forEach((s) => { if ($(s)) $(s).style.display = ''; });
   const LOADER = `<div class="page-loader"><span class="spin" style="display:inline-flex">${ic('refresh', 22)}</span><span>Loading...</span></div>`;
   if (!S.meta) { $('#view').innerHTML = LOADER; await refreshMeta(); }

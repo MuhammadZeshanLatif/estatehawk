@@ -3,6 +3,7 @@
 First visit with no users shows "Create admin account". The admin adds team members in Settings > Team.
 """
 import base64, hashlib, hmac, os, secrets, time
+import re
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -22,6 +23,14 @@ SUPER = [("*", "/api/integrations"), ("POST", "/api/counties"), ("PUT", "/api/co
 ADMIN = [("*", "/api/users"), ("*", "/api/keys"), ("POST", "/api/billing/checkout"), ("POST", "/api/billing/confirm"), ("POST", "/api/billing/portal")]
 # still open when a trial has ended / company is suspended
 WHEN_EXPIRED = ("/api/meta", "/api/plans", "/api/auth/", "/api/billing")
+
+
+def password_error(pw):
+    if not isinstance(pw, str) or not 9 <= len(pw) <= 128:
+        return "Use 9 to 128 characters for your password."
+    if not re.search(r"[A-Za-z]", pw) or not re.search(r"[0-9]", pw) or not re.search(r"[^A-Za-z0-9\s]", pw):
+        return "Use at least one letter, one number, and one special character."
+    return None
 
 
 def _secret():
@@ -184,6 +193,8 @@ async def middleware(request: Request, call_next):
     u = current(request)
     if not u:
         return JSONResponse({"detail": "Please log in", "login": True, "setup": not users_exist()}, status_code=401)
+    if u.get("email_verified") == 0:
+        return JSONResponse({"detail": "Confirm your email before opening the dashboard.", "email_verification_required": True}, status_code=403)
     is_super = u["role"] == "superadmin"
     for m, pre in SUPER:
         if (m == "*" or m == request.method) and path.startswith(pre) and not is_super:

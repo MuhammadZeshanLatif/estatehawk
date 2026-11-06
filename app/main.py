@@ -171,8 +171,12 @@ async def auth_setup(request: Request):
         raise HTTPException(400, "Admin already created. Please log in.")
     b = await request.json()
     email, pw = (b.get("email") or "").strip().lower(), b.get("password") or ""
-    if "@" not in email or len(pw) < 8:
-        raise HTTPException(400, "Enter an email and a password of at least 8 characters")
+    if "@" not in email:
+        raise HTTPException(400, "Enter a valid email.")
+    if error := auth.password_error(pw):
+        raise HTTPException(400, error)
+    if b.get("confirm_password") != pw:
+        raise HTTPException(400, "Passwords do not match.")
     db.con()  # makes sure company #1 (EstateHawk HQ) exists
     db.run("INSERT INTO users(email,name,pw,role,created,org_id) VALUES(?,?,?,?,?,1)",
            (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw), "superadmin", jobs.now()))
@@ -214,8 +218,10 @@ async def auth_signup(request: Request):
     email, pw = (b.get("email") or "").strip().lower()[:120], b.get("password") or ""
     if not name or "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(400, "Enter your name and a valid email.")
-    if len(pw) < 8:
-        raise HTTPException(400, "Choose a password of at least 8 characters.")
+    if error := auth.password_error(pw):
+        raise HTTPException(400, error)
+    if b.get("confirm_password") != pw:
+        raise HTTPException(400, "Passwords do not match.")
     if db.q1("SELECT 1 FROM users WHERE email=?", (email,)):
         auth.failed(ip)
         raise HTTPException(400, "This email already has an account. Sign in instead.")
@@ -371,8 +377,10 @@ async def auth_password(request: Request):
     row = db.q1("SELECT pw FROM users WHERE id=?", (u["id"],))
     if row["pw"] and not auth.check_pw(b.get("old") or "", row["pw"]):  # Google-only logins have no password yet
         raise HTTPException(400, "Current password is wrong")
-    if len(b.get("new") or "") < 8:
-        raise HTTPException(400, "New password needs at least 8 characters")
+    if error := auth.password_error(b.get("new")):
+        raise HTTPException(400, error)
+    if b.get("confirm_new") != b.get("new"):
+        raise HTTPException(400, "Passwords do not match.")
     db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["new"]), u["id"]))
     auth.end_sessions(u["id"])  # other devices are logged out; this one gets a fresh session
     resp = JSONResponse({"ok": True})
@@ -438,9 +446,11 @@ async def auth_reset(request: Request):
     if not uid:
         auth.failed(ip)
         raise HTTPException(400, "This link has expired or was already used. Ask for a new one.")
-    if len(b.get("password") or "") < 8:
-        raise HTTPException(400, "Choose a password of at least 8 characters.")
-    db.run("UPDATE users SET pw=? WHERE id=?", (auth.hash_pw(b["password"]), uid))
+    if error := auth.password_error(b.get("password")):
+        raise HTTPException(400, error)
+    if b.get("confirm_password") != b.get("password"):
+        raise HTTPException(400, "Passwords do not match.")
+    db.run("UPDATE users SET pw=?, email_verified=1 WHERE id=?", (auth.hash_pw(b["password"]), uid))
     auth.end_sessions(uid)
     auth.audit("password reset", "", user={"id": uid}, org=None, ip=ip)
     resp = JSONResponse({"ok": True})
@@ -1924,7 +1934,20 @@ def manifest():
 
 @app.get("/{path:path}", response_class=HTMLResponse)
 def spa(path: str, request: Request):
+    if path == "check-email":
+        user = auth.current(request)
+        if not user:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse("/login", status_code=303)
+        if user.get("email_verified") != 0:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse("/app#/deals", status_code=303)
+        return HTMLResponse(site.check_email(request, user["email"]), headers={"Cache-Control": "no-store"})
     if path == "app" or path.startswith("app/"):  # the product (single-page app)
+        user = auth.current(request)
+        if user and user.get("email_verified") == 0:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse("/check-email", status_code=303)
         return FileResponse(os.path.join(WEB, "index.html"), headers={"Cache-Control": "no-cache"})
     html_ = site.render(request, path)  # the marketing website
     if html_ is None:
