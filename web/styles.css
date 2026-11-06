@@ -368,6 +368,7 @@ input[type=range]{accent-color:var(--green);width:100%}
 .mobile-actions{display:none}
 
 .contact{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}.contact:first-child{border-top:0}.contact a{color:var(--ink)}.ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.contact-details{margin-top:5px;color:var(--ink2);font-size:12px;line-height:1.5;overflow-wrap:anywhere}.contact-details summary{width:max-content;cursor:pointer;color:var(--green);font-weight:600}.contact-details[open] summary{margin-bottom:5px}.contact-details div+div{margin-top:4px}
 
 .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}

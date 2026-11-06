@@ -429,22 +429,23 @@ export async function deal(el, [rawId]) {
   // County records do not include phone/email. Search with Gemini when configured;
   // otherwise let the user search and paste results without installing an extension.
   let lastSrc = 'Manual';
+  const contactSource = (source) => (source || 'Public source').replace(/^Gemini:\s*/i, '').replace(/^Gemini search$/i, 'Public search');
   const renderContacts = (list, msg = '') => {
     const o = ownerInfo(p);
     if (list.length) p.contact_status = 'found';
     if ($('#factContacts')) $('#factContacts').innerHTML = contactFact(p);
     const row = (c) => `<div class="contact"><span class="ico ${c.kind === 'phone' ? 'tone-green' : 'tone-blue'}">${ic(c.kind === 'phone' ? 'phone' : 'mail', 15)}</span>
-      <div class="grow" style="min-width:0"><a href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}"><b>${esc(c.value)}</b></a>${c.note ? `<div class="tiny muted ellip">${esc(c.note)}</div>` : ''}
-      <div class="row wrap gap6" style="margin-top:4px">${c.sources.length > 1 ? `<span class="pill p-green tiny">${c.sources.length} sources</span>` : ''}${c.sources.map((x) => `<span class="pill tiny">${esc(x)}</span>`).join('')}</div></div>
+      <div class="grow" style="min-width:0"><a href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}"><b>${esc(c.value)}</b></a>
+      <div class="tiny muted">${c.kind === 'phone' ? 'Phone' : 'Email'}${/\bold\b/i.test(c.note || '') ? ' · May be outdated' : ''}</div>
+      ${c.sources.length || c.note ? `<details class="contact-details"><summary>View details</summary>${c.sources.length ? `<div><b>Found on:</b> ${c.sources.map((x) => esc(contactSource(x))).join(', ')}</div>` : ''}${c.note ? `<div>${esc(c.note)}</div>` : ''}</details>` : ''}</div>
       <button class="btn xs ghost" data-cdel="${c.id}" title="Remove">${ic('x', 13)}</button></div>`;
     $('#contactsCard').innerHTML = `<div class="row between" style="margin-bottom:4px"><h3>Owner Contacts</h3></div>
       <button class="btn primary" id="cSee" style="width:100%;margin:6px 0 10px">${ic(p.ai ? 'sparkle' : 'link', 15)} ${p.ai ? 'Find owner contact' : 'Search owner on Google'}</button>
-      <div class="tiny muted" style="margin-bottom:10px">${esc(o.name)} · lives in ${esc(o.city)}, ${esc(o.st)}. Same number from several sources shows once.</div>
+      <div class="small muted" style="margin-bottom:10px">${o.name ? `${esc(o.name)} · ${esc(o.city)}, ${esc(o.st)}` : 'Owner name is missing from this county record.'}</div>
       ${msg ? `<div class="small" style="background:var(--bg2,#F4F5F1);border-radius:8px;padding:8px 10px;margin-bottom:10px">${msg}</div>` : ''}
       <div id="cList">${list.map(row).join('') || '<div class="empty small" style="padding:10px">No phone or email yet</div>'}</div>
-      <div class="small muted" style="margin:12px 0 6px">Look up free, then paste what you find:</div>
-      <div class="row wrap gap6">${lookupLinks(p).map(([n, u]) => `<button class="btn xs" data-lookup="${esc(u)}">${n}</button>`).join('')}<button class="btn xs primary" id="cClip">Paste from clipboard</button><button class="btn xs ghost" id="cPaste">Type / paste manually</button></div>
-      <div class="tiny muted" style="margin-top:6px">Tip: click Google, copy a relevant result or AI Overview, then come back and click Paste from clipboard. Check that any number belongs to this owner before calling.</div>`;
+      <div class="small muted" style="margin:12px 0 6px">Found a contact elsewhere?</div>
+      <div class="row wrap gap6">${p.ai ? lookupLinks(p).map(([n, u]) => `<button class="btn xs" data-lookup="${esc(u)}">Search ${n}</button>`).join('') : ''}<button class="btn xs" id="cClip">Paste copied info</button><button class="btn xs ghost" id="cPaste">Enter manually</button></div>`;
     $$('[data-lookup]', $('#contactsCard')).forEach((b) => b.onclick = () => { lastSrc = b.textContent.trim(); window.open(b.dataset.lookup, '_blank', 'noopener'); });
     $('#cSee').onclick = async () => {
       if (!o.name) {
@@ -452,6 +453,7 @@ export async function deal(el, [rawId]) {
         return;
       }
       if (!p.ai) {
+        lastSrc = 'Google';
         window.open(lookupLinks(p)[0][1], '_blank', 'noopener');
         renderContacts(p.contacts, 'Google search opened. Copy a relevant phone or email, then use Paste from clipboard here.');
         return;
@@ -461,9 +463,9 @@ export async function deal(el, [rawId]) {
         const r = await api(`/api/parcels/${encodeURIComponent(id)}/contacts/ai`, { method: 'POST', body: o });
         p.contacts = r.contacts;
         if (!r.contacts.length && r.searched?.length) { p.contact_status = 'private'; p.contact_checked = new Date().toISOString(); }
-        renderContacts(p.contacts, `${r.added ? `Found ${r.added} phone/email item(s). Check the source before calling.` : 'No public phone or email found.'}${r.notes ? '<br>' + esc(r.notes) : ''}`);
+        renderContacts(p.contacts, r.added ? `${r.added} contact ${r.added === 1 ? 'detail' : 'details'} found. Check before calling.` : 'No public contact found. You can search manually below.');
       } catch (e) {
-        renderContacts(p.contacts, `Search could not finish: ${esc(e.message || 'Please try again')}. You can use Google and paste a result below.`);
+        renderContacts(p.contacts, 'Search is unavailable right now. Try again, or search Google and paste a result below.');
       }
     };
     $('#cClip').onclick = async () => {
@@ -487,8 +489,9 @@ export async function deal(el, [rawId]) {
 
   // activities + tasks
   const actIcon = { email: ['mail', 'tone-blue'], letter: ['letter', 'tone-blue'], sms: ['sms', 'tone-blue'], call: ['phone', 'tone-green'], reply: ['sms', 'tone-green'], stage: ['right', 'tone-grey'], note: ['note', 'tone-amber'] };
+  const activityText = (a) => /^(Gemini contact search|Google AI Overview):/i.test(a.text || '') ? 'Contact search completed' : a.text;
   $('#acts').innerHTML = [...p.tasks.filter((t) => !t.done).map((t) => `<div class="act"><span class="ico tone-amber">${ic('clock', 16)}</span><div class="grow"><div>${esc(t.text)}</div><div class="tiny muted">Due ${fmtDate(t.due)}</div></div><input type="checkbox" data-task="${t.id}"></div>`),
-    ...p.activities.map((a) => { const [i, t] = actIcon[a.kind] || ['note', 'tone-grey']; return `<div class="act"><span class="ico ${t}">${ic(i, 16)}</span><div class="grow"><div>${esc(a.text)}</div><div class="tiny muted">${fmtDate(a.ts, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div></div><span class="tiny muted">${esc(a.author || '')}</span></div>`; })]
+    ...p.activities.map((a) => { const [i, t] = actIcon[a.kind] || ['note', 'tone-grey']; return `<div class="act"><span class="ico ${t}">${ic(i, 16)}</span><div class="grow"><div>${esc(activityText(a))}</div><div class="tiny muted">${fmtDate(a.ts, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</div></div><span class="tiny muted">${/^(Gemini contact search|Google AI Overview):/i.test(a.text || '') ? 'Contact search' : esc(a.author || '')}</span></div>`; })]
     .join('') || '<div class="empty small" style="padding:16px">No activity yet</div>';
   $$('[data-task]').forEach((c) => c.onchange = async () => { await api('/api/tasks/' + c.dataset.task, { method: 'PUT', body: { done: true } }); deal(el, [rawId]); });
   $('#addNote').onclick = () => modal(`<h2>Add note</h2><div style="height:12px"></div><div class="field"><label>Type</label><select class="select" id="nKind"><option value="note">Note</option><option value="call">Call</option><option value="email">Email sent</option><option value="sms">SMS sent</option><option value="letter">Letter mailed</option><option value="reply">Owner replied</option></select></div>
@@ -569,9 +572,9 @@ function lookupLinks(p) {
 function contactFact(p) {
   const list = p.contacts || [];
   if (list.length) return list.slice(0, 6).map((c) => `<div style="margin-bottom:3px"><a style="color:var(--ink)" href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}">${esc(c.value)}</a>
-    <span class="tiny muted" style="font-weight:400">${c.sources.length > 1 ? c.sources.length + ' sources' : esc((c.sources[0] || '').replace('Gemini: ', ''))}${(/\b(cell|landline)\b/.exec(c.note || '') || [])[1] ? ' · ' + /\b(cell|landline)\b/.exec(c.note)[1] : ''}${/old/.test(c.note || '') ? ' · old' : ''}</span></div>`).join('')
+    ${/\bold\b/i.test(c.note || '') ? '<span class="tiny muted"> · May be outdated</span>' : ''}</div>`).join('')
     + (list.length > 6 ? `<div class="tiny muted">+${list.length - 6} more in Owner Contacts</div>` : '');
-  if (p.contact_status === 'private') return `<span class="pill tiny" style="background:#EEE;color:#555">Private</span><div class="small muted" style="font-weight:400;margin-top:4px">No public phone or email found${p.contact_checked ? ' (searched ' + esc(fmtDate(p.contact_checked)) + ')' : ''}.</div>`;
+  if (p.contact_status === 'private') return '<span class="small muted" style="font-weight:400">No public contact found yet.</span>';
   return '<span class="small muted" style="font-weight:400">Not searched yet. Use the owner contact button below to search public sources.</span>';
 }
 
