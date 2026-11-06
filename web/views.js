@@ -426,7 +426,8 @@ export async function deal(el, [rawId]) {
     $('#logCall', m).onclick = async () => { await api(`/api/parcels/${encodeURIComponent(id)}/activity`, { method: 'POST', body: { kind: 'call', text: 'Called owner' } }); close(); deal(el, [rawId]); };
   });
 
-  // owner contacts: county records have none. Free sources: Gemini + Google Search, and what the user pastes after a lookup.
+  // County records do not include phone/email. Search with Gemini when configured;
+  // otherwise let the user search and paste results without installing an extension.
   let lastSrc = 'Manual';
   const renderContacts = (list, msg = '') => {
     const o = ownerInfo(p);
@@ -436,44 +437,34 @@ export async function deal(el, [rawId]) {
       <div class="grow" style="min-width:0"><a href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}"><b>${esc(c.value)}</b></a>${c.note ? `<div class="tiny muted ellip">${esc(c.note)}</div>` : ''}
       <div class="row wrap gap6" style="margin-top:4px">${c.sources.length > 1 ? `<span class="pill p-green tiny">${c.sources.length} sources</span>` : ''}${c.sources.map((x) => `<span class="pill tiny">${esc(x)}</span>`).join('')}</div></div>
       <button class="btn xs ghost" data-cdel="${c.id}" title="Remove">${ic('x', 13)}</button></div>`;
-    $('#contactsCard').innerHTML = `<div class="row between" style="margin-bottom:4px"><h3>Owner Contacts</h3>${p.ai ? `<button class="btn xs" id="cAi">${ic('sparkle', 13)} Find with AI</button>` : ''}</div>
-      <button class="btn primary" id="cSee" style="width:100%;margin:6px 0 10px">${ic('phone', 15)} Click to see contact info</button>
+    $('#contactsCard').innerHTML = `<div class="row between" style="margin-bottom:4px"><h3>Owner Contacts</h3></div>
+      <button class="btn primary" id="cSee" style="width:100%;margin:6px 0 10px">${ic(p.ai ? 'sparkle' : 'link', 15)} ${p.ai ? 'Find owner contact' : 'Search owner on Google'}</button>
       <div class="tiny muted" style="margin-bottom:10px">${esc(o.name)} · lives in ${esc(o.city)}, ${esc(o.st)}. Same number from several sources shows once.</div>
       ${msg ? `<div class="small" style="background:var(--bg2,#F4F5F1);border-radius:8px;padding:8px 10px;margin-bottom:10px">${msg}</div>` : ''}
       <div id="cList">${list.map(row).join('') || '<div class="empty small" style="padding:10px">No phone or email yet</div>'}</div>
       <div class="small muted" style="margin:12px 0 6px">Look up free, then paste what you find:</div>
       <div class="row wrap gap6">${lookupLinks(p).map(([n, u]) => `<button class="btn xs" data-lookup="${esc(u)}">${n}</button>`).join('')}<button class="btn xs primary" id="cClip">Paste from clipboard</button><button class="btn xs ghost" id="cPaste">Type / paste manually</button></div>
-      <div class="tiny muted" style="margin-top:6px">Tip: click Google, copy the AI Overview (or any page text) with Ctrl+A, Ctrl+C, come back and click Paste from clipboard.</div>`;
+      <div class="tiny muted" style="margin-top:6px">Tip: click Google, copy a relevant result or AI Overview, then come back and click Paste from clipboard. Check that any number belongs to this owner before calling.</div>`;
     $$('[data-lookup]', $('#contactsCard')).forEach((b) => b.onclick = () => { lastSrc = b.textContent.trim(); window.open(b.dataset.lookup, '_blank', 'noopener'); });
     $('#cSee').onclick = async () => {
-      if (document.documentElement.dataset.ehHelper !== '1') {
-        modal(`<h2>Install EstateHawk Helper (one time)</h2><p class="muted small">This button reads the owner's Google search in a hidden window. A web page cannot do that alone, so it needs the small helper extension from your project folder.</p>
-          <ol class="small" style="line-height:1.8;padding-left:18px"><li>Open <b>chrome://extensions</b> in Chrome</li><li>Turn on <b>Developer mode</b> (top right)</li><li>Click <b>Load unpacked</b> and pick <b>E:\\Projects\\EstateHawk\\estatehawk\\extension</b></li><li>Come back here and press F5</li></ol>
-          <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" data-close>OK</button></div>`);
+      if (!o.name) {
+        renderContacts(p.contacts, 'This county record has no owner name yet. Open the county property record under Data sources to identify the owner first.');
         return;
       }
-      const b = $('#cSee'); b.disabled = true; b.innerHTML = 'Searching Google in the background...';
-      const q = `"${o.name}" ${o.city} ${o.st} phone`;
-      const rid = Math.random().toString(36).slice(2);
-      const res = await new Promise((resolve) => {
-        const t = setTimeout(() => { window.removeEventListener('message', on); resolve({ ok: false, error: 'Timed out' }); }, 240000);
-        function on(e) {
-          if (e.source === window && e.data && e.data.type === 'EH_GOOGLE_PROGRESS') {
-            b.innerHTML = e.data.state === 'captcha' ? 'Google wants a check: tick "I\'m not a robot" in the window that just opened' : 'Reading Google answer...';
-            if (e.data.state === 'captcha') toast('Tick "I\'m not a robot" in the Google window. It closes by itself after.');
-            return;
-          }
-          if (e.source === window && e.data && e.data.type === 'EH_GOOGLE_RESULT' && e.data.id === rid) { clearTimeout(t); window.removeEventListener('message', on); resolve(e.data); } }
-        window.addEventListener('message', on);
-        window.postMessage({ type: 'EH_GOOGLE', q, id: rid }, '*');
-      });
-      if (!res.ok) { toast(res.error || 'Search failed'); renderContacts(p.contacts, esc(res.error || 'Search failed')); return; }
-      const text = res.overview || '';
-      const summary = text.split(/\n+/).map((x) => x.trim()).filter((x) => x.length > 30)[0] || '';
-      const r = await api(`/api/parcels/${encodeURIComponent(id)}/contacts`, { method: 'POST', body: { text, source: 'Google', searched: true, summary } });
-      p.contacts = r.contacts;
-      if (!r.contacts.length) { p.contact_status = 'private'; p.contact_checked = new Date().toISOString(); }
-      renderContacts(p.contacts, r.found.length ? `Found ${r.found.length} phone/email on Google.${summary ? '<br><span class="muted">' + esc(summary.slice(0, 220)) + '</span>' : ''}` : (res.note || 'No phone or email in Google\'s answer. Marked Private.'));
+      if (!p.ai) {
+        window.open(lookupLinks(p)[0][1], '_blank', 'noopener');
+        renderContacts(p.contacts, 'Google search opened. Copy a relevant phone or email, then use Paste from clipboard here.');
+        return;
+      }
+      const b = $('#cSee'); b.disabled = true; b.textContent = 'Searching public sources...';
+      try {
+        const r = await api(`/api/parcels/${encodeURIComponent(id)}/contacts/ai`, { method: 'POST', body: o });
+        p.contacts = r.contacts;
+        if (!r.contacts.length && r.searched?.length) { p.contact_status = 'private'; p.contact_checked = new Date().toISOString(); }
+        renderContacts(p.contacts, `${r.added ? `Found ${r.added} phone/email item(s). Check the source before calling.` : 'No public phone or email found.'}${r.notes ? '<br>' + esc(r.notes) : ''}`);
+      } catch (e) {
+        renderContacts(p.contacts, `Search could not finish: ${esc(e.message || 'Please try again')}. You can use Google and paste a result below.`);
+      }
     };
     $('#cClip').onclick = async () => {
       let text = '';
@@ -491,14 +482,6 @@ export async function deal(el, [rawId]) {
         close(); p.contacts = r.contacts; renderContacts(p.contacts, r.found.length ? `Saved ${r.found.length} item(s).` : 'No phone number or email found in that text.');
       };
     });
-    if ($('#cAi')) $('#cAi').onclick = async () => {
-      const b = $('#cAi'); b.disabled = true; b.innerHTML = 'Searching the web...';
-      try {
-        const r = await api(`/api/parcels/${encodeURIComponent(id)}/contacts/ai`, { method: 'POST', body: o });
-        p.contacts = r.contacts; if (!r.contacts.length) { p.contact_status = 'private'; p.contact_checked = new Date().toISOString(); }
-        renderContacts(p.contacts, `${r.added ? `AI found ${r.added} item(s). Check them before calling.` : 'AI found no public phone or email for this owner.'}${r.notes ? '<br>' + esc(r.notes) : ''}`);
-      } catch (e) { toast(e.message || 'AI search failed'); b.disabled = false; b.innerHTML = 'Find with AI'; }
-    };
   };
   renderContacts(p.contacts);
 
@@ -589,7 +572,7 @@ function contactFact(p) {
     <span class="tiny muted" style="font-weight:400">${c.sources.length > 1 ? c.sources.length + ' sources' : esc((c.sources[0] || '').replace('Gemini: ', ''))}${(/\b(cell|landline)\b/.exec(c.note || '') || [])[1] ? ' · ' + /\b(cell|landline)\b/.exec(c.note)[1] : ''}${/old/.test(c.note || '') ? ' · old' : ''}</span></div>`).join('')
     + (list.length > 6 ? `<div class="tiny muted">+${list.length - 6} more in Owner Contacts</div>` : '');
   if (p.contact_status === 'private') return `<span class="pill tiny" style="background:#EEE;color:#555">Private</span><div class="small muted" style="font-weight:400;margin-top:4px">No public phone or email found${p.contact_checked ? ' (searched ' + esc(fmtDate(p.contact_checked)) + ')' : ''}.</div>`;
-  return '<span class="small muted" style="font-weight:400">Not searched yet. The next sync searches it (best scores first), or use Find with AI below.</span>';
+  return '<span class="small muted" style="font-weight:400">Not searched yet. Use the owner contact button below to search public sources.</span>';
 }
 
 function fact(i, k, v) { return `<div class="fact">${ic(i, 17)}<div><div class="k">${k}</div><div class="v">${v}</div></div></div>`; }
