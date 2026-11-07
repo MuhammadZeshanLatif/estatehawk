@@ -1,5 +1,10 @@
 # EstateHawk handoff (current state)
 
+## 2026-11-08 deal profit calculator (local, release pending)
+
+- Deal detail now has a collapsible Deal profit calculator directly below Offer Draft. It uses the offer as an editable purchase starting point and requires the investor to supply an expected resale value; it does not treat county value as ARV. Repairs, closing, holding, selling percentage, target profit, and an explicit buyer-pays-tax checkbox feed projected profit, return on costs, and maximum offer. Inputs are stored per property and organization in this browser only.
+- `web/deal-profit.js` contains the pure calculation; `web/views.js` mounts it; `web/styles.css` styles it. JavaScript syntax, calculation cases, `git diff --check`, and 24 Python tests passed. Live deployment and visual browser check are pending.
+
 ## 2026-11-08 homepage interruption fix (local, not yet deployed)
 
 - `web/chat-widget.js`: chat stays closed on page load; greeting appears when the visitor clicks the launcher. `web/chat-widget.css`: the closed launcher has a subtle glow, with reduced-motion support.

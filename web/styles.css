@@ -207,6 +207,14 @@ body.no-scroll{overflow:hidden}
 .offer-top{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:center}.offer-top>div{min-width:0}.offer-top b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .offer-top .sugg{background:#F3F4F0;border-radius:10px;padding:12px 14px}
 .offer-top .sugg{grid-column:1/-1}.offer-top .sugg b{font-size:clamp(20px,2vw,26px);letter-spacing:-.02em;overflow-wrap:anywhere;white-space:normal}
+.profit-summary{cursor:pointer;font-weight:650;color:var(--green);padding:10px 0;list-style-position:inside}
+.profit-fields .input{width:100%;min-width:0}
+.profit-tax{display:flex;align-items:flex-start;gap:8px;margin:14px 0;font-size:13px;line-height:1.4;cursor:pointer}
+.profit-tax input{margin-top:2px}
+.profit-result{display:grid;gap:8px;padding:12px;background:#F3F7F3;border-radius:10px;font-size:13px}
+.profit-result>div{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.profit-result b{text-align:right;font-variant-numeric:tabular-nums;color:var(--green-ink)}
+.profit-result b.profit-negative{color:#B42318}
 .map-unavailable{position:absolute;inset:0;z-index:460;display:grid;place-items:center;color:#42534A;background:#E9ECE6;text-align:center;padding:24px}
 .map-unavailable>div{display:flex;flex-direction:column;align-items:center;gap:9px;max-width:320px}.map-unavailable b{font-size:16px;color:var(--ink)}.map-unavailable span{font-size:13px;line-height:1.5}.map-unavailable .btn{margin-top:5px}
 .gal-tabs:empty{display:none}
