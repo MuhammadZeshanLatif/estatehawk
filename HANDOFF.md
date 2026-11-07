@@ -4,7 +4,7 @@
 
 - `web/chat-widget.js`: chat stays closed on page load; greeting appears when the visitor clicks the launcher. `web/chat-widget.css`: the closed launcher has a subtle glow, with reduced-motion support.
 - `web/app.js`: the welcome tour no longer opens automatically or redirects first-time users to Deals. The optional **Take a tour** menu action remains available. First-time super-admin setup and email confirmation remain separate flows.
-- JavaScript syntax and `git diff --check` passed. Production has not yet been updated or visually checked.
+- JavaScript syntax and `git diff --check` passed. Dev commit `9861211` and production-only cherry-pick `b26d2f6` were pushed on 2026-11-08. The first public asset check still served the old chat JS/CSS, so Render completion and live visual behavior remain unverified.
 
 Last updated: 2026-11-07. Read this file first. `E:\Projects\EstateHawk\docs\PROGRESS.md` and `PROJECT_CONTEXT.md` preserve the earlier history; some older “next steps” there were already completed and are not the current task list.
 
