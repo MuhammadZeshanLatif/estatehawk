@@ -49,6 +49,10 @@ async def bad_value(request, exc):
 async def canonical_host(request, call_next):
     """Pages on the old onrender address move to the real domain, so Google sees one site. The API stays on both."""
     host = (request.url.hostname or "").lower()
+    if host == "www.getestatehawk.com" and request.method in ("GET", "HEAD"):
+        from fastapi.responses import RedirectResponse
+        q = ("?" + request.url.query) if request.url.query else ""
+        return RedirectResponse(site.CANONICAL + request.url.path + q, status_code=301)
     if host.endswith(".onrender.com") and request.method in ("GET", "HEAD") and not request.url.path.startswith("/api/"):
         from fastapi.responses import RedirectResponse
         q = ("?" + request.url.query) if request.url.query else ""
@@ -2071,6 +2075,7 @@ def spa(path: str, request: Request):
         if user.get("email_verified") != 0:
             from fastapi.responses import RedirectResponse
             return RedirectResponse("/app#/deals", status_code=303)
+        request.state.site_user = user
         return HTMLResponse(site.check_email(request, user["email"]), headers={"Cache-Control": "no-store"})
     if path == "app" or path.startswith("app/"):  # the product (single-page app)
         user = auth.current(request)
@@ -2078,10 +2083,17 @@ def spa(path: str, request: Request):
             from fastapi.responses import RedirectResponse
             return RedirectResponse("/check-email", status_code=303)
         return FileResponse(os.path.join(WEB, "index.html"), headers={"Cache-Control": "no-cache"})
+    user = auth.current(request)
+    if user and path in ("login", "signup"):
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse("/check-email" if user.get("email_verified") == 0 else "/app#/deals", status_code=303,
+                                headers={"Cache-Control": "private, no-store"})
+    request.state.site_user = user
     html_ = site.render(request, path)  # the marketing website
     if html_ is None:
         return HTMLResponse(site.not_found(request), status_code=404)
-    resp = HTMLResponse(html_, headers={"Cache-Control": "public, max-age=300"})
+    resp = HTMLResponse(html_, headers={"Cache-Control": "private, no-store" if user else "public, max-age=300",
+                                        "Vary": "Cookie"})
     ua = request.headers.get("user-agent", "").lower()
     bot = any(name in ua for name in ("bot", "crawler", "spider", "slurp", "preview", "facebookexternalhit"))
     if request.method == "GET" and not bot and path not in ("login", "reset-password", "forgot-password"):

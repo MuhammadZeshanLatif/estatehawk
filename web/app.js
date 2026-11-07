@@ -359,6 +359,7 @@ function initTopbar() {
       '-',
       ...(['admin', 'superadmin'].includes(S.user?.role) ? [{ label: 'Team & logins', icon: 'user', fn: teamModal }] : []),
       ...(S.meta?.super ? [{ label: 'Admin panel', icon: 'shield', fn: () => location.hash = '#/admin' }] : []),
+      { label: 'Visit website', icon: 'link', fn: () => location.href = '/' },
       { label: 'Change password', icon: 'sliders', fn: passwordModal },
       { label: 'Log out', icon: 'right', fn: async () => { await api('/api/auth/logout', { method: 'POST' }); clearAccountSelection(); location.reload(); } },
     ]);

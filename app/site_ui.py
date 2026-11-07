@@ -32,6 +32,7 @@ p{margin:0}.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
 .brand img{width:34px;height:40px}
 .nav{display:flex;gap:34px;margin-left:auto;margin-right:auto}.nav a{font-weight:500;font-size:15.5px;color:var(--ink)}.nav a:hover,.nav a[aria-current]{color:var(--leaf)}
 .hdr-cta{display:flex;align-items:center;gap:26px}.hdr-cta .signin{font-weight:500;color:var(--ink)}
+.site-account{display:flex;align-items:center;gap:9px;color:var(--ink);font-size:14px;font-weight:600;white-space:nowrap}.site-avatar{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--green);color:white;font-size:16px}
 .menu-btn{display:none;margin-left:auto;background:none;border:0;padding:8px;color:var(--ink)}
 /* hero */
 .hero{position:relative;overflow:hidden;padding:22px 0 26px}

@@ -106,10 +106,21 @@ def google_button(label, signup=False):
             f'<div class="or"><span>or {"sign up" if signup else "sign in"} with email</span></div>')
 
 
-def header(path):
+def header(path, user=None):
     nav = "".join(f'<a href="{h}"{" aria-current=page" if path.startswith(h) else ""}>{t}</a>' for h, t in NAV)
+    if user:
+        name = (user.get("name") or user.get("email") or "Your account").strip()
+        first = name.split()[0]
+        avatar = (f'<img src="/api/auth/avatar" alt="" width="34" height="34" style="width:34px;height:34px;border-radius:50%;object-fit:cover">'
+                  if user.get("has_avatar") else f'<span class="site-avatar" aria-hidden="true">{esc(first[:1].upper())}</span>')
+        target = "/check-email" if user.get("email_verified") == 0 else "/app#/deals"
+        label = "Confirm email" if user.get("email_verified") == 0 else "Open dashboard"
+        account = (f'<span class="site-account">{avatar}<span>Hi, {esc(first)}</span></span>'
+                   f'<a class="btn btn-green btn-sm" href="{target}">{label}</a>')
+    else:
+        account = '<a class="signin" href="/login">Sign in</a><a class="btn btn-green btn-sm" href="/signup">Start free trial</a>'
     return (f'<a class="skip" href="#main">Skip to content</a><header class="hdr"><div class="wrap">{logo()}<nav class="nav" aria-label="Main">{nav}</nav>'
-            f'<div class="hdr-cta"><a class="signin" href="/login">Sign in</a><a class="btn btn-green btn-sm" href="/signup">Start free trial</a></div>'
+            f'<div class="hdr-cta">{account}</div>'
             f'<button class="menu-btn" aria-label="Open menu" aria-expanded="false">{ic("menu")}</button></div></header>')
 
 
@@ -144,7 +155,7 @@ def page(request, path, title, desc, body, schema=None, js=False, noindex=False,
             f'<link rel="icon" href="/site/logo-mark.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/icon-180.png">'
             f'<link rel="preload" href="/site/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/site/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>'
             f'<style>{site_ui.CSS}</style><link rel="stylesheet" href="/static/chat-widget.css"><script type="application/ld+json">{safe_json(org)}</script>{ld}</head>'
-            f'<body>{header(path)}<main id="main">{body}</main>{footer()}{JS}<script src="/static/chat-widget.js" defer></script></body></html>')
+            f'<body>{header(path, getattr(request.state, "site_user", None))}<main id="main">{body}</main>{footer()}{JS}<script src="/static/chat-widget.js" defer></script></body></html>')
 
 
 def crumbs(request, items):
