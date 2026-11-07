@@ -29,3 +29,4 @@ Last verified: 2026-11-07, about 07:00 Asia/Karachi. Read this file first. `E:\P
 2. For a bug, reproduce the specific behavior, fix it in `repo`, run `python -m unittest discover -s tests -p 'test_*.py'`, `python -m compileall -q app`, `node --check` on touched JS, and `git diff --check`.
 3. Commit and push `dev`. Before production, fetch/verify `main` and ensure a safe fast-forward. Push the approved release to `main`, then verify live assets or behavior. Do not equate a Git push with a completed Render deployment.
 4. Do not place API keys, database URLs, cookies, customer passwords or live property/owner details in this handoff. Ask only for genuinely missing access or a consequential approval.
+5. After each meaningful change or release, update this handoff and append a dated note to `E:\Projects\EstateHawk\docs\PROGRESS.md`: what changed, what was tested, what is live, and what remains.
