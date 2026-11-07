@@ -62,8 +62,7 @@ def revealed_set(info, ids):
 
 
 HIDE = {"owner_name": "Owner hidden", "owner_full_name": "Owner hidden", "street": "Address hidden", "mail_address": None,
-        "parcel_number": "Hidden", "property_url": None, "legal_desc": None, "photo_url": None, "contact_status": None,
-        "seller_interest": None}
+        "parcel_number": "Hidden", "property_url": None, "legal_desc": None, "photo_url": None, "contact_status": None}
 
 
 def mask(row):

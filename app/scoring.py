@@ -119,9 +119,9 @@ def reasons(p, breakdown):
     yb = p.get("years_behind") or 1
     due = p.get("total_due") or p.get("amount_owed") or 0
     if yb >= 2:
-        out.append(("Longer tax delinquency", f"About {yb:g} years behind (${due:,.0f} due). This is a public-record signal, not evidence that the owner wants to sell."))
+        out.append(("Longer tax delinquency", f"About {yb:g} years behind (${due:,.0f} due), which often means the owner is motivated to sell."))
     else:
-        out.append(("Recently delinquent", f"${due:,.0f} owed, behind for about a year. Check the record before deciding whether to reach out."))
+        out.append(("Recently delinquent", f"${due:,.0f} owed, behind for about a year. Early contact can work before others notice."))
     eq = p.get("est_equity")
     if eq:
         v = p.get("appraised_total") or 0
@@ -129,7 +129,7 @@ def reasons(p, breakdown):
                     f"Est. equity ${eq:,.0f} ({eq / v:.0%} of county value ${v:,.0f}); no mortgage data in county records."))
     ms = p.get("mail_state")
     if ms and ms != (p.get("state") or "OH"):
-        out.append(("Out-of-state owner", f"Tax bills go to {ms}. Mailing distance alone does not show selling interest."))
+        out.append(("Out-of-state owner", f"Tax bills go to {ms}. Distant owners are more open to selling as-is."))
     elif p.get("owner_occupied") == 0:
         out.append(("Not owner-occupied", "Owner does not claim the owner-occupancy credit: likely a rental or vacant."))
     return out[:3]

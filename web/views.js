@@ -33,7 +33,7 @@ export function popupHtml(p) {
 
 // ================================================================ DEALS (home)
 export async function deals(el) {
-  const st = { page: 1, per: 25, sort: 'score', min_score: '', min_owed: '', max_owed: '', min_years: '', ptype: 'homes', out_of_state: '', owner_status: '', seller_interest: '', new_days: '', min_equity: '', q: '' };
+  const st = { page: 1, per: 25, sort: 'score', min_score: '', min_owed: '', max_owed: '', min_years: '', ptype: 'homes', out_of_state: '', owner_status: '', new_days: '', min_equity: '', q: '' };
   const prof = S.meta.settings.profile;
   el.innerHTML = `
   <div class="page-head">
@@ -93,7 +93,7 @@ export async function deals(el) {
     $('#stats').innerHTML = [
       ['layers', 'tone-blue', 'Total leads', num(s.active), `<div class="foot">${s.homes != null && s.homes < s.active ? `${num(s.homes)} homes, ${num(s.active - s.homes)} land/other` : `In ${S.county === 'all' ? (s.counties === 1 ? 'your county' : `${s.counties} counties`) : esc(countyName(S.county) || 'this county')}`}</div>`, '#/deals'],
       ['doc', 'tone-green', 'New leads today', num(s.new_today), chg(s.new_change, 'vs. yesterday'), '#/deals'],
-      ['star', 'tone-amber', 'High-score records', num(s.high_score), chg(s.high_change, '80+ vs. last week'), '#/map'],
+      ['star', 'tone-amber', 'High-score deals', num(s.high_score), chg(s.high_change, '80+ vs. last week'), '#/map'],
       ['house', 'tone-green', 'Avg equity', kmoney(s.avg_equity), '<div class="foot">Estimated per deal</div>', ''],
       ['map', 'tone-green', 'Counties tracked', num(s.counties), `<div class="foot">Across ${s.states} state${s.states === 1 ? '' : 's'}</div>`, '#/counties'],
     ].map(([i, t, l, v, f, href]) => `<a class="card stat" ${href ? `href="${href}"` : ''}><span class="ico ${t}">${ic(i, 21)}</span><div><div class="lbl">${l}</div><div class="val num">${v}</div>${f}</div></a>`).join('');
@@ -114,7 +114,6 @@ export async function deals(el) {
       ['new_days', st.new_days && `New in ${st.new_days} days`],
       ['out_of_state', st.out_of_state && 'Out-of-state owners'],
       ['owner_status', st.owner_status && (st.owner_status === 'missing' ? 'Name missing' : 'Name available')],
-      ['seller_interest', st.seller_interest && `Seller interest: ${{ unknown: 'Unknown', interested: 'Interested', maybe_later: 'Maybe later', not_selling: 'Not selling', do_not_contact: 'Do not contact' }[st.seller_interest]}`],
       ['q', st.q && `Search: ${st.q}`],
     ].filter(([, label]) => label);
     const baseParams = new URLSearchParams(qs());
@@ -146,7 +145,7 @@ export async function deals(el) {
     $('#leadTable tbody').innerHTML = r.rows.map((p) => `<tr data-id="${esc(p.id)}">
       <td><input type="checkbox" class="chk" aria-label="Select ${esc(p.street || p.parcel_number || 'this lead')}" ${chosen.has(p.id) ? 'checked' : ''}></td>
       <td><div class="prop">${thumb(p)}<div><b>${esc(title(p.street) || 'Address not listed by county')}</b><span>${esc(place(p))}</span>${homeLine(p) ? `<span style="display:block;color:var(--ink2)">${homeLine(p)}</span>` : ''}</div></div></td>
-      <td class="hide-m"><div style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title(p.owner_name))}">${p.locked ? `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Locked</span>` : esc(title(p.owner_name))}</div>${!p.locked && p.seller_interest === 'interested' ? ' <span class="pill p-green tiny">Owner said interested</span>' : !p.locked && p.seller_interest === 'do_not_contact' ? ' <span class="pill p-amber tiny">Do not contact</span>' : ''}${p.contact_status === 'found' ? ` <span class="pill p-green tiny">${ic('phone', 11)} Contact</span>` : p.contact_status === 'private' ? ' <span class="pill tiny" style="background:#EEE;color:#555">Private</span>' : ''}${p.mail_state && p.mail_state !== p.state ? ` <span class="pill p-amber tiny" style="padding:1px 7px">Out of state: ${esc(p.mail_state)}</span>` : ''}</td>
+      <td class="hide-m"><div style="max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title(p.owner_name))}">${p.locked ? `<span class="pill tiny" style="background:#F2F4F7;color:#475467">${ic('lock', 11)} Locked</span>` : esc(title(p.owner_name))}</div>${p.contact_status === 'found' ? ` <span class="pill p-green tiny">${ic('phone', 11)} Contact</span>` : p.contact_status === 'private' ? ' <span class="pill tiny" style="background:#EEE;color:#555">Private</span>' : ''}${p.mail_state && p.mail_state !== p.state ? ` <span class="pill p-amber tiny" style="padding:1px 7px">Out of state: ${esc(p.mail_state)}</span>` : ''}</td>
       <td class="r num">${money(p.total_due ?? p.amount_owed)}</td>
       <td class="r num hide-m hide-xl">${yrs(p.years_behind)}</td>
       <td class="r num hide-m">${money(p.appraised_total)}</td>
@@ -206,11 +205,10 @@ export async function deals(el) {
     <div class="field"><label>Newly delinquent</label><select class="select" id="mNew"><option value="">Any time</option><option value="1">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select></div>
     <label class="row" style="margin:6px 0 14px"><input type="checkbox" id="mOos"> Out-of-state owners only</label>
     <div class="field"><label>Owner name</label><select class="select" id="mOwner"><option value="">All leads</option><option value="available">Name available</option><option value="missing">Name missing</option></select></div>
-    <div class="field"><label>Seller interest (team recorded)</label><select class="select" id="mInterest"><option value="">All leads</option><option value="unknown">Not confirmed</option><option value="interested">Owner said interested</option><option value="maybe_later">Maybe later</option><option value="not_selling">Not selling</option><option value="do_not_contact">Do not contact</option></select></div>
     <div class="field"><label>Sort by</label><select class="select" id="mSort"><option value="score">Deal score</option><option value="newest">Newest first</option><option value="owed">Taxes owed</option><option value="equity">Est. equity</option><option value="years">Years behind</option></select></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mApply">Apply</button></div>`, (m, close) => {
-    $('#mType', m).value = st.ptype; $('#mEq', m).value = st.min_equity; $('#mNew', m).value = st.new_days; $('#mOos', m).checked = st.out_of_state === '1'; $('#mOwner', m).value = st.owner_status; $('#mInterest', m).value = st.seller_interest; $('#mSort', m).value = st.sort;
-    $('#mApply', m).onclick = () => { st.ptype = $('#mType', m).value; st.min_equity = $('#mEq', m).value; st.new_days = $('#mNew', m).value; st.out_of_state = $('#mOos', m).checked ? '1' : ''; st.owner_status = $('#mOwner', m).value; st.seller_interest = $('#mInterest', m).value; st.sort = $('#mSort', m).value; close(); reload(); };
+    $('#mType', m).value = st.ptype; $('#mEq', m).value = st.min_equity; $('#mNew', m).value = st.new_days; $('#mOos', m).checked = st.out_of_state === '1'; $('#mOwner', m).value = st.owner_status; $('#mSort', m).value = st.sort;
+    $('#mApply', m).onclick = () => { st.ptype = $('#mType', m).value; st.min_equity = $('#mEq', m).value; st.new_days = $('#mNew', m).value; st.out_of_state = $('#mOos', m).checked ? '1' : ''; st.owner_status = $('#mOwner', m).value; st.sort = $('#mSort', m).value; close(); reload(); };
   });
   const tbody = $('#leadTable tbody');
   const updBulk = () => { $('#bulk').classList.toggle('hide', !chosen.size); $('#bulkN').textContent = `${chosen.size} selected`; $('#bulkCmp').disabled = chosen.size < 2 || chosen.size > 4; $('#bulkCsv').href = '/api/parcels/export.csv?' + qs(); };
@@ -252,14 +250,13 @@ export async function deal(el, [rawId]) {
   const p = await api(`/api/parcels/${encodeURIComponent(id)}/detail`);
   if (p.locked) return lockedDeal(el, p, rawId);
   p.contacts = p.contacts || [];
-  p.qualification = p.qualification || { interest: 'unknown', evidence: '' };
   const due = p.total_due ?? p.amount_owed;
   const outState = p.mail_state && p.mail_state !== p.state;
   const d = p.offer_defaults;
   const sugg = p.suggested_offer || 0;
   const hasStreet = /^\d+\b/.test(p.street || '');
   const propertyAddress = hasStreet ? title(p.street) : 'Address not listed by county';
-  const label = p.score >= 85 ? 'High public-record priority' : p.score >= 65 ? 'Moderate public-record priority' : 'Lower public-record priority';
+  const label = p.score >= 85 ? 'High potential deal' : p.score >= 65 ? 'Good potential' : 'Lower priority';
   const stageLabel = (S.meta.stages.find((s) => s.key === p.stage) || {}).label;
   el.innerHTML = `
   <a class="small muted row gap6" href="#/deals" style="margin-bottom:12px">${ic('back', 15)} Back to Deals</a>
@@ -319,7 +316,6 @@ export async function deal(el, [rawId]) {
     <div class="col col3" style="gap:18px;min-width:0">
       <div class="card card-pad" id="offerCard"></div>
       <div class="card card-pad" id="contactsCard"></div>
-      <div class="card card-pad" id="qualificationCard"></div>
       <div class="card card-pad"><div class="row between" style="margin-bottom:6px"><h3>Activity Notes</h3><div class="row gap6"><button class="btn xs" id="addTask">${ic('clock', 13)} Follow-up</button><button class="btn xs" id="addNote">Add note</button></div></div>
         <div id="acts"></div></div>
     </div>
@@ -452,11 +448,11 @@ export async function deal(el, [rawId]) {
   }
   renderOffer();
   $('#mOffer').onclick = () => { $('#offerCard').scrollIntoView({ behavior: 'smooth' }); };
-  $('#mCall').onclick = () => { if (p.qualification.interest === 'do_not_contact') { toast('This lead is marked Do not contact.', true); return; } modal(`<h2>Call owner</h2><p class="muted">County records do not include phone numbers. Use a skip tracing service with the mailing address below, then log the call here.</p>
+  $('#mCall').onclick = () => modal(`<h2>Call owner</h2><p class="muted">County records do not include phone numbers. Use a skip tracing service with the mailing address below, then log the call here.</p>
     <div class="card card-pad small">${esc(title(p.owner_name || p.owner_full_name || 'Not listed'))}<br>${esc(title(p.mail_address || ''))}</div>
     <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" data-close>Close</button><button class="btn primary" id="logCall">Log a call</button></div>`, (m, close) => {
     $('#logCall', m).onclick = async () => { await api(`/api/parcels/${encodeURIComponent(id)}/activity`, { method: 'POST', body: { kind: 'call', text: 'Called owner' } }); close(); deal(el, [rawId]); };
-  }); };
+  });
 
   // County records do not include phone/email. Search with Gemini when configured;
   // otherwise let the user search and paste results without installing an extension.
@@ -464,24 +460,22 @@ export async function deal(el, [rawId]) {
   const contactSource = (source) => (source || 'Public source').replace(/^Gemini:\s*/i, '').replace(/^Gemini search$/i, 'Public search');
   const renderContacts = (list, msg = '') => {
     const o = ownerInfo(p);
-    const blocked = p.qualification.interest === 'do_not_contact';
     if (list.length) p.contact_status = 'found';
     if ($('#factContacts')) $('#factContacts').innerHTML = contactFact(p);
     const row = (c) => `<div class="contact"><span class="ico ${c.kind === 'phone' ? 'tone-green' : 'tone-blue'}">${ic(c.kind === 'phone' ? 'phone' : 'mail', 15)}</span>
-      <div class="grow" style="min-width:0">${blocked || c.verification === 'wrong_contact' ? `<b>${esc(c.value)}</b>` : `<a href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}"><b>${esc(c.value)}</b></a>`}
-      <div class="tiny muted">${c.kind === 'phone' ? 'Phone' : 'Email'}${/\bold\b/i.test(c.note || '') ? ' · May be outdated' : ''} · ${c.verification === 'confirmed_owner' ? 'Owner confirmed by your team' : c.verification === 'wrong_contact' ? 'Wrong contact' : 'Not verified'}</div>
+      <div class="grow" style="min-width:0"><a href="${c.kind === 'phone' ? 'tel:+1' + esc(c.norm) : 'mailto:' + esc(c.value)}"><b>${esc(c.value)}</b></a>
+      <div class="tiny muted">${c.kind === 'phone' ? 'Phone' : 'Email'}${/\bold\b/i.test(c.note || '') ? ' · May be outdated' : ''}</div>
       ${c.sources.length || c.note ? `<details class="contact-details"><summary>View details</summary>${c.sources.length ? `<div><b>Found on:</b> ${c.sources.map((x) => esc(contactSource(x))).join(', ')}</div>` : ''}${c.note ? `<div>${esc(c.note)}</div>` : ''}</details>` : ''}</div>
-      <button class="btn xs" data-cverify="${c.id}">Check</button>
       <button class="btn xs ghost" data-cdel="${c.id}" title="Remove">${ic('x', 13)}</button></div>`;
     $('#contactsCard').innerHTML = `<div class="row between" style="margin-bottom:4px"><h3>Owner Contacts</h3></div>
-      ${blocked ? '<div class="small" style="color:#9A3412;margin:8px 0 12px">Do not contact is recorded for this lead. Outreach links are disabled.</div>' : `<button class="btn primary" id="cSee" style="width:100%;margin:6px 0 10px">${ic(p.ai ? 'sparkle' : 'link', 15)} ${p.ai ? 'Find owner contact' : 'Search owner on Google'}</button>`}
+      <button class="btn primary" id="cSee" style="width:100%;margin:6px 0 10px">${ic(p.ai ? 'sparkle' : 'link', 15)} ${p.ai ? 'Find owner contact' : 'Search owner on Google'}</button>
       <div class="small muted" style="margin-bottom:10px">${o.name ? `${esc(o.name)} · ${esc(o.city)}, ${esc(o.st)}` : 'Owner name is missing from this county record.'}</div>
       ${msg ? `<div class="small" style="background:var(--bg2,#F4F5F1);border-radius:8px;padding:8px 10px;margin-bottom:10px">${msg}</div>` : ''}
       <div id="cList">${list.map(row).join('') || '<div class="empty small" style="padding:10px">No phone or email yet</div>'}</div>
       <div class="small muted" style="margin:12px 0 6px">Found a contact elsewhere?</div>
       <div class="row wrap gap6">${p.ai ? lookupLinks(p).map(([n, u]) => `<button class="btn xs" data-lookup="${esc(u)}">Search ${n}</button>`).join('') : ''}<button class="btn xs" id="cClip">Paste copied info</button><button class="btn xs ghost" id="cPaste">Enter manually</button></div>`;
     $$('[data-lookup]', $('#contactsCard')).forEach((b) => b.onclick = () => { lastSrc = b.textContent.trim(); window.open(b.dataset.lookup, '_blank', 'noopener'); });
-    if ($('#cSee')) $('#cSee').onclick = async () => {
+    $('#cSee').onclick = async () => {
       if (!o.name) {
         renderContacts(p.contacts, 'This county record has no owner name yet. Open the county property record under Data sources to identify the owner first.');
         return;
@@ -509,16 +503,6 @@ export async function deal(el, [rawId]) {
       p.contacts = r.contacts; renderContacts(p.contacts, r.found.length ? `Saved ${r.found.length} phone/email from ${esc(lastSrc)}.` : 'No phone number or email found in the copied text.');
     };
     $$('[data-cdel]').forEach((b) => b.onclick = async () => { await api('/api/contacts/' + b.dataset.cdel, { method: 'DELETE' }); p.contacts = p.contacts.filter((c) => c.id != b.dataset.cdel); renderContacts(p.contacts); });
-    $$('[data-cverify]', $('#contactsCard')).forEach((b) => b.onclick = () => {
-      const c = p.contacts.find(x => x.id === +b.dataset.cverify);
-      modal(`<h2>Check this contact</h2><p class="small muted" style="margin:8px 0 16px">A public search match is not proof this number or email belongs to the owner. Record a direct check by your team.</p>
-        <div class="field"><label>Result</label><select class="select" id="vStatus"><option value="unverified">Not verified</option><option value="confirmed_owner">Spoke with / heard from owner</option><option value="wrong_contact">Wrong person or contact</option></select></div>
-        <div class="field"><label>How did you check?</label><textarea class="input" id="vEvidence" rows="3" style="width:100%" placeholder="For example: Owner confirmed their name on a call">${esc(c.verification_evidence || '')}</textarea></div>
-        <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="vSave">Save result</button></div>`, (m, close) => {
-        $('#vStatus', m).value = c.verification || 'unverified';
-        $('#vSave', m).onclick = async () => { try { const result = await api('/api/contacts/' + c.id + '/review', { method: 'POST', body: { status: $('#vStatus', m).value, evidence: $('#vEvidence', m).value } }); c.verification = result.status; c.verification_evidence = result.evidence; close(); renderContacts(p.contacts); toast('Contact check saved'); } catch (e) { toast(e.message, true); } };
-      });
-    });
     $('#cPaste').onclick = () => modal(`<h2>Paste found info</h2><p class="muted small">Copy the phone numbers and emails from the people-search page and paste them here. Every number and email in the text is saved; duplicates are merged.</p>
       <div class="field"><label>Found on</label><select class="select" id="cSrc"><option>Google</option><option>Facebook</option><option>County records</option><option>Phone call</option><option>Other</option></select></div>
       <textarea class="input" id="cText" rows="6" style="width:100%" placeholder="(330) 555-0142 Wireless&#10;jdoe@example.com"></textarea>
@@ -530,24 +514,6 @@ export async function deal(el, [rawId]) {
     });
   };
   renderContacts(p.contacts);
-
-  function renderQualification() {
-    const q = p.qualification;
-    const labels = { unknown: 'Interest unknown', interested: 'Owner said interested', maybe_later: 'Maybe later', not_selling: 'Not selling', do_not_contact: 'Do not contact' };
-    const tone = q.interest === 'interested' ? 'p-green' : q.interest === 'do_not_contact' || q.interest === 'not_selling' ? 'p-amber' : 'p-grey';
-    $('#qualificationCard').innerHTML = `<div class="row between wrap gap6"><h3>Seller interest</h3><span class="pill tiny ${tone}">${esc(labels[q.interest] || labels.unknown)}</span></div>
-      <p class="small muted" style="margin:10px 0">Tax debt, equity and a found phone number do not prove the owner wants to sell. Record what the owner actually says.</p>
-      ${q.evidence ? `<p class="small" style="background:var(--bg2,#F4F5F1);padding:10px;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(q.evidence)}</p>` : ''}
-      <button class="btn sm" id="qEdit" style="margin-top:12px">Record owner response</button>`;
-    $('#qEdit').onclick = () => modal(`<h2>Record owner response</h2><p class="small muted" style="margin:8px 0 16px">Only choose a response after direct contact. The deal score does not determine seller interest.</p>
-      <div class="field"><label>What did the owner say?</label><select class="select" id="qInterest"><option value="unknown">Not asked / unknown</option><option value="interested">Interested in selling</option><option value="maybe_later">Maybe later</option><option value="not_selling">Not interested in selling</option><option value="do_not_contact">Do not contact again</option></select></div>
-      <div class="field"><label>Conversation note</label><textarea class="input" id="qEvidence" rows="4" style="width:100%" placeholder="How you spoke with the owner and what they said">${esc(q.evidence || '')}</textarea></div>
-      <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="qSave">Save response</button></div>`, (m, close) => {
-      $('#qInterest', m).value = q.interest || 'unknown';
-      $('#qSave', m).onclick = async () => { try { p.qualification = await api(`/api/parcels/${encodeURIComponent(id)}/qualification`, { method: 'POST', body: { interest: $('#qInterest', m).value, evidence: $('#qEvidence', m).value } }); close(); renderQualification(); renderContacts(p.contacts); toast('Owner response saved'); } catch(e) { toast(e.message, true); } };
-    });
-  }
-  renderQualification();
 
   // activities + tasks
   const actIcon = { email: ['mail', 'tone-blue'], letter: ['letter', 'tone-blue'], sms: ['sms', 'tone-blue'], call: ['phone', 'tone-green'], reply: ['sms', 'tone-green'], stage: ['right', 'tone-grey'], note: ['note', 'tone-amber'] };

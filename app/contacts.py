@@ -61,19 +61,10 @@ def label(text, a, b):
     return " ".join(x for x in [kind, "(old)" if old else ""] if x)
 
 
-def list_for(pid, org_id=None):
+def list_for(pid):
     rows = db.q("SELECT * FROM contacts WHERE parcel_id=? ORDER BY kind DESC, id", (pid,))
-    reviews = {}
-    if org_id:
-        reviews = {r["contact_id"]: r for r in db.q(
-            "SELECT contact_id,status,evidence,updated FROM contact_reviews WHERE org_id=? AND contact_id IN (SELECT id FROM contacts WHERE parcel_id=?)",
-            (org_id, pid))}
     for r in rows:
         r["sources"] = json.loads(r["sources"] or "[]")
-        review = reviews.get(r["id"])
-        r["verification"] = review["status"] if review else "unverified"
-        r["verification_evidence"] = review["evidence"] if review else ""
-        r["verified_at"] = review["updated"] if review else None
     rows.sort(key=lambda r: (r["kind"] != "phone", -len(r["sources"]), r["id"]))
     return rows
 
