@@ -1,4 +1,4 @@
-// Deal page research: flood zone, state tax-sale rules, comparable sales and the deal calculator.
+// Deal page research: flood zone, state tax-sale rules and comparable sales.
 // Facts carry their source; estimates say so; legal text is a dated summary, not advice.
 import { $, $$, esc, ic, api, money, fmtDate, toast, S, modal } from './app.js';
 
@@ -30,7 +30,7 @@ function compsCard(res) {
   if (!res.comps_available && !c) {
     return `<div class="card card-pad"><h3>Comparable sales</h3><p class="small muted" style="margin-top:8px">${S.meta.super
       ? 'Switch on with a RentCast API key: Render > Environment > RENTCAST_API_KEY. The free plan gives 50 lookups a month.'
-      : 'Recent nearby sales and a market value estimate are coming soon. Until then the calculator uses the county value.'}</p></div>`;
+      : 'Recent nearby sales and a market value estimate are not available yet. Verify resale value with reliable local comps before making an offer.'}</p></div>`;
   }
   const rows = c && c.comps ? c.comps : [];
   return `<div class="card card-pad"><div class="row between"><h3>Comparable sales</h3>${res.comps_available ? `<button class="btn xs" id="getComps">${ic('refresh', 13)} ${c ? 'Refresh' : 'Get comps'}</button>` : ''}</div>
@@ -42,58 +42,27 @@ function compsCard(res) {
     ${c && c.fetched ? `<div class="tiny muted" style="margin-top:6px">Source: ${esc(c.source)}, ${day(c.fetched)}. An estimate, not an appraisal.</div>` : ''}</div>`;
 }
 
-function calcCard(res) {
-  const k = res.calc, d = res.calc_defaults || {};
-  if (!k) return '';
-  const line = (label, v, note = '', strong = false) => `<div class="calc-row${strong ? ' strong' : ''}"><span>${label}${note ? `<span class="tiny muted"> ${esc(note)}</span>` : ''}</span><b>${v}</b></div>`;
-  return `<div class="card card-pad calc" id="calcCard"><div class="row between"><h3>Deal calculator</h3><span class="tiny muted">Estimates</span></div>
-    <div class="calc-in">
-      <label>After-repair value<input class="input" id="kArv" inputmode="decimal" value="${k.arv || ''}"></label>
-      <label>Repairs<input class="input" id="kRep" inputmode="decimal" value="${k.repairs || ''}"></label>
-      <label>Known liens<input class="input" id="kLien" inputmode="decimal" value="${k.liens || 0}"></label>
-      <label>Profit you want, %<input class="input" id="kPct" inputmode="decimal" value="${k.profit_pct}"></label>
-      <label>Risk<select class="select" id="kRisk">${['low', 'medium', 'high'].map((r) => `<option value="${r}" ${r === k.risk ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}: ${{ low: 'careful', medium: 'normal', high: 'aggressive' }[r]}</option>`).join('')}</select></label>
-      <label>Months to resell<input class="input" id="kHold" inputmode="decimal" value="${d.hold_months ?? 6}"></label>
-    </div>
-    <div class="calc-out">
-      ${line('After-repair value', money(k.arv), k.sources.arv)}
-      ${line('Repairs', '- ' + money(k.repairs), k.sources.repairs)}
-      ${line('Back taxes', '- ' + money(k.taxes, 2), 'county list')}
-      ${k.liens ? line('Known liens', '- ' + money(k.liens)) : ''}
-      ${line('Closing costs (buy + sell)', '- ' + money(k.buy_closing + k.sell_closing), `${d.buy_closing_pct}% + ${d.sell_closing_pct}%`)}
-      ${line('Holding costs', '- ' + money(k.holding), `${k.hold_months} months`)}
-      ${line('Your profit', '- ' + money(k.profit), `${k.profit_pct}% of value`)}
-      ${line('Maximum offer', money(k.max_bid), '', true)}
-      ${line('70% rule, for comparison', money(k.rule70))}
-      ${k.roi_pct != null ? line('Return on cash in', k.roi_pct + '%', 'if you pay the maximum offer') : ''}
-    </div>
-    ${k.warning ? `<p class="small" style="color:var(--red)">${esc(k.warning)}</p>` : ''}
-    <p class="tiny muted" style="margin:8px 0 0">Liens and mortgages are not in county tax records: get a title search before you buy.</p>
-    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn sm" id="kSave">Save as my defaults</button><button class="btn sm primary" id="kRun">Recalculate</button></div></div>`;
-}
-
-export async function loadResearch(p, box) {
-  box.innerHTML = '<div class="card card-pad small muted">Loading flood zone, tax sale rules and deal math...</div>';
+export async function loadResearch(p, slots) {
+  const { comps, flood, rules } = slots;
+  comps.innerHTML = '<div class="card card-pad small muted">Loading comparable sales...</div>';
   let res;
-  try { res = await api(`/api/parcels/${encodeURIComponent(p.id)}/research`); } catch (e) { box.innerHTML = ''; return; }
-  if (!document.body.contains(box)) return;
-  const draw = () => {
-    box.innerHTML = `<div class="research-grid"><div class="col" style="gap:18px;min-width:0">${calcCard(res)}${compsCard(res)}</div>
-      <div class="col" style="gap:18px;min-width:0">${floodCard(res.flood)}${rulesCard(res.rules)}</div></div>`;
-    const run = async (save) => {
-      const body = { arv: $('#kArv').value, repairs: $('#kRep').value, liens: $('#kLien').value, save,
-        settings: { profit_pct: $('#kPct').value, risk: $('#kRisk').value, hold_months: $('#kHold').value } };
-      try { res.calc = await api(`/api/parcels/${encodeURIComponent(p.id)}/calc`, { method: 'POST', body }); if (save) { res.calc_defaults = { ...res.calc_defaults, ...body.settings }; toast('Saved as your defaults for every lead.'); } draw(); }
+  try { res = await api(`/api/parcels/${encodeURIComponent(p.id)}/research`); }
+  catch (e) { comps.innerHTML = ''; return; }
+  if (![comps, flood, rules].every((el) => document.body.contains(el))) return;
+  const drawComps = () => {
+    comps.innerHTML = compsCard(res);
+    const button = $('#getComps', comps);
+    if (button) button.onclick = async () => {
+      button.disabled = true;
+      button.textContent = 'Looking up...';
+      try { res.comps = await api(`/api/parcels/${encodeURIComponent(p.id)}/comps`, { method: 'POST' }); }
       catch (e) { toast(e.message, true); }
-    };
-    if ($('#kRun')) { $('#kRun').onclick = () => run(false); $('#kSave').onclick = () => run(true); $$('#calcCard input').forEach((i) => i.onkeydown = (e) => { if (e.key === 'Enter') run(false); }); }
-    if ($('#getComps')) $('#getComps').onclick = async () => {
-      $('#getComps').disabled = true; $('#getComps').textContent = 'Looking up...';
-      try { res.comps = await api(`/api/parcels/${encodeURIComponent(p.id)}/comps`, { method: 'POST' }); if (res.comps.value) $('#kArv') && ($('#kArv').value = ''); draw(); if (res.comps.value) run(false); }
-      catch (e) { toast(e.message, true); draw(); }
+      drawComps();
     };
   };
-  draw();
+  drawComps();
+  flood.innerHTML = floodCard(res.flood);
+  rules.innerHTML = rulesCard(res.rules);
 }
 
 export function lockedResearch(p, box) {
