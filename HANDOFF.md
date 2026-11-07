@@ -1,5 +1,11 @@
 # EstateHawk handoff (current state)
 
+## 2026-11-08 deal page spacing cleanup (local, release pending)
+
+- User screenshot showed two large blank areas before a separate research row, plus an old embedded Deal calculator. Root cause: three independent detail columns ended at different heights, while research cards began in a full-width row beneath the tallest column.
+- `web/views.js` now places comparable sales, flood zone and state tax-sale rules into the existing detail columns. `web/research.js` loads those cards into their slots and removes the old Deal calculator UI; its backend math remains available to other workflows. The free public calculator at `/deal-profit-calculator` remains the visible calculator. `web/styles.css` removes unused research/calculator grid rules.
+- JS syntax and diff check passed; full local tests and live deployment pending.
+
 ## 2026-11-08 free public calculator move (released)
 
 - User disliked the dense deal page. Removed the embedded profit calculator card from `web/views.js` and its app CSS; Offer Draft now links to `/deal-profit-calculator`.
