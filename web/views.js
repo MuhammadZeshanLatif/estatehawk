@@ -323,9 +323,10 @@ export async function deal(el, [rawId]) {
       <div class="research-slot" id="floodResearch"></div>
     </div>
   </div>
+  <div class="research-slot deal-calc-slot" id="dealCalcResearch"></div>
   <div class="mobile-actions"><button class="btn primary" id="mOffer">${ic('mail', 16)} Send offer</button><div class="row"><a class="btn grow" id="mCall">${ic('phone', 16)} Call owner</a><button class="btn grow" id="mSave">${ic('bookmark', 16)} Save deal</button></div></div>`;
 
-  loadResearch(p, { comps: $('#compsResearch'), flood: $('#floodResearch'), rules: $('#rulesResearch') });
+  loadResearch(p, { comps: $('#compsResearch'), flood: $('#floodResearch'), rules: $('#rulesResearch'), calculator: $('#dealCalcResearch') });
   if ($('#assignSel')) $('#assignSel').onchange = async (e) => {
     try { await api(`/api/parcels/${encodeURIComponent(p.id)}/assign`, { method: 'POST', body: { user_id: e.target.value ? +e.target.value : null } }); toast(e.target.value ? 'Lead assigned.' : 'Lead unassigned.'); }
     catch (err) { toast(err.message, true); }
