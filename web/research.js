@@ -42,13 +42,59 @@ function compsCard(res) {
     ${c && c.fetched ? `<div class="tiny muted" style="margin-top:6px">Source: ${esc(c.source)}, ${day(c.fetched)}. An estimate, not an appraisal.</div>` : ''}</div>`;
 }
 
+function calcCard(res) {
+  const k = res.calc, d = res.calc_defaults || {};
+  if (!k) return '';
+  const line = (label, value, note = '', strong = false) => `<div class="calc-row${strong ? ' strong' : ''}"><span>${label}${note ? `<span class="tiny muted"> ${esc(note)}</span>` : ''}</span><b>${value}</b></div>`;
+  return `<div class="card card-pad calc" id="calcCard"><div class="row between"><h3>Deal calculator</h3><span class="tiny muted">Maximum offer estimate</span></div>
+    <div class="calc-in">
+      <label>After-repair value<input class="input" id="kArv" inputmode="decimal" value="${k.arv || ''}"></label>
+      <label>Repairs<input class="input" id="kRep" inputmode="decimal" value="${k.repairs || ''}"></label>
+      <label>Known liens<input class="input" id="kLien" inputmode="decimal" value="${k.liens || 0}"></label>
+      <label>Profit you want, %<input class="input" id="kPct" inputmode="decimal" value="${k.profit_pct}"></label>
+      <label>Risk<select class="select" id="kRisk">${['low', 'medium', 'high'].map((r) => `<option value="${r}" ${r === k.risk ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}: ${{ low: 'careful', medium: 'normal', high: 'aggressive' }[r]}</option>`).join('')}</select></label>
+      <label>Months to resell<input class="input" id="kHold" inputmode="decimal" value="${d.hold_months ?? 6}"></label>
+    </div>
+    <div class="calc-out">
+      ${line('After-repair value', money(k.arv), k.sources.arv)}
+      ${line('Repairs', '- ' + money(k.repairs), k.sources.repairs)}
+      ${line('Back taxes', '- ' + money(k.taxes, 2), 'county list')}
+      ${k.liens ? line('Known liens', '- ' + money(k.liens)) : ''}
+      ${line('Closing costs (buy + sell)', '- ' + money(k.buy_closing + k.sell_closing), `${d.buy_closing_pct}% + ${d.sell_closing_pct}%`)}
+      ${line('Holding costs', '- ' + money(k.holding), `${k.hold_months} months`)}
+      ${line('Your profit', '- ' + money(k.profit), `${k.profit_pct}% of value`)}
+      ${line('Maximum offer', money(k.max_bid), '', true)}
+      ${line('70% rule, for comparison', money(k.rule70))}
+      ${k.roi_pct != null ? line('Return on cash in', k.roi_pct + '%', 'if you pay the maximum offer') : ''}
+    </div>
+    ${k.warning ? `<p class="small" style="color:var(--red)">${esc(k.warning)}</p>` : ''}
+    <p class="tiny muted" style="margin:8px 0 0">Liens and mortgages are not in county tax records: get a title search before you buy.</p>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn sm" id="kSave">Save as my defaults</button><button class="btn sm primary" id="kRun">Recalculate</button></div></div>`;
+}
+
 export async function loadResearch(p, slots) {
-  const { comps, flood, rules } = slots;
+  const { comps, flood, rules, calculator } = slots;
   comps.innerHTML = '<div class="card card-pad small muted">Loading comparable sales...</div>';
+  calculator.innerHTML = '<div class="card card-pad small muted">Loading deal calculator...</div>';
   let res;
   try { res = await api(`/api/parcels/${encodeURIComponent(p.id)}/research`); }
-  catch (e) { comps.innerHTML = ''; return; }
-  if (![comps, flood, rules].every((el) => document.body.contains(el))) return;
+  catch (e) { comps.innerHTML = ''; calculator.innerHTML = ''; return; }
+  if (![comps, flood, rules, calculator].every((el) => document.body.contains(el))) return;
+  const drawCalc = () => {
+    calculator.innerHTML = calcCard(res);
+    const field = (id) => $(id, calculator).value;
+    const run = async (save) => {
+      const body = { arv: field('#kArv'), repairs: field('#kRep'), liens: field('#kLien'), save,
+        settings: { profit_pct: field('#kPct'), risk: field('#kRisk'), hold_months: field('#kHold') } };
+      try {
+        res.calc = await api(`/api/parcels/${encodeURIComponent(p.id)}/calc`, { method: 'POST', body });
+        if (save) { res.calc_defaults = { ...res.calc_defaults, ...body.settings }; toast('Saved as your defaults for every lead.'); }
+        drawCalc();
+      } catch (e) { toast(e.message, true); }
+    };
+    const recalc = $('#kRun', calculator), save = $('#kSave', calculator);
+    if (recalc) { recalc.onclick = () => run(false); save.onclick = () => run(true); $$('#calcCard input', calculator).forEach((input) => { input.onkeydown = (e) => { if (e.key === 'Enter') run(false); }; }); }
+  };
   const drawComps = () => {
     comps.innerHTML = compsCard(res);
     const button = $('#getComps', comps);
@@ -61,6 +107,7 @@ export async function loadResearch(p, slots) {
     };
   };
   drawComps();
+  drawCalc();
   flood.innerHTML = floodCard(res.flood);
   rules.innerHTML = rulesCard(res.rules);
 }

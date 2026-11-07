@@ -60,6 +60,8 @@ Last updated: 2026-11-07. Read this file first. `E:\Projects\EstateHawk\docs\PRO
 
 ## Current product decisions
 
+- 2026-11-08: The original in-deal **Deal calculator** (maximum offer, taxes, repairs, liens, costs, profit, risk and saved defaults) was restored after an accidental UI removal. It now appears as a full-width card below the balanced three-column deal details. The separate free public **Deal profit calculator** at `/deal-profit-calculator` remains available. Frontend syntax and 25 Python tests passed; check release status below before assuming this is live.
+
 - User-facing replies to Zeeshan should be in **Roman Urdu**. Product UI and the help assistant use English.
 - The chatbot should answer only EstateHawk-related questions, directly and clearly. Do not append sales cards or push a paid plan unless the visitor specifically asks about plan, price, billing or limits. `app/chat.py` contains the prompt and offline fallback. The web widget is `web/chat-widget.js`.
 - Never show a user's existing password to an admin. Passwords are hashed; admins can email a one-time reset link. Password signup/change/reset accepts a 15–128 character passphrase and rejects a small set of common weak patterns. Confirm-password and eye controls are present.
