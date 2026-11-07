@@ -63,7 +63,7 @@ def slug(s):
 
 
 # ------------------------------------------------------------------ layout
-NAV = [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties"), ("/blog", "Blog")]
+NAV = [("/features", "Features"), ("/how-it-works", "How it works"), ("/deal-profit-calculator", "Free calculator"), ("/pricing", "Pricing"), ("/counties", "Counties"), ("/blog", "Blog")]
 
 JS = """<script>
 (function(){var h=document.querySelector('.hdr');addEventListener('scroll',function(){h.classList.toggle('scrolled',scrollY>8)},{passive:true});
@@ -129,7 +129,7 @@ def footer():
     col = lambda t, links: f'<div><h4>{t}</h4><ul>{"".join(f"<li><a href={h!r}>{n}</a></li>" for h, n in links)}</ul></div>'
     return (f'<footer class="ftr"><div class="wrap"><div class="about">{logo()}<p>Official county data. Real estate opportunities.</p></div>'
             + col("Product", [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties")])
-            + col("Resources", [("/blog", "Blog"), ("/guides", "Guides"), ("/faq", "Help center"), ("/counties/ohio", "Ohio tax-delinquent lists"), ("/counties/texas", "Texas tax sales")])
+            + col("Resources", [("/deal-profit-calculator", "Free deal profit calculator"), ("/blog", "Blog"), ("/guides", "Guides"), ("/faq", "Help center"), ("/counties/ohio", "Ohio tax-delinquent lists"), ("/counties/texas", "Texas tax sales")])
             + col("Company", [("/about", "About"), ("/contact", "Contact"), ("/terms", "Terms of service"), ("/privacy", "Privacy policy"), ("/refund-policy", "Refund policy")])
             + f'<div class="legal"><p>Powered by official county treasurer records.</p><p style="margin-top:4px">&copy; {year} EstateHawk. All rights reserved.</p></div></div></footer>')
 
@@ -224,6 +224,51 @@ def plan_cards():
 def pricing_block(head_tag="h2"):
     return (f'<section class="sec" id="pricing"><div class="wrap pricing"><div class="pintro"><{head_tag}>Simple, transparent pricing</{head_tag}><span class="uline"></span>'
             f'<p>Choose the plan that fits your investment goals. All plans include a 14-day free trial.</p></div>{plan_cards()}</div></section>')
+
+
+def deal_profit_calculator(request):
+    bc, bs = crumbs(request, [("/deal-profit-calculator", "Deal profit calculator")])
+    fields = [
+        ("purchase", "Purchase price", "What you expect to pay", "100"),
+        ("resale", "Expected resale value", "Your estimate after repairs", "100"),
+        ("repairs", "Repair costs", "Materials and labor", "100"),
+        ("closing", "Buying and closing costs", "Title, inspection and other fees", "100"),
+        ("monthly", "Monthly holding cost", "Insurance, utilities, financing", "50"),
+        ("months", "Months held", "How long before resale", "1"),
+        ("sellingPercent", "Selling costs", "Percent of resale value", "0.5"),
+        ("taxes", "Back taxes you will pay", "Enter zero if the seller pays", "100"),
+        ("target", "Target profit", "For your maximum offer", "100"),
+    ]
+    inputs = "".join(
+        f'<label class="calc-field" for="calc-{key}"><span>{esc(label)} <small>{"%" if key == "sellingPercent" else "$" if key != "months" else ""}</small></span>'
+        f'<em>{esc(hint)}</em><input id="calc-{key}" name="{key}" type="number" inputmode="decimal" min="0"'
+        f'{" max=99" if key == "sellingPercent" else " max=120" if key == "months" else ""} step="{step}"'
+        f' placeholder="{ "Required" if key in ("purchase", "resale") else "0" }" value="{ "" if key in ("purchase", "resale") else "0" }"></label>'
+        for key, label, hint, step in fields)
+    body = (f'<link rel="stylesheet" href="/static/deal-profit-page.css">'
+            f'<section class="calc-hero"><div class="wrap">{bc}<span class="calc-kicker">FREE INVESTOR TOOL</span>'
+            f'<h1>Deal profit calculator</h1><p>See what a property deal could return before you make an offer. '
+            f'Use your own resale and cost estimates—no account required.</p></div></section>'
+            f'<section class="calc-section"><div class="wrap calc-layout"><form id="calc-form" class="calc-form" novalidate>'
+            f'<div class="calc-form-head"><h2>Your deal numbers</h2><button type="reset" class="calc-reset">Reset</button></div>'
+            f'<p class="calc-hint">Enter purchase price and expected resale value to begin. Other costs start at zero; add everything you expect to pay.</p>'
+            f'<div class="calc-fields">{inputs}</div></form>'
+            f'<aside class="calc-panel" aria-label="Estimated deal results"><span class="calc-kicker">LIVE ESTIMATE</span>'
+            f'<h2>Your deal at a glance</h2><p id="calc-status" role="status" aria-live="polite">Enter a purchase price and expected resale value to see your estimate.</p>'
+            f'<div id="calc-results" hidden><div class="calc-profit"><span>Estimated profit</span><strong id="calc-profit">—</strong></div>'
+            f'<dl><div><dt>Total costs</dt><dd id="calc-costs">—</dd></div><div><dt>Holding costs</dt><dd id="calc-holding">—</dd></div>'
+            f'<div><dt>Selling costs</dt><dd id="calc-selling">—</dd></div><div><dt>Return on costs</dt><dd id="calc-roi">—</dd></div>'
+            f'<div class="calc-max"><dt>Max offer for target profit</dt><dd id="calc-max">—</dd></div></dl></div>'
+            f'<p class="calc-note">Planning estimate only. Verify comparable sales, repairs, title, taxes and local fees before making an offer. '
+            f'Your numbers are calculated in your browser and are not sent to EstateHawk.</p></aside></div></section>'
+            f'<section class="calc-after"><div class="wrap"><h2>Know the numbers. Then find the opportunity.</h2>'
+            f'<p>EstateHawk helps investors research county tax-delinquent leads and organize outreach.</p>'
+            f'<a class="btn btn-green" href="/features">Explore EstateHawk {ic("arrow")}</a></div></section>'
+            f'<script type="module" src="/static/deal-profit-page.js"></script>')
+    return page(request, "/deal-profit-calculator", "Free Deal Profit Calculator | EstateHawk",
+                "Calculate projected real estate deal profit, total costs, ROI and maximum offer for free. No account required.",
+                body, [bs, {"@context": "https://schema.org", "@type": "WebApplication", "name": "EstateHawk Deal Profit Calculator",
+                           "applicationCategory": "FinanceApplication", "operatingSystem": "Web", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}])
 
 
 def faqs():
@@ -615,7 +660,7 @@ def blog_article(request, slug, item=None):
 
 
 STATIC_PAGES = {"": home, "features": features, "how-it-works": how, "pricing": pricing, "counties": counties, "guides": guides,
-                "blog": blog_index,
+                "blog": blog_index, "deal-profit-calculator": deal_profit_calculator,
                 "about": about, "contact": contact, "faq": faq_page, "login": login, "signup": signup, "forgot-password": forgot, "reset-password": reset,
                 "privacy": lambda r: legal(r, "privacy"), "terms": lambda r: legal(r, "terms"), "refund-policy": lambda r: legal(r, "refund")}
 
@@ -638,7 +683,7 @@ def render(request, path):
 def sitemap(request):
     b = base_url(request)
     today = dt.date.today().isoformat()
-    urls = [("", "1.0", "daily"), ("features", "0.9", "monthly"), ("how-it-works", "0.8", "monthly"), ("pricing", "0.9", "monthly"),
+    urls = [("", "1.0", "daily"), ("features", "0.9", "monthly"), ("how-it-works", "0.8", "monthly"), ("deal-profit-calculator", "0.8", "monthly"), ("pricing", "0.9", "monthly"),
             ("counties", "0.9", "daily"), ("guides", "0.7", "weekly"), ("about", "0.5", "yearly"), ("contact", "0.5", "yearly"),
             ("faq", "0.6", "monthly"), ("signup", "0.7", "yearly"), ("privacy", "0.2", "yearly"), ("terms", "0.2", "yearly"), ("refund-policy", "0.2", "yearly")]
     urls += [(f"counties/{slug(STATE_NAMES.get(st, st))}", "0.8", "daily") for st in stats()["states"]]
