@@ -1,10 +1,10 @@
 # EstateHawk handoff (current state)
 
-## 2026-11-08 free public calculator move (local, release pending)
+## 2026-11-08 free public calculator move (released)
 
 - User disliked the dense deal page. Removed the embedded profit calculator card from `web/views.js` and its app CSS; Offer Draft now links to `/deal-profit-calculator`.
 - `app/site.py` serves a public, no-login calculator page, adds header/footer navigation and sitemap entry. `web/deal-profit-page.js` reuses the pure math in `web/deal-profit.js`; `web/deal-profit-page.css` gives it a responsive two-column layout. Inputs are calculated only in the browser, without uploading values. `app/site_ui.py` fixes the mobile menu layout and missing hamburger icon revealed during visual QA.
-- Public-route test, 25 Python tests, JS/Python syntax, browser math/reset/mobile-menu/overflow checks passed locally. Desktop and mobile screenshots were inspected. Production deployment pending.
+- Public-route test, 25 Python tests, JS/Python syntax, browser math/reset/mobile-menu/overflow checks passed locally. Desktop and mobile screenshots were inspected. Dev commit `e9d6dba` and production-only cherry-pick `6b63a63` were pushed. Live `/deal-profit-calculator` returned HTTP 200 with the form; new public JS was served, and live app `views.js` no longer contained the embedded card but did contain the free calculator link. Authenticated deal-page visual check remains pending.
 
 ## 2026-11-08 deal profit calculator (released)
 
