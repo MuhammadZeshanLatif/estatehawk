@@ -1,10 +1,10 @@
 # EstateHawk handoff (current state)
 
-## 2026-11-08 deal page spacing cleanup (local, release pending)
+## 2026-11-08 deal page spacing cleanup (released and visually checked)
 
 - User screenshot showed two large blank areas before a separate research row, plus an old embedded Deal calculator. Root cause: three independent detail columns ended at different heights, while research cards began in a full-width row beneath the tallest column.
-- `web/views.js` now places comparable sales, flood zone and state tax-sale rules into the existing detail columns. `web/research.js` loads those cards into their slots and removes the old Deal calculator UI; its backend math remains available to other workflows. The free public calculator at `/deal-profit-calculator` remains the visible calculator. `web/styles.css` removes unused research/calculator grid rules.
-- JS syntax and diff check passed; full local tests and live deployment pending.
+- `web/views.js` now places tax-sale rules below property details, comparable sales below deal score, and flood zone below activity notes to balance the detail columns. `web/research.js` loads those cards into their slots and removes the old Deal calculator UI; its backend math remains available to other workflows. The free public calculator at `/deal-profit-calculator` remains the visible calculator. `web/styles.css` removes unused research/calculator grid rules.
+- 25 Python tests, JS syntax and diff check passed. First production release `dee5622` removed the duplicate calculator; authenticated visual inspection of the exact user-shown deal found residual left-column space, so follow-up production commit `ba22b4d` reordered the cards. The signed-in Chrome deal tab was reloaded and visually checked after deployment: the former blank areas now contain tax-sale rules (left), comparable sales (middle), and flood zone (right), with no embedded calculator.
 
 ## 2026-11-08 free public calculator move (released)
 
