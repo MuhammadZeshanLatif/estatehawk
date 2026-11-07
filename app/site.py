@@ -183,7 +183,7 @@ STEPS = [(ILL_MAP, "Choose counties", "Select the counties you want to invest in
 def steps_block(head=True):
     arrow = f'<div class="arrow" aria-hidden="true">{ic("arrow")}</div>'
     cards = arrow.join(f'<div class="step">{ill}<div><h3><span class="n">{i + 1}</span>{t}</h3><p>{d}</p></div></div>' for i, (ill, t, d) in enumerate(STEPS))
-    h = ('<div class="sec-head"><h2>How <span class="ital">EstateHawk</span> works</h2><p>A simple, powerful process to find and contact motivated property owners.</p></div>' if head else "")
+    h = ('<div class="sec-head"><h2>How <span class="ital">EstateHawk</span> works</h2><p>A practical process to review county property records and reach owners when appropriate.</p></div>' if head else "")
     return f'<section class="sec-tight" id="how"><div class="wrap">{h}<div class="steps">{cards}</div></div></section>'
 
 
@@ -235,7 +235,7 @@ def faqs():
         ("Is there a free trial?", "Yes. Every plan starts with a 14-day free trial with one county. No credit card is needed to start."),
         ("Can I collaborate with my team?", "Yes. Pro and Agency plans let you invite team members, assign leads and track every call, letter and offer in a shared pipeline."),
         ("Where does the data come from?", "From public records published by county treasurers, auditors and their tax-sale attorneys. We collect, clean, score and map it so you do not have to."),
-        ("What is a deal score?", "A 0 to 100 score that weighs how many years the taxes are behind, the estimated equity, the amount owed, out-of-state ownership and vacancy signals. Higher means a more motivated seller and a better margin."),
+        ("What is a deal score?", "A 0 to 100 ranking of public-record factors such as tax debt, estimated equity and absentee ownership. It helps prioritize research; it does not verify an owner's phone number or willingness to sell."),
         ("Can I cancel anytime?", "Yes. Plans are month to month. You can cancel or change your plan whenever you want, and your plan runs until the end of the month you paid for. Payments are not refunded, which is why every plan starts with a 14-day free trial."),
     ]
 
@@ -264,7 +264,7 @@ def app_schema(request):
 # ------------------------------------------------------------------ pages
 def home(request):
     hero = (f'<section class="hero"><div class="sun" aria-hidden="true"></div><div class="wrap"><div>'
-            f'<h1>Find motivated sellers before they hit the <span class="swoosh">market.</span></h1>'
+            f'<h1>Find property leads in official <span class="swoosh">county records.</span></h1>'
             f'<p class="lead">Tax-delinquent property leads from official county records, updated every night, scored by AI.</p>'
             f'<div class="cta-row"><a class="btn btn-green" href="/signup">Start 14-day free trial {ic("arrow")}</a>'
             f'<a class="btn btn-line" href="/how-it-works">{ic("play")} See how it works</a></div>'
@@ -273,16 +273,16 @@ def home(request):
     body = (hero + strip_block() + '<div style="height:14px"></div>' + steps_block() + features_block()
             + f'<section class="sec-tight"><div class="wrap shot">{property_mock()}</div></section>' + pricing_block() + faq_block() + cta_band())
     return page(request, "/", "EstateHawk | Tax-Delinquent Property Leads for Real Estate Investors",
-                "Find motivated sellers before they hit the market. Tax-delinquent property leads from official county records, updated nightly, scored by AI. Start a 14-day free trial.",
+                "Review tax-delinquent property leads from official county records, with scoring, maps and owner research tools. Start a 14-day free trial.",
                 body, [app_schema(request), faq_schema(faqs()[:4])])
 
 
 DEEP = [
-    ("deal-score", "Deal score", "Know which deals to chase first", "Every lead gets a 0 to 100 score so your team spends the day on the owners most likely to sell, with room for profit.",
+    ("deal-score", "Deal score", "Prioritize the records worth reviewing", "A 0 to 100 score ranks public-record signals. It does not predict an owner's selling decision or your profit.",
      ["Years behind on taxes and total amount owed", "Estimated equity from county appraised values", "Out-of-state and absentee owners flagged", "One-line plain-English reason for every score"]),
-    ("owner-contacts", "Owner contact finder", "Reach the owner, not a dead end", "We pull the mailing address from county records and look up phone numbers and emails, so you can call, text or mail the same day.",
+    ("owner-contacts", "Owner contact finder", "Research possible contact details", "County records may provide a mailing address. Public searches can suggest phone numbers and emails, but your team should verify each match before outreach.",
      ["Mailing address straight from the tax bill", "Phone and email lookups (when available)", "Duplicates merged into one clean contact", "Private owners clearly marked"]),
-    ("map-view", "Map view", "See the whole county at a glance", "Every property is placed on the map. Filter by score, taxes owed, equity or type and the list follows the map as you move.",
+    ("map-view", "Map view", "See mapped records at a glance", "Properties with usable coordinates appear on the map. Filter by score, taxes owed, equity or type as you explore.",
      ["Filter by score, equity, years behind and owed", "List updates as you zoom and drag", "Street view and satellite in one click", "Save searches for next time"]),
     ("ai-offers", "AI offer letters", "Send a professional offer in seconds", "Draft a personal offer letter from the property data and your terms, then send it by email or print a batch for the mail.",
      ["Offer price suggested from value and debt", "Your terms, closing days and earnest money", "Batch letters for a whole list", "Edit everything before you send"]),
@@ -312,14 +312,14 @@ def features(request):
 def how(request):
     bc, bs = crumbs(request, [("/how-it-works", "How it works")])
     detail = [("Pick your counties", "Choose the counties where you buy. Start with one on the free trial and add more as you grow. Every county comes from its official treasurer, auditor or tax-sale list."),
-              ("We download and clean the list every night", "Our system reads each county list overnight, removes duplicates, fixes addresses, places every property on the map and notes what changed since yesterday."),
+              ("We download and clean the list every night", "Our system reads available county lists, removes duplicates and maps properties when a usable location is available."),
               ("Every property gets a deal score", "We weigh years behind, amount owed, estimated equity, absentee ownership and vacancy into one score, with a short reason you can read in a second."),
-              ("We find the owner", "Mailing address from the tax bill, plus phone and email lookups where available. Private owners are marked so you do not waste time."),
-              ("You reach out first", "Call, text, email or mail a letter written by AI. Track every touch in your pipeline and close the deal before it goes to auction.")]
+              ("Research owner details", "Review the owner and mailing details the county provides. Public phone and email matches need verification."),
+              ("Record the owner's response", "Reach out where permitted, verify who answered and record whether the owner actually wants to sell.")]
     tl = "".join(f'<div class="card" style="display:flex;gap:18px"><span class="step"><span class="n" style="margin:0">{i + 1}</span></span><div><h3 style="font-size:21px;margin-bottom:6px">{t}</h3><p>{d}</p></div></div>'
                  .replace('<span class="step">', '<span>') for i, (t, d) in enumerate(detail))
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">How it works</span><h1>From county record to <span class="swoosh">signed deal</span></h1>'
-            f'<p>EstateHawk does the boring part every night, so every morning you start with a fresh list of motivated sellers.</p></div></section>'
+            f'<p>EstateHawk organizes county records so your team can research opportunities and confirm owner interest directly.</p></div></section>'
             + steps_block(head=False)
             + f'<section class="sec"><div class="wrap row2"><div style="display:grid;gap:14px">{tl}</div><div>{leads_mock()}<div style="height:18px"></div>{property_mock()}</div></div></section>'
             + faq_block(faqs()[:5]) + cta_band())
@@ -383,7 +383,7 @@ def county_state(request, state_slug):
     grid = "".join(f'<div class="county" style="flex-wrap:wrap">{"<b>" + esc(c["name"]) + "</b>"}{cov(c)}</div>' for c in sorted(cs, key=lambda c: -c["n"]))
     kind = "tax sale" if code == "TX" else "tax-delinquent"
     intro = (f"Texas counties sell tax-defaulted homes at constable and sheriff sales. EstateHawk tracks every listed property across {len(cs)} Texas counties, with value, minimum bid and sale status, so you can reach owners before the auction."
-             if code == "TX" else f"{name} counties publish who is behind on property taxes. EstateHawk downloads those lists every night across {len(cs)} {name} counties, scores every property and finds the owner so you can make an offer first.")
+             if code == "TX" else f"{name} counties publish tax-delinquency records. EstateHawk checks supported lists across {len(cs)} {name} counties and helps you review the available owner and property details.")
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">{name}</span><h1>{name} {kind} property <span class="swoosh">list</span></h1>'
             f'<p>{intro}</p></div></section><section class="sec-tight"><div class="wrap"><div class="strip" style="margin:0 0 26px"><h2>{name} right now</h2>'
             f'<div class="stat">{ic("users")}<div><b>{total:,}</b><span>active leads</span></div></div><div class="stat">{ic("pin")}<div><b>{len(cs)}</b><span>counties</span></div></div>'
@@ -395,12 +395,12 @@ def county_state(request, state_slug):
 
 GUIDES = [
     ("what-is-a-tax-delinquent-property", "What is a tax-delinquent property (and why investors want them)?",
-     "A plain-English guide to tax-delinquent properties, why their owners are often motivated to sell, and how investors use public county lists to find them.",
+     "A plain-English guide to tax-delinquent properties, what county lists show and why an owner's selling interest must be confirmed directly.",
      """<p>A property becomes <b>tax delinquent</b> when the owner misses a property tax payment by the county's due date. In Ohio and most other states, the county adds penalties and interest, and after a set period it publishes the property on a <b>delinquent tax list</b>.</p>
-<h2>Why tax-delinquent owners are often motivated sellers</h2><p>An owner who stops paying property tax is usually under some kind of pressure: an inherited house nobody lives in, a landlord who is tired, a job loss, or an owner who lives out of state. If the debt is not paid, the county can eventually foreclose and sell the property at a tax sale. Many owners would rather sell quietly for a fair price than lose everything at auction.</p>
+<h2>What tax delinquency does and does not tell you</h2><p>A delinquent record shows a tax obligation, not why it went unpaid or whether the owner wants to sell. The owner may pay the balance, dispute the record, keep the property or consider an offer. Tax-sale and redemption rules vary by state and county, so verify the current official record before acting.</p>
 <h2>Where the lists come from</h2><p>The lists are public records. County treasurers and auditors publish them online, in newspapers or as downloadable files, and in Texas the tax attorneys publish upcoming tax sales. The hard part is that every county uses a different format and the lists change every day.</p>
 <h2>How investors use them</h2><ul><li>Filter for owners several years behind with high equity.</li><li>Look for absentee or out-of-state owners.</li><li>Reach out with a respectful, fair cash offer before the tax sale.</li></ul>
-<p>EstateHawk collects these lists every night, scores every property and finds the owner, so you can spend your time talking to sellers instead of cleaning spreadsheets.</p>"""),
+<p>EstateHawk organizes supported county lists and scores public-record signals. Owner details and contact matches may be missing and should be checked before outreach.</p>"""),
     ("how-to-find-tax-delinquent-properties", "How to find tax-delinquent properties in your county",
      "Step-by-step: where counties publish delinquent tax lists, what to look for in each record, and how to turn the list into real conversations with owners.",
      """<p>Finding tax-delinquent properties takes three things: the official list, a way to judge which properties are worth your time, and a way to reach the owner.</p>
@@ -422,9 +422,9 @@ def guides(request):
     cards = "".join(f'<a class="card" href="/guides/{s}" style="display:block"><span class="eyebrow">Guide</span><h3 style="font-size:23px">{t}</h3><p style="margin-top:10px">{d}</p>'
                     f'<p style="color:var(--leaf);font-weight:600;margin-top:14px">Read the guide</p></a>' for s, t, d, _ in GUIDES)
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">Guides</span><h1>Learn tax-delinquent <span class="swoosh">investing</span></h1>'
-            f'<p>Practical guides for wholesalers and investors: finding motivated sellers in public county records and turning them into deals.</p></div></section>'
+            f'<p>Practical guides for wholesalers and investors: understanding public county records, researching owners and evaluating opportunities.</p></div></section>'
             f'<section class="sec-tight"><div class="wrap grid3">{cards}</div></section>' + cta_band())
-    return page(request, "/guides", "Guides: Tax-Delinquent Real Estate Investing | EstateHawk", "Free guides on finding tax-delinquent properties, motivated sellers and how to make offers, from the EstateHawk team.", body, [bs])
+    return page(request, "/guides", "Guides: Tax-Delinquent Real Estate Investing | EstateHawk", "Free guides on researching tax-delinquent properties, county records and owner outreach, from the EstateHawk team.", body, [bs])
 
 
 def guide(request, s):
@@ -444,11 +444,11 @@ def guide(request, s):
 def about(request):
     bc, bs = crumbs(request, [("/about", "About")])
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">About</span><h1>Public records, made <span class="swoosh">useful</span></h1>'
-            f'<p>EstateHawk turns scattered county tax records into a clean, scored list of motivated sellers, every single night.</p></div></section>'
+            f'<p>EstateHawk organizes scattered county tax records into a scored list for property research.</p></div></section>'
             f'<section class="sec-tight"><div class="wrap row2"><div><h2>Why we built EstateHawk</h2><p>Every county publishes who is behind on property taxes, but each one does it differently: '
             f'websites, spreadsheets, PDFs, newspaper notices. Investors spent hours copying lists that were out of date by the next day.</p>'
-            f'<p>We built a system that reads those official sources every night, cleans and maps every property, scores it and finds the owner. '
-            f'You open EstateHawk in the morning and start making calls.</p><ul class="list"><li>{ic("check")}Only official public records</li><li>{ic("check")}Updated every night</li>'
+            f'<p>We built a system that reads supported county sources, organizes available records and maps properties when location data allows. '
+            f'Your team verifies contact details and owner interest before deciding what to do next.</p><ul class="list"><li>{ic("check")}Official county data as a starting point</li><li>{ic("check")}Daily sync attempts</li>'
             f'<li>{ic("check")}Built for wholesalers, investors and their teams</li></ul></div><div>{leads_mock()}</div></div></section>' + strip_block() + '<div style="height:60px"></div>' + cta_band())
     return page(request, "/about", "About EstateHawk", "EstateHawk turns official county tax-delinquent records into scored, mapped leads with owner contacts for real estate investors.", body, [bs])
 

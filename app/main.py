@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat, content
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat, content, qualification
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -669,6 +669,13 @@ def parcel_where(params):
         w += " AND TRIM(COALESCE(p.owner_name,'')) != ''"
     elif params.get("owner_status") == "missing":
         w += " AND TRIM(COALESCE(p.owner_name,'')) = ''"
+    if params.get("seller_interest") in qualification.INTEREST:
+        interest = params["seller_interest"]
+        if interest == "unknown":
+            w += f" AND NOT EXISTS (SELECT 1 FROM lead_qualifications lq WHERE lq.org_id={OID()} AND lq.parcel_id=p.id AND lq.interest!='unknown')"
+        else:
+            w += f" AND EXISTS (SELECT 1 FROM lead_qualifications lq WHERE lq.org_id={OID()} AND lq.parcel_id=p.id AND lq.interest=?)"
+            a.append(interest)
     if params.get("new_days"):
         w += " AND p.first_seen>=?"; a.append((dt.date.today() - dt.timedelta(days=int(params["new_days"]))).isoformat())
     if params.get("q"):
@@ -682,12 +689,14 @@ SORTS = {"score": "p.score DESC", "owed": "COALESCE(p.total_due,p.amount_owed) D
 
 LIST_COLS = """p.id, p.county_id, p.parcel_number, p.owner_name, p.street, p.city, p.state, p.zip, p.amount_owed, p.total_due,
  p.years_behind, p.appraised_total, p.est_equity, p.score, p.lat, p.lng, p.property_type, p.mail_state, p.first_seen,
- p.is_active, p.demo, p.photo_url, p.beds, p.baths_full, p.living_area, p.year_built, p.contact_status, c.name AS county_name, pl.stage"""
+ p.is_active, p.demo, p.photo_url, p.beds, p.baths_full, p.living_area, p.year_built, p.contact_status, c.name AS county_name, pl.stage,
+ lq.interest AS seller_interest"""
 
 
 def PL():
     """Join to this company's own pipeline row."""
-    return f"LEFT JOIN pipeline pl ON pl.parcel_id=p.id AND pl.org_id={OID()}"
+    return (f"LEFT JOIN pipeline pl ON pl.parcel_id=p.id AND pl.org_id={OID()} "
+            f"LEFT JOIN lead_qualifications lq ON lq.parcel_id=p.id AND lq.org_id={OID()}")
 
 
 # ------------------------------------------------------------------ meta / stats
@@ -818,7 +827,8 @@ def parcel_detail(pid: str):
     p["offers"] = db.q("SELECT * FROM offers WHERE parcel_id=? AND org_id=? ORDER BY id DESC", (pid, OID()))
     p["tasks"] = db.q("SELECT * FROM tasks WHERE parcel_id=? AND org_id=? ORDER BY done, due", (pid, OID()))
     p["reveals_left"] = info["reveals_left"]
-    p["contacts"] = contacts.list_for(pid)
+    p["contacts"] = contacts.list_for(pid, OID())
+    p["qualification"] = qualification.lead(OID(), pid)
     p["offer_defaults"] = db.get_setting("offer_defaults")
     p["ai"] = ai.enabled()
     p["data_check"] = check
@@ -1000,7 +1010,24 @@ async def add_contacts(pid: str, request: Request):
     if b.get("summary"):
         db.run("INSERT INTO activities(parcel_id,ts,kind,text,author) VALUES(?,?,?,?,?)",
                (pid, jobs.now(), "note", "Google AI Overview: " + b["summary"][:600], "Google"))
-    return {"found": found, "contacts": contacts.list_for(pid)}
+    return {"found": found, "contacts": contacts.list_for(pid, OID())}
+
+
+@app.post("/api/contacts/{contact_id}/review")
+async def review_contact(contact_id: int, request: Request):
+    row = db.q1("SELECT parcel_id FROM contacts WHERE id=?", (contact_id,))
+    if not row:
+        raise HTTPException(404, "Contact not found")
+    get_parcel(row["parcel_id"], unlocked=True)
+    body = await request.json()
+    return qualification.set_contact(OID(), contact_id, body.get("status"), body.get("evidence"))
+
+
+@app.post("/api/parcels/{pid:path}/qualification")
+async def qualify_lead(pid: str, request: Request):
+    get_parcel(pid, unlocked=True)
+    body = await request.json()
+    return qualification.set_lead(OID(), pid, body.get("interest"), body.get("evidence"))
 
 
 @app.post("/api/parcels/{pid:path}/contacts/ai")
@@ -1016,13 +1043,17 @@ async def ai_contacts(pid: str, request: Request):
     if res.get("notes"):
         db.run("INSERT INTO activities(parcel_id,ts,kind,text,author) VALUES(?,?,?,?,?)",
                (pid, jobs.now(), "note", "Gemini contact search: " + res["notes"], "Gemini"))
-    res["contacts"] = contacts.list_for(pid)
+    res["contacts"] = contacts.list_for(pid, OID())
     return res
 
 
 @app.delete("/api/contacts/{cid}")
 def del_contact(cid: int):
     row = db.q1("SELECT parcel_id FROM contacts WHERE id=?", (cid,))
+    if not row:
+        raise HTTPException(404, "Contact not found")
+    get_parcel(row["parcel_id"], unlocked=True)
+    db.run("DELETE FROM contact_reviews WHERE contact_id=?", (cid,))
     db.run("DELETE FROM contacts WHERE id=?", (cid,))
     if row:
         contacts.mark(row["parcel_id"])

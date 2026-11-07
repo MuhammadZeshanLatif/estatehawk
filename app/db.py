@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT, parcel_id TEXT, kind TEXT, value TEXT, norm TEXT, sources TEXT, note TEXT, created TEXT,
   UNIQUE(parcel_id, kind, norm)
 );
+CREATE TABLE IF NOT EXISTS contact_reviews (
+  org_id INTEGER NOT NULL, contact_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'unverified', evidence TEXT NOT NULL DEFAULT '',
+  updated TEXT NOT NULL, PRIMARY KEY (org_id, contact_id)
+);
+CREATE TABLE IF NOT EXISTS lead_qualifications (
+  org_id INTEGER NOT NULL, parcel_id TEXT NOT NULL,
+  interest TEXT NOT NULL DEFAULT 'unknown', evidence TEXT NOT NULL DEFAULT '',
+  updated TEXT NOT NULL, PRIMARY KEY (org_id, parcel_id)
+);
 CREATE TABLE IF NOT EXISTS activities (
   id INTEGER PRIMARY KEY AUTOINCREMENT, parcel_id TEXT, ts TEXT, kind TEXT, text TEXT, author TEXT
 );
@@ -130,7 +140,8 @@ PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 _SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users", "orgs", "audit_log", "contact_messages", "blog_posts", "blog_images", "traffic_events"}
 _PK = {"parcels": ["id"], "snapshots": ["parcel_id", "date"], "pipeline": ["org_id", "parcel_id"], "settings": ["key"],
        "org_counties": ["org_id", "county_id"], "reveals": ["org_id", "parcel_id"], "alert_reads": ["org_id", "alert_id"],
-       "org_settings": ["org_id", "key"], "traffic_users": ["user_id"]}
+       "org_settings": ["org_id", "key"], "traffic_users": ["user_id"],
+       "contact_reviews": ["org_id", "contact_id"], "lead_qualifications": ["org_id", "parcel_id"]}
 
 
 def pg_sql(sql):
