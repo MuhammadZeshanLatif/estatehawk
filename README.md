@@ -1,5 +1,7 @@
 # EstateHawk app
 
+**Current project handoff:** read [HANDOFF.md](HANDOFF.md) first for the live release, branches, sync status and next steps. Older setup notes below include the original local version.
+
 Finds tax-delinquent properties in Ohio counties every night, scores them as deals, and helps you contact owners.
 
 ## Chalana (Windows)
