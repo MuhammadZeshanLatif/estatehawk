@@ -7,7 +7,7 @@ import os
 import re
 import time
 
-from . import db, plans
+from . import db, plans, content
 from .site_ui import ILL_DB, ILL_HOUSE, ILL_MAP, alerts_mock, browser, ic, leads_mock, logo, offer_mock, owner_mock, pipeline_mock, property_mock, score_mock
 from . import site_ui
 
@@ -63,7 +63,7 @@ def slug(s):
 
 
 # ------------------------------------------------------------------ layout
-NAV = [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties")]
+NAV = [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties"), ("/blog", "Blog")]
 
 JS = """<script>
 (function(){var h=document.querySelector('.hdr');addEventListener('scroll',function(){h.classList.toggle('scrolled',scrollY>8)},{passive:true});
@@ -118,7 +118,7 @@ def footer():
     col = lambda t, links: f'<div><h4>{t}</h4><ul>{"".join(f"<li><a href={h!r}>{n}</a></li>" for h, n in links)}</ul></div>'
     return (f'<footer class="ftr"><div class="wrap"><div class="about">{logo()}<p>Official county data. Real estate opportunities.</p></div>'
             + col("Product", [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties")])
-            + col("Resources", [("/guides", "Guides"), ("/faq", "Help center"), ("/counties/ohio", "Ohio tax-delinquent lists"), ("/counties/texas", "Texas tax sales")])
+            + col("Resources", [("/blog", "Blog"), ("/guides", "Guides"), ("/faq", "Help center"), ("/counties/ohio", "Ohio tax-delinquent lists"), ("/counties/texas", "Texas tax sales")])
             + col("Company", [("/about", "About"), ("/contact", "Contact"), ("/terms", "Terms of service"), ("/privacy", "Privacy policy"), ("/refund-policy", "Refund policy")])
             + f'<div class="legal"><p>Powered by official county treasurer records.</p><p style="margin-top:4px">&copy; {year} EstateHawk. All rights reserved.</p></div></div></footer>')
 
@@ -128,20 +128,22 @@ def cta_band(title="Start finding off-market deals today.", sub="Get tax-delinqu
             f'<div class="wrap"><div class="txt"><h2>{title}</h2><p>{sub}</p></div><a class="btn btn-cream" href="/signup">Start your free trial {ic("arrow")}</a></div></section>')
 
 
-def page(request, path, title, desc, body, schema=None, js=False, noindex=False, status=200):
+def page(request, path, title, desc, body, schema=None, js=False, noindex=False, status=200, image=None):
     url = base_url(request) + path
-    ld = "".join(f'<script type="application/ld+json">{json.dumps(s, separators=(",", ":"))}</script>' for s in (schema or []))
+    og_image = base_url(request) + image if image else base_url(request) + "/site/og.jpg"
+    safe_json = lambda value: json.dumps(value, separators=(",", ":")).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    ld = "".join(f'<script type="application/ld+json">{safe_json(s)}</script>' for s in (schema or []))
     org = {"@context": "https://schema.org", "@type": "Organization", "name": SITE_NAME, "url": base_url(request), "logo": base_url(request) + "/site/logo-mark.svg",
            "email": CONTACT_EMAIL}
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{esc(title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{url}">'
             f'{"<meta name=robots content=noindex>" if noindex else ""}'
             f'<meta property="og:type" content="website"><meta property="og:site_name" content="{SITE_NAME}"><meta property="og:title" content="{esc(title)}">'
-            f'<meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{url}"><meta property="og:image" content="{base_url(request)}/site/og.jpg">'
+            f'<meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{url}"><meta property="og:image" content="{og_image}">'
             f'<meta name="twitter:card" content="summary_large_image"><meta name="theme-color" content="#1A4A30">'
             f'<link rel="icon" href="/site/logo-mark.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/icon-180.png">'
             f'<link rel="preload" href="/site/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/site/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>'
-            f'<style>{site_ui.CSS}</style><link rel="stylesheet" href="/static/chat-widget.css"><script type="application/ld+json">{json.dumps(org, separators=(",", ":"))}</script>{ld}</head>'
+            f'<style>{site_ui.CSS}</style><link rel="stylesheet" href="/static/chat-widget.css"><script type="application/ld+json">{safe_json(org)}</script>{ld}</head>'
             f'<body>{header(path)}<main id="main">{body}</main>{footer()}{JS}<script src="/static/chat-widget.js" defer></script></body></html>')
 
 
@@ -470,6 +472,7 @@ def legal(request, kind):
 <h2>What we collect</h2><ul><li>Account details you give us: name, email, company, optional phone number and password (stored hashed, never shown to administrators).</li><li>Messages you submit through our contact form or plan request, so our support team can reply.</li><li>What you do in the app, such as notes, pipeline stages and searches, so the product works.</li><li>Basic technical logs (IP address, browser) for security.</li></ul>
 <h2>Property data</h2><p>Property and owner information in EstateHawk comes from public records published by county governments and from public contact lookups. You are responsible for using it lawfully, including do-not-call and anti-spam rules.</p>
 <h2>How we use your information</h2><p>To run your account, send alerts you ask for, provide support and keep the service secure. We do not sell your personal information.</p>
+<h2>Website traffic measurement</h2><p>We use a first-party browser identifier to count visits, signups, email confirmations and paid subscriptions by broad traffic source and entry page. It does not contain your name, email or property records. Your browser may retain this identifier for up to one year; clearing site cookies resets it. These counts help us understand which EstateHawk resources are useful.</p>
 <h2>Your choices</h2><p>You can update or delete your account at any time by contacting us at """ + CONTACT_EMAIL + """.</p>"""
     elif kind == "refund":
         t, d = "Refund policy", "How cancellations and refunds work for EstateHawk plans."
@@ -572,7 +575,36 @@ def not_found(request):
 
 
 # ------------------------------------------------------------------ routing, sitemap, robots
+def blog_index(request):
+    items = content.posts("published")
+    cards = ""
+    for item in items:
+        cover = (f'<img src="{esc(item["hero_image"])}" alt="{esc(item["hero_alt"])}" loading="lazy" width="640" height="336" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-bottom:18px">'
+                 if item.get("hero_image") else "")
+        cards += f'<a class="card" href="/blog/{esc(item["slug"])}" style="display:block;padding:25px">{cover}<span class="eyebrow">EstateHawk blog</span><h2 style="font-size:26px;margin:12px 0">{esc(item["title"])}</h2><p>{esc(item["excerpt"] or item["description"])}</p><span style="color:var(--green);font-weight:600">Read article →</span></a>'
+    body = f'<section class="sec"><div class="wrap"><span class="eyebrow">Resources</span><h1>Real estate investing insights</h1><p style="max-width:700px;margin:18px 0 32px">Practical articles about county records, tax delinquency, owner research and turning leads into informed decisions.</p><div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">{cards or "<p>Articles are coming soon.</p>"}</div></div></section>'
+    return page(request, "/blog", "Real Estate Investing Blog | EstateHawk", "Practical tax-delinquent property and real estate investing articles from EstateHawk.", body, noindex=not bool(items))
+
+
+def blog_article(request, slug, item=None):
+    item = item or content.post(slug)
+    if not item:
+        return None
+    path = f'/blog/{slug}'
+    bc, bs = crumbs(request, [("/blog", "Blog"), (path, item["title"])])
+    article = {"@context": "https://schema.org", "@type": "BlogPosting", "headline": item["title"],
+               "description": item["description"], "mainEntityOfPage": base_url(request) + path,
+               "datePublished": item["published"], "dateModified": item["updated"],
+               "author": {"@type": "Organization" if item["author"] == "EstateHawk" else "Person", "name": item["author"]}}
+    if item.get("hero_image"):
+        article["image"] = base_url(request) + item["hero_image"]
+    cover = f'<img src="{esc(item["hero_image"])}" alt="{esc(item["hero_alt"])}" width="1200" height="630" style="width:100%;height:auto;border-radius:16px;margin:0 0 30px" fetchpriority="high">' if item.get("hero_image") else ""
+    body = f'<section class="sec"><div class="wrap" style="max-width:860px">{bc}<article class="blog-article"><header style="margin:28px 0"><span class="eyebrow">EstateHawk blog</span><h1 style="margin:12px 0">{esc(item["title"])}</h1><p>{esc(item["excerpt"] or item["description"])}</p><p class="small" style="margin-top:16px">By {esc(item["author"])} · {esc((item["published"] or "")[:10])}</p></header>{cover}<div class="blog-body">{content.body_html(item["body"])}</div></article><a class="btn" href="/blog" style="margin-top:36px">More articles</a></div></section><style>.blog-body h2,.blog-body h3{{margin:34px 0 12px}}.blog-body p,.blog-body li{{font-size:17px;line-height:1.8}}.blog-body p,.blog-body ul{{margin:0 0 18px}}.blog-body a{{color:var(--green);text-decoration:underline;text-underline-offset:3px}}</style>'
+    return page(request, path, f'{item["title"]} | EstateHawk', item["description"] or item["excerpt"], body, [bs, article], image=item.get("hero_image"))
+
+
 STATIC_PAGES = {"": home, "features": features, "how-it-works": how, "pricing": pricing, "counties": counties, "guides": guides,
+                "blog": blog_index,
                 "about": about, "contact": contact, "faq": faq_page, "login": login, "signup": signup, "forgot-password": forgot, "reset-password": reset,
                 "privacy": lambda r: legal(r, "privacy"), "terms": lambda r: legal(r, "terms"), "refund-policy": lambda r: legal(r, "refund")}
 
@@ -587,6 +619,8 @@ def render(request, path):
         return county_state(request, parts[1])
     if len(parts) == 2 and parts[0] == "guides":
         return guide(request, parts[1])
+    if len(parts) == 2 and parts[0] == "blog":
+        return blog_article(request, parts[1])
     return None
 
 
@@ -598,6 +632,10 @@ def sitemap(request):
             ("faq", "0.6", "monthly"), ("signup", "0.7", "yearly"), ("privacy", "0.2", "yearly"), ("terms", "0.2", "yearly"), ("refund-policy", "0.2", "yearly")]
     urls += [(f"counties/{slug(STATE_NAMES.get(st, st))}", "0.8", "daily") for st in stats()["states"]]
     urls += [(f"guides/{g[0]}", "0.6", "monthly") for g in GUIDES]
+    blog_posts = content.posts("published")
+    if blog_posts:
+        urls.append(("blog", "0.7", "weekly"))
+        urls += [(f'blog/{p["slug"]}', "0.6", "weekly") for p in blog_posts]
     body = "".join(f"<url><loc>{b}/{u}</loc><lastmod>{today}</lastmod><changefreq>{f}</changefreq><priority>{p}</priority></url>" for u, p, f in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>'
 

@@ -540,13 +540,13 @@ const human = (a) => { for (const [re, l] of ACTION) if (re.test(a)) return l ||
 
 export async function admin(el, [tab = 'companies']) {
   const [st, orgs] = await Promise.all([api('/api/admin/stats'), api('/api/admin/orgs')]);
-  const T = [['companies', 'Companies'], ['users', 'All users'], ['messages', `Contact messages${st.new_messages ? ` (${st.new_messages})` : ''}`], ['activity', 'Activity log']];
+  const T = [['companies', 'Companies'], ['users', 'All users'], ['messages', `Contact messages${st.new_messages ? ` (${st.new_messages})` : ''}`], ['blogs', 'Blog'], ['funnel', 'Traffic funnel'], ['activity', 'Activity log']];
   el.innerHTML = `<div class="page-head"><div><h1>Admin</h1><div class="sub">Every company, user and action across EstateHawk.</div></div>
     <div class="right"><button class="btn primary" id="newOrg">${ic('plus', 16)} New company</button></div></div>
     <div class="stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       ${[['Companies', st.companies], ['On trial', st.trials], ['Paying', st.paying], ['Monthly revenue', '$' + num(st.mrr)], ['Users', st.users], ['Active this week', st.active_week]]
         .map(([k, v]) => `<div class="card card-pad"><div class="small muted">${k}</div><div style="font-size:24px;font-weight:700">${v}</div></div>`).join('')}</div>
-    <div class="row gap6" style="margin-bottom:12px">${T.map(([k, l]) => `<a class="btn ${tab === k ? 'primary' : ''}" href="#/admin/${k}">${l}</a>`).join('')}</div>
+    <div class="row gap6 wrap" style="margin-bottom:12px">${T.map(([k, l]) => `<a class="btn ${tab === k ? 'primary' : ''}" href="#/admin/${k}">${l}</a>`).join('')}</div>
     <div id="aBody"></div>`;
   $('#newOrg').onclick = () => orgModal(null);
   const body = $('#aBody');
@@ -597,6 +597,42 @@ export async function admin(el, [tab = 'companies']) {
     };
     $('#aOrg').onchange = load; let t; $('#aQ').oninput = () => { clearTimeout(t); t = setTimeout(load, 300); };
     load();
+  }
+  if (tab === 'blogs') {
+    const posts = await api('/api/admin/blogs');
+    body.innerHTML = `<div class="row between wrap gap6" style="margin-bottom:16px"><p class="muted small">Write a draft, preview it, then publish when ready. Only published posts appear on the website.</p><button class="btn primary" id="blogNew">${ic('plus', 16)} New article</button></div>
+      <div class="grid" style="gap:12px">${posts.map(p => `<article class="card card-pad"><div class="row between wrap gap6"><div><span class="pill tiny ${p.status === 'published' ? 'p-green' : 'p-grey'}">${esc(p.status)}</span><h3 style="margin:9px 0 4px">${esc(p.title)}</h3><div class="small muted">/blog/${esc(p.slug)} · Updated ${esc((p.updated || '').slice(0,10))}</div></div><div class="row gap6"><button class="btn sm" data-blog-edit="${p.id}">Edit</button><a class="btn sm" href="/api/admin/blogs/${p.id}/preview" target="_blank" rel="noopener">Preview</a>${p.status === 'published' ? `<a class="btn sm" href="/blog/${esc(p.slug)}" target="_blank" rel="noopener">Live</a>` : ''}</div></div></article>`).join('') || '<div class="card card-pad muted">No articles yet. Create your first draft.</div>'}</div>`;
+    $('#blogNew').onclick = () => blogEditor(null);
+    $$('[data-blog-edit]', body).forEach(b => b.onclick = () => blogEditor(posts.find(p => p.id === +b.dataset.blogEdit)));
+    function blogEditor(p) {
+      modal(`<h2>${p ? 'Edit article' : 'New article'}</h2><p class="small muted" style="margin:8px 0 18px">Use ## for sections, ### for subheadings, - for lists and **text** for emphasis. Your draft is private until published.</p>
+        <div class="field"><label>Title</label><input class="input" id="bTitle" maxlength="140" value="${esc(p?.title || '')}" style="width:100%"></div>
+        <div class="terms"><div class="field"><label>URL slug</label><input class="input" id="bSlug" value="${esc(p?.slug || '')}"></div><div class="field"><label>Author</label><input class="input" id="bAuthor" value="${esc(p?.author || 'EstateHawk')}"></div></div>
+        <div class="field"><label>Search description</label><input class="input" id="bDesc" maxlength="300" value="${esc(p?.description || '')}" style="width:100%"></div>
+        <div class="field"><label>Card excerpt</label><textarea class="input" id="bExcerpt" rows="2" style="width:100%">${esc(p?.excerpt || '')}</textarea></div>
+        <div class="field"><label>Cover image (optional)</label><input class="input" id="bImage" type="file" accept="image/jpeg,image/png,image/webp" style="width:100%"><div class="small muted" id="bImageState">${p?.hero_image ? 'Current cover image is saved.' : 'JPG, PNG or WebP, up to 1.5 MB.'}</div></div>
+        <div class="field"><label>Cover image description</label><input class="input" id="bAlt" maxlength="180" value="${esc(p?.hero_alt || '')}" placeholder="Describe the image for accessibility" style="width:100%"></div>
+        <div class="field"><label>Article body</label><textarea class="input" id="bBody" rows="16" style="width:100%;font-family:ui-monospace,monospace;line-height:1.5">${esc(p?.body || '')}</textarea></div>
+        <div class="row between wrap gap6"><div>${p ? `<button class="btn" id="bDelete">Delete</button>` : ''}</div><div class="row gap6"><button class="btn" data-close>Cancel</button><button class="btn" id="bDraft">Save draft</button><button class="btn primary" id="bPublish">${p?.status === 'published' ? 'Update published article' : 'Publish article'}</button></div></div>`, (m, close) => {
+        const field = id => $('#' + id, m).value.trim();
+        const save = async status => { const title = field('bTitle'); const slug = field('bSlug') || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          const data = { title, slug, author: field('bAuthor'), description: field('bDesc'), excerpt: field('bExcerpt'), body: field('bBody'), status, hero_image: p?.hero_image || '', hero_alt: field('bAlt') };
+          const file = $('#bImage', m).files[0];
+          if (file) { if (file.size > 1500000) { toast('Choose an image under 1.5 MB.', true); return; }
+            try { const encoded = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
+              const uploaded = await api('/api/admin/blog-images', {method:'POST', body:{data:encoded}}); data.hero_image = uploaded.url;
+            } catch(e) { toast('Image upload failed: ' + e.message, true); return; } }
+          try { await api(p ? '/api/admin/blogs/' + p.id : '/api/admin/blogs', { method: p ? 'PUT' : 'POST', body: data }); close(); toast(status === 'published' ? 'Article published' : 'Draft saved'); admin(el, ['blogs']); } catch(e) { toast(e.message, true); } };
+        $('#bDraft', m).onclick = () => save('draft'); $('#bPublish', m).onclick = () => save('published');
+        if (p) $('#bDelete', m).onclick = async () => { if (!confirm('Delete this article permanently?')) return; try { await api('/api/admin/blogs/' + p.id, {method:'DELETE'}); close(); admin(el, ['blogs']); } catch(e) { toast(e.message, true); } };
+      });
+    }
+  }
+  if (tab === 'funnel') {
+    body.innerHTML = `<div class="row between wrap gap6" style="margin-bottom:16px"><div><h2 style="margin:0 0 5px">Where visitors come from</h2><p class="small muted">First-party counts by source and first page. Each step counts a visitor once. Tracking starts after this release.</p></div><select class="select" id="fDays"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div><div id="fContent"></div>`;
+    const load = async () => { const data = await api('/api/admin/funnel?days=' + $('#fDays').value); const n = x => num(x || 0);
+      $('#fContent').innerHTML = `<div class="stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-bottom:16px">${[['Visitors',data.totals.landed],['Signed up',data.totals.signup],['Email confirmed',data.totals.verified],['Paid',data.totals.paid]].map(([label,value]) => `<div class="card card-pad"><div class="small muted">${label}</div><div style="font-size:25px;font-weight:700">${n(value)}</div></div>`).join('')}</div><div class="card" style="overflow:auto"><table class="table"><thead><tr><th>Source</th><th>Entry page</th><th class="r">Visitors</th><th class="r">Signups</th><th class="r">Confirmed</th><th class="r">Paid</th></tr></thead><tbody>${data.rows.map(r => `<tr><td>${esc(r.source)}</td><td>${r.entry_type === 'blog' ? 'Blog' : 'Other pages'}</td><td class="r">${n(r.landed)}</td><td class="r">${n(r.signup)}</td><td class="r">${n(r.verified)}</td><td class="r">${n(r.paid)}</td></tr>`).join('')}</tbody></table></div><h3 style="margin:24px 0 12px">Top entry pages</h3><div class="card" style="overflow:auto"><table class="table"><thead><tr><th>Page</th><th>Source</th><th class="r">Visitors</th><th class="r">Signups</th></tr></thead><tbody>${data.landing.map(r => `<tr><td>${esc(r.path)}</td><td>${esc(r.source)}</td><td class="r">${n(r.landed)}</td><td class="r">${n(r.signup)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Traffic will appear after visitors arrive.</td></tr>'}</tbody></table></div><p class="small muted" style="margin-top:12px">Direct / unknown includes visits without a detectable referrer. Returning visitors keep their first recorded source. These are browser counts, not Search Console clicks.</p>`;
+    }; $('#fDays').onchange = load; await load();
   }
 
   function orgModal(o) {

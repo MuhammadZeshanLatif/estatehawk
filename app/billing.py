@@ -124,6 +124,11 @@ def set_plan(org, plan, status, sub_id=None, customer_id=None, period_end=None, 
         if plan and plan != o["plan"]:
             db.run("UPDATE orgs SET plan=?, trial_ends=NULL, status='active' WHERE id=?", (plan, org))
             auth.audit("plan paid", f"{o['name']}: {o['plan']} -> {plan} ({source})", org=org)
+            from . import content
+            try:
+                content.paid_org(org)
+            except Exception:
+                pass  # attribution cannot interrupt a verified payment
         elif o["status"] != "active":
             db.run("UPDATE orgs SET status='active' WHERE id=?", (org,))
         save(org, plan=plan or o["plan"], status="active", subscription_id=sub_id, customer_id=customer_id, period_end=period_end,

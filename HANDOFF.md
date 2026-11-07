@@ -1,6 +1,14 @@
 # EstateHawk handoff (current state)
 
-Last verified: 2026-11-07, about 07:00 Asia/Karachi. Read this file first. `E:\Projects\EstateHawk\docs\PROGRESS.md` and `PROJECT_CONTEXT.md` preserve the earlier history; some older “next steps” there were already completed and are not the current task list.
+Last updated: 2026-11-07. Read this file first. `E:\Projects\EstateHawk\docs\PROGRESS.md` and `PROJECT_CONTEXT.md` preserve the earlier history; some older “next steps” there were already completed and are not the current task list.
+
+## SEO/blog/traffic work in progress (2026-11-07)
+
+- EstateHawk-specific editorial workflow: `SEO-CONTENT-MASTER-PROMPT.md`, adapted from `E:\Projects\talentrank-app\SEO-CONTENT-MASTER-PROMPT-V2.md`. The new prompt is for US real estate/county-record topics and has no ad monetization or page-coding instructions.
+- Blog CMS built locally in `app/content.py`, `app/site.py`, `app/main.py`, `app/db.py`, `web/views2.js`: Admin > Blog can write/save drafts, upload a cover image, preview privately, publish, unpublish by saving as draft, edit and delete. Published articles render at `/blog/{slug}` with canonical/description, BlogPosting and BreadcrumbList data; `/blog` lists them, sitemap includes only published posts. No article has been created or published yet.
+- Admin > Traffic funnel groups anonymous first-party browser visitors by detected source and first entry type (blog/other), with landed → signup → email confirmed → paid stages and 7/30/90-day views. A first-party cookie and account link preserve first source through email verification; verified billing transition records paid even without checkout return. Browser blocking/cookie clearing and unknown referrers limit attribution. Existing historical visits cannot be backfilled. Privacy policy now describes this measurement.
+- Local validation: 20 Python tests passed, Python compile passed, JS syntax passed and `git diff --check` passed. This work is **not live yet** at the time of this note; check branch/commit status before continuing. No article, images or customer data were inserted into production.
+- Next: review the diff, commit/push `dev`, obtain specific production approval if needed, fast-forward `main`, verify Render live blog/admin/funnel and update this handoff and `docs/PROGRESS.md` with actual deployment status. Test an admin draft and preview on the deployed site before publishing any article. Do not claim traffic data from before rollout.
 
 ## Source of truth and deployment
 

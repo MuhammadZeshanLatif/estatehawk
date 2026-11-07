@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat, content
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -273,6 +273,14 @@ def _new_trial(request, name, email, pw_hash, company, cid, ip, how, phone=""):
     db.run("INSERT INTO org_counties(org_id, county_id) VALUES(?,?)", (oid, cid))
     uid = db.run("INSERT INTO users(email,name,pw,role,created,org_id,email_verified,phone) VALUES(?,?,?,?,?,?,?,?)",
                  (email, name, pw_hash, "admin", jobs.now(), oid, 1 if how == "google" else 0, phone))
+    vid = content.visitor(request)
+    content.track_safely(request, "signup", vid)
+    try:
+        db.run("INSERT OR REPLACE INTO traffic_users(user_id,visitor_id) VALUES(?,?)", (uid, vid))
+    except Exception:
+        pass  # measurement cannot interrupt account creation
+    if how == "google":
+        content.track_safely(request, "verified", vid)
     u = db.q1("SELECT * FROM users WHERE email=?", (email,))
     auth.audit("signed up", f"{company} ({email}) trial" + (" via Google" if how == "google" else ""), user=u, org=oid, ip=ip)
     cname = (db.q1("SELECT name FROM counties WHERE id=?", (cid,)) or {}).get("name", "your county")
@@ -409,6 +417,9 @@ def verify_email(request: Request, token: str = ""):
     if not uid:
         return RedirectResponse("/login?error=" + "This confirmation link is old or already used. Sign in and resend it from the banner.", status_code=303)
     db.run("UPDATE users SET email_verified=1 WHERE id=?", (uid,))
+    vid = content.visitor_for_user(uid)
+    if vid:
+        content.track_safely(request, "verified", vid)
     u = db.q1("SELECT * FROM users WHERE id=?", (uid,))
     auth.audit("email confirmed", u.get("email") if u else "", user=u, org=(u or {}).get("org_id"), ip=_client_ip(request))
     r = RedirectResponse("/app#/deals", status_code=303)
@@ -1786,11 +1797,15 @@ async def billing_checkout(request: Request):
 
 
 @app.post("/api/billing/confirm")
-def billing_confirm():
+def billing_confirm(request: Request):
     try:
         b = billing.confirm(OID())
     except Exception as e:
         raise HTTPException(400, str(e))
+    if plans.org_info(OID())["plan"] in ("starter", "pro", "agency"):
+        vid = content.visitor_for_user((ctx.get().get("user") or {}).get("id"))
+        if vid:
+            content.track_safely(request, "paid", vid)
     return {"plan": plans.org_info(OID())["plan"], "status": b.get("status")}
 
 
@@ -1969,6 +1984,60 @@ def admin_stats():
 
 
 # ------------------------------------------------------------------ static web app
+@app.get("/api/admin/blogs")
+def admin_blogs():
+    return content.posts()
+
+
+@app.post("/api/admin/blogs")
+async def admin_blog_create(request: Request):
+    item = content.save(await request.json())
+    return item
+
+
+@app.put("/api/admin/blogs/{post_id}")
+async def admin_blog_update(post_id: int, request: Request):
+    return content.save(await request.json(), post_id)
+
+
+@app.get("/api/admin/blogs/{post_id}/preview")
+def admin_blog_preview(post_id: int, request: Request):
+    item = db.q1("SELECT * FROM blog_posts WHERE id=?", (post_id,))
+    if not item:
+        raise HTTPException(404, "Article not found")
+    html_ = site.blog_article(request, item["slug"], item)
+    return HTMLResponse(html_.replace("</head>", '<meta name="robots" content="noindex,nofollow"></head>', 1),
+                        headers={"Cache-Control": "private, no-store"})
+
+
+@app.delete("/api/admin/blogs/{post_id}")
+def admin_blog_delete(post_id: int):
+    db.run("DELETE FROM blog_posts WHERE id=?", (post_id,))
+    return {"ok": True}
+
+
+@app.post("/api/admin/blog-images")
+async def admin_blog_image(request: Request):
+    if int(request.headers.get("content-length") or 0) > 2_100_000:
+        raise HTTPException(413, "Image is too large.")
+    payload = await request.json()
+    return {"url": content.upload_image(payload.get("data"))}
+
+
+@app.get("/blog-media/{image_id}")
+def blog_media(image_id: int):
+    image = db.q1("SELECT mime,data FROM blog_images WHERE id=?", (image_id,))
+    if not image:
+        raise HTTPException(404, "Image not found")
+    return Response(base64.b64decode(image["data"]), media_type=image["mime"],
+                    headers={"Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/api/admin/funnel")
+def admin_funnel(days: int = 30):
+    return content.funnel(days)
+
+
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 
@@ -2012,4 +2081,14 @@ def spa(path: str, request: Request):
     html_ = site.render(request, path)  # the marketing website
     if html_ is None:
         return HTMLResponse(site.not_found(request), status_code=404)
-    return HTMLResponse(html_, headers={"Cache-Control": "public, max-age=300"})
+    resp = HTMLResponse(html_, headers={"Cache-Control": "public, max-age=300"})
+    ua = request.headers.get("user-agent", "").lower()
+    bot = any(name in ua for name in ("bot", "crawler", "spider", "slurp", "preview", "facebookexternalhit"))
+    if request.method == "GET" and not bot and path not in ("login", "reset-password", "forgot-password"):
+        vid = content.visitor(request)
+        content.track_safely(request, "landed", vid)
+        if request.cookies.get(content.COOKIE) != vid:
+            resp.headers["Cache-Control"] = "private, no-store"
+            resp.set_cookie(content.COOKIE, vid, max_age=31536000, httponly=True,
+                            secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https", samesite="lax")
+    return resp

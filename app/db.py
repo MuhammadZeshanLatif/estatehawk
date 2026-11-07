@@ -99,6 +99,27 @@ CREATE TABLE IF NOT EXISTS contact_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT NOT NULL, phone TEXT,
   message TEXT NOT NULL, created TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new'
 );
+CREATE TABLE IF NOT EXISTS blog_posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', excerpt TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT 'EstateHawk',
+  hero_image TEXT NOT NULL DEFAULT '', hero_alt TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft', created TEXT NOT NULL, updated TEXT NOT NULL,
+  published TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_blog_status ON blog_posts(status, published);
+CREATE TABLE IF NOT EXISTS blog_images (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, mime TEXT NOT NULL, data TEXT NOT NULL,
+  created TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS traffic_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, visitor_id TEXT NOT NULL, event TEXT NOT NULL,
+  source TEXT NOT NULL, entry_type TEXT NOT NULL, entry_path TEXT NOT NULL,
+  occurred TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_traffic_window ON traffic_events(occurred, source, entry_type);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_traffic_unique ON traffic_events(visitor_id, event);
+CREATE TABLE IF NOT EXISTS traffic_users (user_id INTEGER PRIMARY KEY, visitor_id TEXT NOT NULL);
 """
 
 
@@ -106,10 +127,10 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
 # tables whose INSERT should hand back the new id, and the conflict keys used for INSERT OR REPLACE
-_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users", "orgs", "audit_log", "contact_messages"}
+_SERIAL = {"counties", "sync_runs", "alerts", "contacts", "activities", "tasks", "offers", "users", "orgs", "audit_log", "contact_messages", "blog_posts", "blog_images", "traffic_events"}
 _PK = {"parcels": ["id"], "snapshots": ["parcel_id", "date"], "pipeline": ["org_id", "parcel_id"], "settings": ["key"],
        "org_counties": ["org_id", "county_id"], "reveals": ["org_id", "parcel_id"], "alert_reads": ["org_id", "alert_id"],
-       "org_settings": ["org_id", "key"]}
+       "org_settings": ["org_id", "key"], "traffic_users": ["user_id"]}
 
 
 def pg_sql(sql):
