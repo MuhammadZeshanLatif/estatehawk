@@ -76,11 +76,4 @@
     }
   }
   form.onsubmit = (e) => { e.preventDefault(); send(input.value); };
-  try {
-    const greetKey = appPage ? 'eh_chat_greeted_app' : 'eh_chat_greeted_site';
-    if (!sessionStorage.getItem(greetKey)) {
-      sessionStorage.setItem(greetKey, '1');
-      setTimeout(() => open(false), 900);
-    }
-  } catch (_) { setTimeout(() => open(false), 900); }
 })();

@@ -2,6 +2,9 @@
 #eh-chat *{box-sizing:border-box}
 #eh-chat button,#eh-chat input{font:inherit}
 #eh-chat .eh-chat-launcher{display:flex;align-items:center;gap:9px;background:var(--eh-green);color:#fff;border:1px solid #257041;border-radius:999px;padding:9px 15px 9px 8px;box-shadow:0 12px 32px rgba(8,54,27,.24);cursor:pointer;font-weight:700}
+#eh-chat:not(.open) .eh-chat-launcher{animation:eh-chat-glow 3.5s ease-in-out infinite}
+@keyframes eh-chat-glow{0%,100%{box-shadow:0 12px 32px rgba(8,54,27,.24),0 0 0 0 rgba(34,156,79,0)}50%{box-shadow:0 12px 32px rgba(8,54,27,.24),0 0 0 7px rgba(34,156,79,.12)}}
+@media(prefers-reduced-motion:reduce){#eh-chat:not(.open) .eh-chat-launcher{animation:none;box-shadow:0 12px 32px rgba(8,54,27,.24),0 0 0 3px rgba(34,156,79,.1)}}
 #eh-chat .eh-chat-launcher:hover{background:#1d653b;transform:translateY(-2px)}
 #eh-chat .eh-chat-launcher img{width:31px;height:31px;padding:4px;border-radius:50%;background:#fff}
 #eh-chat .eh-chat-launcher i{display:block;width:8px;height:8px;border-radius:50%;background:#92eead;box-shadow:0 0 0 3px rgba(146,238,173,.18)}

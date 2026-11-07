@@ -684,7 +684,6 @@ async function route() {
   if (!S.meta) { $('#view').innerHTML = LOADER; await refreshMeta(); }
   if (S.meta.org?.expired && !S.meta.super && name !== 'billing') { showExpired(S.meta.org.suspended ? 'Your company account is paused' : 'Your free trial has ended'); return; }
   if (!S.meta.settings.onboarded && S.meta.super && name !== 'welcome') { location.hash = '#/welcome'; return; }
-  if (!S.user?.tour_seen && S.meta.settings.onboarded && !tourStarted && name !== 'deals' && name !== 'welcome') { location.hash = '#/deals'; return; }
   if (name === 'admin' && !S.meta.super) { location.hash = '#/deals'; return; }
   const fn = routes[name] || V.deals;
   document.body.classList.toggle('onboarding', name === 'welcome');
@@ -703,7 +702,6 @@ async function route() {
     cleanup = await fn(view, rest.map(decodeURIComponent));
     if (tourActive && name !== tourStepRoute) await tourClose?.();
     if (tourActive && name === tourStepRoute && tourCard) tourCard.style.visibility = '';
-    if (!S.user?.tour_seen && S.meta.settings.onboarded && name !== 'welcome') startTour();
   } catch (e) {
     console.error(e);
     if (my !== routeSeq) return;  // an older page failed after the user moved on: keep the page they are on
