@@ -300,7 +300,7 @@ export async function deal(el, [rawId]) {
           ${fact('doc', 'Parcel / acres', `${esc(p.parcel_number)}<div class="small muted" style="font-weight:400">${p.acres ?? '--'} acres · ${esc(p.county_name)}</div>`)}
         </div>
       </div>
-      <div class="research-slot" id="compsResearch"></div>
+      <div class="research-slot" id="rulesResearch"></div>
     </div>
     <div class="col" style="gap:18px;min-width:0">
       <div class="card card-pad"><h3 style="margin-bottom:12px">Tax History</h3><div class="timeline">${taxTimeline(p)}</div>
@@ -313,14 +313,14 @@ export async function deal(el, [rawId]) {
           const w = S.meta.settings.weights[k] || 1;
           return `<div class="b-row"><span class="muted">${esc({ years_behind: 'Years behind', equity: 'Equity', amount_owed: 'Amount owed', out_of_state: 'Out-of-state owner', vacancy: 'Vacancy signals' }[k])}</span><div class="b-bar"><i style="width:${Math.min(100, v / w * 100)}%"></i></div><b class="num" style="text-align:right">+${Math.round(v)}/${w}</b></div>`;
         }).join('')}</div>${SCORE_NOTE}</div>
-      <div class="research-slot" id="floodResearch"></div>
+      <div class="research-slot" id="compsResearch"></div>
     </div>
     <div class="col col3" style="gap:18px;min-width:0">
       <div class="card card-pad" id="offerCard"></div>
       <div class="card card-pad" id="contactsCard"></div>
       <div class="card card-pad"><div class="row between" style="margin-bottom:6px"><h3>Activity Notes</h3><div class="row gap6"><button class="btn xs" id="addTask">${ic('clock', 13)} Follow-up</button><button class="btn xs" id="addNote">Add note</button></div></div>
         <div id="acts"></div></div>
-      <div class="research-slot" id="rulesResearch"></div>
+      <div class="research-slot" id="floodResearch"></div>
     </div>
   </div>
   <div class="mobile-actions"><button class="btn primary" id="mOffer">${ic('mail', 16)} Send offer</button><div class="row"><a class="btn grow" id="mCall">${ic('phone', 16)} Call owner</a><button class="btn grow" id="mSave">${ic('bookmark', 16)} Save deal</button></div></div>`;
