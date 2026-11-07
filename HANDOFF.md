@@ -1,5 +1,11 @@
 # EstateHawk handoff (current state)
 
+## 2026-11-08 free public calculator move (local, release pending)
+
+- User disliked the dense deal page. Removed the embedded profit calculator card from `web/views.js` and its app CSS; Offer Draft now links to `/deal-profit-calculator`.
+- `app/site.py` serves a public, no-login calculator page, adds header/footer navigation and sitemap entry. `web/deal-profit-page.js` reuses the pure math in `web/deal-profit.js`; `web/deal-profit-page.css` gives it a responsive two-column layout. Inputs are calculated only in the browser, without uploading values. `app/site_ui.py` fixes the mobile menu layout and missing hamburger icon revealed during visual QA.
+- Public-route test, 25 Python tests, JS/Python syntax, browser math/reset/mobile-menu/overflow checks passed locally. Desktop and mobile screenshots were inspected. Production deployment pending.
+
 ## 2026-11-08 deal profit calculator (released)
 
 - Deal detail now has a collapsible Deal profit calculator directly below Offer Draft. It uses the offer as an editable purchase starting point and requires the investor to supply an expected resale value; it does not treat county value as ARV. Repairs, closing, holding, selling percentage, target profit, and an explicit buyer-pays-tax checkbox feed projected profit, return on costs, and maximum offer. Inputs are stored per property and organization in this browser only.

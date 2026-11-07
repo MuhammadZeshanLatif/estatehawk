@@ -12,6 +12,16 @@ def request(path):
 
 
 class MarketingSessionTests(unittest.TestCase):
+    def test_profit_calculator_is_public_and_listed_on_site(self):
+        with patch("app.main.auth.current", return_value=None), patch("app.main.content.track_safely"):
+            response = main.spa("deal-profit-calculator", request("/deal-profit-calculator"))
+        self.assertEqual(response.status_code, 200)
+        body = response.body.decode()
+        self.assertIn('id="calc-form"', body)
+        self.assertIn('/static/deal-profit-page.js', body)
+        self.assertIn('No account required', body)
+        self.assertIn('/deal-profit-calculator', site.sitemap(request("/sitemap.xml")))
+
     def test_signed_in_header_shows_account_and_dashboard_not_signup(self):
         user = {"name": "Muhammad Zeeshan", "email_verified": 1, "has_avatar": 0}
         header = site.header("features", user)

@@ -5,7 +5,6 @@ import {
 } from './app.js';
 export { outreach, reports, settings, welcome, alerts, counties, admin } from './views2.js';
 import { loadResearch, lockedResearch, compareModal } from './research.js';
-import { estimateDealProfit } from './deal-profit.js';
 export { auctions } from './research.js';
 
 const GREEN = '#14532D', AMBER = '#E0A030', GREY = '#8C938F';
@@ -316,7 +315,6 @@ export async function deal(el, [rawId]) {
     </div>
     <div class="col col3" style="gap:18px;min-width:0">
       <div class="card card-pad" id="offerCard"></div>
-      <div class="card card-pad" id="profitCard"></div>
       <div class="card card-pad" id="contactsCard"></div>
       <div class="card card-pad"><div class="row between" style="margin-bottom:6px"><h3>Activity Notes</h3><div class="row gap6"><button class="btn xs" id="addTask">${ic('clock', 13)} Follow-up</button><button class="btn xs" id="addNote">Add note</button></div></div>
         <div id="acts"></div></div>
@@ -401,7 +399,7 @@ export async function deal(el, [rawId]) {
   let offer = p.offers[0];
   function renderOffer(editing = false) {
     const oc = $('#offerCard');
-    oc.innerHTML = `<h3 style="margin-bottom:12px">Offer Draft</h3>
+    oc.innerHTML = `<div class="row between" style="gap:10px;margin-bottom:12px;flex-wrap:wrap"><h3>Offer Draft</h3><a class="small" href="/deal-profit-calculator" style="color:var(--green);font-weight:600">Free profit calculator ↗</a></div>
       <div class="offer-top"><div class="sugg"><div class="tiny muted">${hasStreet ? 'Suggested offer' : 'Unverified offer estimate'}</div><b class="num">${money(offer?.price ?? sugg)}</b></div>
         <div title="${esc(money(p.est_equity))}"><div class="tiny muted">Est. equity</div><b class="num">${kmoney(p.est_equity)}</b></div><div title="${esc(money(p.appraised_total))}"><div class="tiny muted">Est. value</div><b class="num">${kmoney(p.appraised_total)}</b></div></div>
       ${!hasStreet ? '<p class="small muted" style="margin:10px 0 0">Confirm the parcel and county value before using this estimate in an offer.</p>' : ''}
@@ -449,49 +447,6 @@ export async function deal(el, [rawId]) {
     });
   }
   renderOffer();
-  // Keep assumptions on this browser and property; no guessed resale value is supplied.
-  const profitKey = `eh_profit_${S.meta.org?.id || 'account'}_${p.id}`;
-  let savedProfit = {};
-  try { savedProfit = JSON.parse(localStorage.getItem(profitKey) || '{}') || {}; } catch (_) { savedProfit = {}; }
-  const profitValue = (key, fallback = '') => Number.isFinite(Number(savedProfit[key])) && savedProfit[key] !== '' ? Number(savedProfit[key]) : fallback;
-  const pc = $('#profitCard');
-  pc.innerHTML = `<div class="row between"><h3>Deal profit calculator</h3>${ic('chart', 18)}</div>
-    <p class="small muted" style="margin:7px 0 12px">Test an offer against your own resale and cost estimates.</p>
-    <details id="profitDetails"><summary class="profit-summary">Calculate profit and max offer</summary>
-      <div class="terms profit-fields" style="margin-top:14px">
-        <div class="field"><label for="dpPurchase">Purchase price ($)</label><input class="input" id="dpPurchase" type="number" min="0" step="100" value="${profitValue('purchase', Math.round(offer?.price ?? sugg) || '')}"></div>
-        <div class="field"><label for="dpResale">Expected resale value ($)</label><input class="input" id="dpResale" type="number" min="1" step="100" value="${profitValue('resale')}"></div>
-        <div class="field"><label for="dpRepairs">Repairs ($)</label><input class="input" id="dpRepairs" type="number" min="0" step="100" value="${profitValue('repairs', 0)}"></div>
-        <div class="field"><label for="dpClosing">Buying / closing costs ($)</label><input class="input" id="dpClosing" type="number" min="0" step="100" value="${profitValue('closing', 0)}"></div>
-        <div class="field"><label for="dpMonthly">Monthly holding cost ($)</label><input class="input" id="dpMonthly" type="number" min="0" step="50" value="${profitValue('monthly', 0)}"></div>
-        <div class="field"><label for="dpMonths">Months held</label><input class="input" id="dpMonths" type="number" min="0" max="120" step="1" value="${profitValue('months', 0)}"></div>
-        <div class="field"><label for="dpSelling">Selling costs (%)</label><input class="input" id="dpSelling" type="number" min="0" max="99" step="0.5" value="${profitValue('sellingPercent', 0)}"></div>
-        <div class="field"><label for="dpTarget">Target profit ($)</label><input class="input" id="dpTarget" type="number" min="0" step="100" value="${profitValue('target', 0)}"></div>
-      </div>
-      <label class="profit-tax"><input id="dpPayTaxes" type="checkbox" ${savedProfit.payTaxes ? 'checked' : ''}> I will pay the delinquent taxes (${money(due || 0)})</label>
-      <div id="profitResult" class="profit-result" role="status" aria-live="polite"></div>
-      <p class="tiny muted" style="margin-top:10px">Planning estimate only. Verify resale comps, repairs, title, tax payoff and fees before making an offer. Your inputs stay in this browser.</p>
-    </details>`;
-  const profitIds = { purchase: 'dpPurchase', resale: 'dpResale', repairs: 'dpRepairs', closing: 'dpClosing', monthly: 'dpMonthly', months: 'dpMonths', sellingPercent: 'dpSelling', target: 'dpTarget' };
-  const updateProfit = () => {
-    const values = Object.fromEntries(Object.entries(profitIds).map(([key, field]) => {
-      const raw = $('#' + field, pc).value;
-      return [key, raw === '' ? '' : Number(raw)];
-    }));
-    values.payTaxes = $('#dpPayTaxes', pc).checked;
-    values.taxes = values.payTaxes ? Number(due) || 0 : 0;
-    try { localStorage.setItem(profitKey, JSON.stringify(values)); } catch (_) { /* Calculator still works without storage. */ }
-    const result = $('#profitResult', pc);
-    if (!$('#dpResale', pc).value || !$('#dpPurchase', pc).value) { result.textContent = 'Enter a purchase price and expected resale value to see your estimate.'; return; }
-    const estimate = estimateDealProfit(values);
-    if (!estimate) { result.textContent = 'Check the amounts. Use non-negative numbers and a resale value above zero.'; return; }
-    result.innerHTML = `<div><span>Estimated profit</span><b class="${estimate.profit < 0 ? 'profit-negative' : ''}">${money(estimate.profit)}</b></div>
-      <div><span>Total costs</span><b>${money(estimate.costs)}</b></div><div><span>Return on costs</span><b>${estimate.roi.toFixed(1)}%</b></div>
-      <div><span>Max offer for target profit</span><b>${estimate.maxOffer < 0 ? 'Not feasible' : money(estimate.maxOffer)}</b></div>`;
-  };
-  Object.values(profitIds).forEach((field) => $('#' + field, pc).addEventListener('input', updateProfit));
-  $('#dpPayTaxes', pc).addEventListener('change', updateProfit);
-  updateProfit();
   $('#mOffer').onclick = () => { $('#offerCard').scrollIntoView({ behavior: 'smooth' }); };
   $('#mCall').onclick = () => modal(`<h2>Call owner</h2><p class="muted">County records do not include phone numbers. Use a skip tracing service with the mailing address below, then log the call here.</p>
     <div class="card card-pad small">${esc(title(p.owner_name || p.owner_full_name || 'Not listed'))}<br>${esc(title(p.mail_address || ''))}</div>
