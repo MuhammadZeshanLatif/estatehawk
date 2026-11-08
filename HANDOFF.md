@@ -1,5 +1,11 @@
 # EstateHawk handoff (current state)
 
+## 2026-11-09 SEO audit and first fixes
+
+- Full baseline and prioritized work are in `SEO-AUDIT-2026-11-09.md`. Live sitemap had 19 indexable public URLs, each with a title, description, one H1 and matching canonical; 25 same-site link targets checked without broken links. Ahrefs estimated DR 0, 0 organic keywords/traffic, and 55 nofollow referring domains. These are Ahrefs estimates, not Search Console data.
+- `app/site.py` now omits invented daily sitemap modification dates; published blog articles use their actual CMS update date. Homepage and selected feature/FAQ/how-it-works copy no longer present tax delinquency as proof of seller intent or guarantee every property maps/syncs. Check git and production status before claiming release.
+- Next: access the `getestatehawk.com` Google Search Console property, validate indexing and submit/inspect sitemap; check mobile field Core Web Vitals; publish accurate, source-backed content via the existing blog CMS after editorial review. Do not assume the audit means search traffic has improved.
+
 ## 2026-11-08 deal page spacing cleanup (released and visually checked)
 
 - User screenshot showed two large blank areas before a separate research row, plus an old embedded Deal calculator. Root cause: three independent detail columns ended at different heights, while research cards began in a full-width row beneath the tallest column.
