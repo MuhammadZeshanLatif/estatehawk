@@ -276,11 +276,11 @@ def faqs():
     n = s["n_counties"] or 80
     return [
         ("Which counties do you cover?", f"We currently cover {n} counties across {len(s['states']) or 3} states, pulled from official county treasurer and tax-sale records, and we add more regularly. See the full list on the Counties page."),
-        ("How fresh is the data?", "Every county list is downloaded again every night. New delinquent properties, owner changes and paid-off taxes show up in your account the next morning."),
+        ("How fresh is the data?", "County syncs are scheduled nightly. Each county page shows its last successful update, so you can check freshness before using a lead."),
         ("Is there a free trial?", "Yes. Every plan starts with a 14-day free trial with one county. No credit card is needed to start."),
         ("Can I collaborate with my team?", "Yes. Pro and Agency plans let you invite team members, assign leads and track every call, letter and offer in a shared pipeline."),
         ("Where does the data come from?", "From public records published by county treasurers, auditors and their tax-sale attorneys. We collect, clean, score and map it so you do not have to."),
-        ("What is a deal score?", "A 0 to 100 score that weighs how many years the taxes are behind, the estimated equity, the amount owed, out-of-state ownership and vacancy signals. Higher means a more motivated seller and a better margin."),
+        ("What is a deal score?", "A 0 to 100 research priority score based on public-record signals such as tax debt, estimated equity, absentee ownership and vacancy. It does not verify an owner's willingness to sell or guarantee a margin."),
         ("Can I cancel anytime?", "Yes. Plans are month to month. You can cancel or change your plan whenever you want, and your plan runs until the end of the month you paid for. Payments are not refunded, which is why every plan starts with a 14-day free trial."),
     ]
 
@@ -309,8 +309,8 @@ def app_schema(request):
 # ------------------------------------------------------------------ pages
 def home(request):
     hero = (f'<section class="hero"><div class="sun" aria-hidden="true"></div><div class="wrap"><div>'
-            f'<h1>Find motivated sellers before they hit the <span class="swoosh">market.</span></h1>'
-            f'<p class="lead">Tax-delinquent property leads from official county records, updated every night, scored by AI.</p>'
+            f'<h1>Find tax-delinquent property leads before the <span class="swoosh">competition.</span></h1>'
+            f'<p class="lead">Explore county tax records, prioritize properties with deal scores and find owner details where available.</p>'
             f'<div class="cta-row"><a class="btn btn-green" href="/signup">Start 14-day free trial {ic("arrow")}</a>'
             f'<a class="btn btn-line" href="/how-it-works">{ic("play")} See how it works</a></div>'
             f'<div class="ticks"><span>{ic("card")}No credit card required</span><span>{ic("moon")}Updated nightly</span><span>{ic("layers")}Official county data</span></div>'
@@ -318,16 +318,16 @@ def home(request):
     body = (hero + strip_block() + '<div style="height:14px"></div>' + steps_block() + features_block()
             + f'<section class="sec-tight"><div class="wrap shot">{property_mock()}</div></section>' + pricing_block() + faq_block() + cta_band())
     return page(request, "/", "EstateHawk | Tax-Delinquent Property Leads for Real Estate Investors",
-                "Find motivated sellers before they hit the market. Tax-delinquent property leads from official county records, updated nightly, scored by AI. Start a 14-day free trial.",
+                "Explore tax-delinquent property leads from official county sources. Filter by tax debt, location and deal score, with owner details where available. Start a 14-day free trial.",
                 body, [app_schema(request), faq_schema(faqs()[:4])])
 
 
 DEEP = [
-    ("deal-score", "Deal score", "Know which deals to chase first", "Every lead gets a 0 to 100 score so your team spends the day on the owners most likely to sell, with room for profit.",
+    ("deal-score", "Deal score", "Know which deals to review first", "Every lead gets a 0 to 100 score based on public-record signals, so your team can prioritize research. A score does not confirm the owner wants to sell.",
      ["Years behind on taxes and total amount owed", "Estimated equity from county appraised values", "Out-of-state and absentee owners flagged", "One-line plain-English reason for every score"]),
     ("owner-contacts", "Owner contact finder", "Reach the owner, not a dead end", "We pull the mailing address from county records and look up phone numbers and emails, so you can call, text or mail the same day.",
      ["Mailing address straight from the tax bill", "Phone and email lookups (when available)", "Duplicates merged into one clean contact", "Private owners clearly marked"]),
-    ("map-view", "Map view", "See the whole county at a glance", "Every property is placed on the map. Filter by score, taxes owed, equity or type and the list follows the map as you move.",
+    ("map-view", "Map view", "See the county at a glance", "Properties with usable location data appear on the map. Filter by score, taxes owed, equity or type and the list follows the map as you move.",
      ["Filter by score, equity, years behind and owed", "List updates as you zoom and drag", "Street view and satellite in one click", "Save searches for next time"]),
     ("ai-offers", "AI offer letters", "Send a professional offer in seconds", "Draft a personal offer letter from the property data and your terms, then send it by email or print a batch for the mail.",
      ["Offer price suggested from value and debt", "Your terms, closing days and earnest money", "Batch letters for a whole list", "Edit everything before you send"]),
@@ -357,14 +357,14 @@ def features(request):
 def how(request):
     bc, bs = crumbs(request, [("/how-it-works", "How it works")])
     detail = [("Pick your counties", "Choose the counties where you buy. Start with one on the free trial and add more as you grow. Every county comes from its official treasurer, auditor or tax-sale list."),
-              ("We download and clean the list every night", "Our system reads each county list overnight, removes duplicates, fixes addresses, places every property on the map and notes what changed since yesterday."),
+              ("We sync and clean county lists", "Nightly jobs check each county source, remove duplicates and map properties when usable location data is available. Check the county page for its latest successful sync."),
               ("Every property gets a deal score", "We weigh years behind, amount owed, estimated equity, absentee ownership and vacancy into one score, with a short reason you can read in a second."),
               ("We find the owner", "Mailing address from the tax bill, plus phone and email lookups where available. Private owners are marked so you do not waste time."),
               ("You reach out first", "Call, text, email or mail a letter written by AI. Track every touch in your pipeline and close the deal before it goes to auction.")]
     tl = "".join(f'<div class="card" style="display:flex;gap:18px"><span class="step"><span class="n" style="margin:0">{i + 1}</span></span><div><h3 style="font-size:21px;margin-bottom:6px">{t}</h3><p>{d}</p></div></div>'
                  .replace('<span class="step">', '<span>') for i, (t, d) in enumerate(detail))
     body = (f'<section class="phero"><div class="wrap">{bc}<span class="eyebrow">How it works</span><h1>From county record to <span class="swoosh">signed deal</span></h1>'
-            f'<p>EstateHawk does the boring part every night, so every morning you start with a fresh list of motivated sellers.</p></div></section>'
+            f'<p>EstateHawk organizes public county records into leads you can research, with source and update details visible before outreach.</p></div></section>'
             + steps_block(head=False)
             + f'<section class="sec"><div class="wrap row2"><div style="display:grid;gap:14px">{tl}</div><div>{leads_mock()}<div style="height:18px"></div>{property_mock()}</div></div></section>'
             + faq_block(faqs()[:5]) + cta_band())
@@ -682,17 +682,24 @@ def render(request, path):
 
 def sitemap(request):
     b = base_url(request)
-    today = dt.date.today().isoformat()
-    urls = [("", "1.0", "daily"), ("features", "0.9", "monthly"), ("how-it-works", "0.8", "monthly"), ("deal-profit-calculator", "0.8", "monthly"), ("pricing", "0.9", "monthly"),
-            ("counties", "0.9", "daily"), ("guides", "0.7", "weekly"), ("about", "0.5", "yearly"), ("contact", "0.5", "yearly"),
-            ("faq", "0.6", "monthly"), ("signup", "0.7", "yearly"), ("privacy", "0.2", "yearly"), ("terms", "0.2", "yearly"), ("refund-policy", "0.2", "yearly")]
-    urls += [(f"counties/{slug(STATE_NAMES.get(st, st))}", "0.8", "daily") for st in stats()["states"]]
-    urls += [(f"guides/{g[0]}", "0.6", "monthly") for g in GUIDES]
+    urls = ["", "features", "how-it-works", "deal-profit-calculator", "pricing", "counties", "guides",
+            "about", "contact", "faq", "signup", "privacy", "terms", "refund-policy"]
+    urls += [f"counties/{slug(STATE_NAMES.get(st, st))}" for st in stats()["states"]]
+    urls += [f"guides/{g[0]}" for g in GUIDES]
     blog_posts = content.posts("published")
+    blog_dates = {}
     if blog_posts:
-        urls.append(("blog", "0.7", "weekly"))
-        urls += [(f'blog/{p["slug"]}', "0.6", "weekly") for p in blog_posts]
-    body = "".join(f"<url><loc>{b}/{u}</loc><lastmod>{today}</lastmod><changefreq>{f}</changefreq><priority>{p}</priority></url>" for u, p, f in urls)
+        urls.append("blog")
+        for post in blog_posts:
+            path = f'blog/{post["slug"]}'
+            urls.append(path)
+            if post.get("updated"):
+                blog_dates[path] = str(post["updated"])[:10]
+        if blog_dates:
+            blog_dates["blog"] = max(blog_dates.values())
+    # An invented daily lastmod is less useful than no date at all. Only dated
+    # CMS content has a reliable publication/update timestamp.
+    body = "".join(f"<url><loc>{b}/{u}</loc>{f'<lastmod>{blog_dates[u]}</lastmod>' if u in blog_dates else ''}</url>" for u in urls)
     return f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>'
 
 
