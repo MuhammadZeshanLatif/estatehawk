@@ -148,6 +148,7 @@ def page(request, path, title, desc, body, schema=None, js=False, noindex=False,
            "email": CONTACT_EMAIL}
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{esc(title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{url}">'
+            f'<meta name="google-site-verification" content="NMkeUpE8IatxKPD9znk4QeemsBLuEgwogUIwcgsQElM">'
             f'{"<meta name=robots content=noindex>" if noindex else ""}'
             f'<meta property="og:type" content="website"><meta property="og:site_name" content="{SITE_NAME}"><meta property="og:title" content="{esc(title)}">'
             f'<meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{url}"><meta property="og:image" content="{og_image}">'
