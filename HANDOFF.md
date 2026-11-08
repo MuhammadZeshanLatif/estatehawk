@@ -7,6 +7,7 @@
 - Next: access the `getestatehawk.com` Google Search Console property, validate indexing and submit/inspect sitemap; check mobile field Core Web Vitals; publish accurate, source-backed content via the existing blog CMS after editorial review. Do not assume the audit means search traffic has improved.
 - Google Search Console URL-prefix property `https://getestatehawk.com/` was added and **ownership verified** in the user's signed-in Google account. The public verification meta tag must stay in `app/site.py`. `/sitemap.xml` was submitted and processed successfully with 19 discovered pages. Performance, indexing and Core Web Vitals reports were still processing immediately after setup. Production commits: `7711920` (sitemap and copy), `31601c7` (verification tag). The signed-in Search Console tab was left open.
 - URL Inspection on 2026-11-09: homepage is on Google. `/counties/texas` was discovered but not indexed; live test said available/indexable, and Google acknowledged an indexing request. Do not equate sitemap discovery with indexing. GSC success screenshot is `E:\Projects\EstateHawk\docs\seo-search-console-sitemap-2026-11-09.png`.
+- Ahrefs US blog keyword research and five prioritized content briefs are in `SEO-BLOG-KEYWORDS-2026-11-09.md`. It maps new posts against existing guides and coverage pages to avoid cannibalization. No blog article was created or published in this research step.
 
 ## 2026-11-08 deal page spacing cleanup (released and visually checked)
 
