@@ -2,7 +2,7 @@
 // EstateHawk demo video recorder (Playwright). Scenes live in scenes.js.
 //
 //   node tools/video/record.js [--base URL] [--scenes a,b,c] [--size 1440x810] [--video 1920x1080] [--mobile]
-//                              [--split] [--out DIR] [--no-captions] [--list]
+//                              [--split] [--file shorts/x.js] [--out DIR] [--no-captions] [--list]
 //
 // Login: EH_EMAIL and EH_PASSWORD (run.sh sets these for the local demo copy).
 // Output: <out>/estatehawk-demo.webm (+ .mp4 when ffmpeg is installed), or one file per scene with --split.
@@ -10,10 +10,12 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { chromium, devices } = require('playwright');
-const SCENES = require('./scenes');
+
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); return i < 0 ? d : (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true); };
+const FILE = String(opt('file', 'scenes.js'));
+const SCENES = require(path.resolve(__dirname, FILE));
 const BASE = String(opt('base', process.env.EH_BASE || 'http://127.0.0.1:8199')).replace(/\/$/, '');
 const OUT = path.resolve(String(opt('out', path.join(__dirname, 'out'))));
 const MOBILE = !!opt('mobile', false);
