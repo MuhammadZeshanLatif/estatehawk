@@ -54,7 +54,8 @@ const OVERLAY = `(() => {
     requestAnimationFrame(() => c.classList.toggle('on', !!h)); };
 })()`;
 
-function helpers(page) {
+function helpers(page, events, t0) {
+  const now = () => (Date.now() - t0) / 1000;
   let cur = { x: W / 2, y: H / 2 };
   let caption = '';
   const ensure = async () => { await page.evaluate(OVERLAY).catch(() => {}); if (caption) await page.evaluate((t) => window.__ehvCap(t), caption).catch(() => {}); };
@@ -96,11 +97,21 @@ function helpers(page) {
     async click(sel) {
       if (!(await v.hover(sel))) return false;
       await page.evaluate(([a, b]) => window.__ehvCur(a, b, true), [cur.x, cur.y]).catch(() => {});
+      events.push({ t: now(), x: cur.x, y: cur.y, type: 'click', hold: 1.6 });
       await page.mouse.click(cur.x, cur.y);
       await page.waitForTimeout(150);
       await page.evaluate(([a, b]) => window.__ehvCur && window.__ehvCur(a, b, false), [cur.x, cur.y]).catch(() => {});
       await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
       await ensure();
+      return true;
+    },
+    // zoom the camera onto an element for `hold` seconds (no click). zoom: 1.4 (light) to 2.2 (close)
+    async focus(sel, hold = 2.2, zoom) {
+      const b = await v.box(sel);
+      if (!b) return false;
+      await v.cursorTo(b.x + Math.min(b.width / 2, 160), b.y + Math.min(b.height / 2, 60));
+      events.push({ t: now(), x: b.x + b.width / 2, y: b.y + b.height / 2, type: 'focus', hold, ...(zoom ? { zoom } : {}) });
+      await page.waitForTimeout(hold * 1000 + 900);
       return true;
     },
     async type(sel, text) { if (await v.click(sel)) await page.keyboard.type(text, { delay: 70 }); },
@@ -151,7 +162,7 @@ async function login(context) {
 
 async function newContext(browser, dir) {
   const base = MOBILE ? { ...devices['iPhone 13'] } : { viewport: { width: W, height: H }, deviceScaleFactor: 1 };
-  const ctx = await browser.newContext({ ...base, recordVideo: { dir, size: { width: VW, height: VH } } });
+  const ctx = await browser.newContext({ ...base, recordVideo: { dir, size: { width: W, height: H } } });
   await ctx.addInitScript(() => { try { localStorage.setItem('eh_hide_banner', '1'); localStorage.setItem('eh_chat_seen', '1'); } catch (e) { } });
   await login(ctx);
   return ctx;
@@ -160,7 +171,7 @@ async function newContext(browser, dir) {
 function toMp4(webm, name) {
   const mp4 = path.join(OUT, name + '.mp4');
   try {
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', webm, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4]);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', webm, '-vf', 'scale=' + VW + ':' + VH + ':flags=lanczos', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4]);
     return mp4;
   } catch (e) { return null; }
 }
@@ -174,7 +185,9 @@ function toMp4(webm, name) {
   for (const group of groups) {
     const ctx = await newContext(browser, tmp);
     const page = await ctx.newPage();
-    const v = helpers(page);
+    const t0 = Date.now();
+    const events = [];
+    const v = helpers(page, events, t0);
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
     for (const s of group) {
       console.log('scene:', s.id, '-', s.title);
@@ -187,7 +200,13 @@ function toMp4(webm, name) {
     const name = SPLIT ? 'estatehawk-' + group[0].id : 'estatehawk-demo' + (pick ? '-' + group.map((s) => s.id).join('-').slice(0, 60) : '') + (MOBILE ? '-mobile' : '');
     const webm = path.join(OUT, name + '.webm');
     fs.renameSync(raw, webm);
-    const mp4 = toMp4(webm, name);
+    const evf = path.join(OUT, name + '.events.json');
+    fs.writeFileSync(evf, JSON.stringify({ w: W, h: H, events }));
+    let mp4 = null;
+    try {
+      mp4 = path.join(OUT, name + '.mp4');
+      execFileSync('python3', [path.join(__dirname, 'zoom.py'), webm, evf, mp4, '--size', VW + 'x' + VH], { stdio: 'ignore' });
+    } catch (e) { mp4 = toMp4(webm, name); }
     if (mp4) fs.unlinkSync(webm);
     made.push(mp4 || webm);
   }

@@ -9,6 +9,8 @@
 //   v.scroll(px, ms)           smooth scroll the page (negative = up)
 //   v.scrollTo(selector)       smooth scroll an element into view
 //   v.hover(selector)          move the cursor onto an element
+//   v.focus(selector, sec, z)  camera zooms onto an element for `sec` seconds (z = 1.4 light .. 2.2 close)
+//   clicks zoom automatically
 //   v.wait(ms)                 pause
 //   v.topLeadId()              id of the highest-scored lead (for the deal page)
 //   v.page                     raw Playwright page, for anything special
