@@ -1,5 +1,10 @@
 # EstateHawk handoff (current state)
 
+## 2026-11-10 demo video script
+
+- `tools/video/` records a product walkthrough with Playwright: `bash tools/video/run.sh` (fresh local server, fictional demo data, captions, visible cursor, 1080p mp4). 14 scenes, about 100 seconds. `--scenes`, `--split`, `--mobile` supported.
+- Rule: every new user-visible feature gets a scene in `tools/video/scenes.js` (see `CLAUDE.md`).
+
 ## 2026-11-09 SEO audit and first fixes
 
 - Full baseline and prioritized work are in `SEO-AUDIT-2026-11-09.md`. Live sitemap had 19 indexable public URLs, each with a title, description, one H1 and matching canonical; 25 same-site link targets checked without broken links. Ahrefs estimated DR 0, 0 organic keywords/traffic, and 55 nofollow referring domains. These are Ahrefs estimates, not Search Console data.

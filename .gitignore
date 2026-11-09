@@ -4,3 +4,4 @@ data/*.db*
 .env
 data/secret.key
 data/deploy.log
+tools/video/out/
