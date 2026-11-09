@@ -3,7 +3,15 @@
 // Join:   python3 tools/video/voiceover.py VOICE.wav OUT.mp4 tools/video/out/estatehawk-t*.mp4 --music tools/video/out/music.wav --marks 5.47,16.23,24.3,29.22,31.9,34.25
 // The camera zooms on every v.focus() and click (zoom.py). Scenes run a bit long; voiceover.py trims each to its sentence.
 module.exports = [
-  { id: 't1-intro', run: async (v) => { await v.card('EstateHawk', 'Launching soon', 7000); } },
+  {
+    id: 't1-intro',  // "So... I've been building something for real estate investors, and it's almost ready."
+    run: async (v) => {
+      await v.go('/'); await v.wait(600);
+      await v.focus('h1', 2.4, 1.6);
+      await v.focus('.hero a.btn, a.btn.primary, a:has-text("Start")', 1.2, 1.9);
+      await v.click('a:has-text("Open dashboard"), a[href="/app"]'); await v.wait(1500);
+    },
+  },
   {
     id: 't2-deals',  // "This is EstateHawk. Every day it pulls ... best deals are always on top."
     run: async (v) => {
