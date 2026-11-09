@@ -6,6 +6,34 @@ The camera eases in over 0.6 s, holds on the point (following the cursor a littl
 Frames are upscaled to the output size, so the page fills the whole video."""
 import argparse, json, subprocess
 import numpy as np, cv2
+from scipy.io import wavfile
+from scipy.signal import butter, lfilter
+
+SR = 44100
+
+
+def sfx_track(events, seconds, zoom_default):
+    """mouse-click sound on every click, soft whoosh when the camera zooms in"""
+    out = np.zeros(int(SR * (seconds + 1)))
+    rng = np.random.default_rng(3)
+    b, a = butter(2, [2500 / (SR / 2), 9000 / (SR / 2)], "band")
+    click = lfilter(b, a, rng.normal(0, 1, int(0.012 * SR))) * np.exp(-np.arange(int(0.012 * SR)) / (0.0025 * SR))
+    click2 = click[: int(0.008 * SR)] * 0.6
+    L = int(0.55 * SR)
+    bw, aw = butter(2, [300 / (SR / 2), 2500 / (SR / 2)], "band")
+    whoosh = lfilter(bw, aw, rng.normal(0, 1, L)) * np.sin(np.linspace(0, np.pi, L)) ** 2
+    whoosh *= 0.18 / (np.max(np.abs(whoosh)) + 1e-9)
+    click *= 0.9 / (np.max(np.abs(click)) + 1e-9)
+    click2 *= 0.9 / (np.max(np.abs(click)) + 1e-9)
+    for e in events:
+        w0 = int(max(0, e["t"] - 0.35) * SR)
+        out[w0:w0 + L] += whoosh[: len(out[w0:w0 + L])]
+        if e.get("type") == "click":
+            c0 = int((e["t"] + 0.2) * SR)
+            out[c0:c0 + len(click)] += click[: len(out[c0:c0 + len(click)])]
+            c1 = c0 + int(0.07 * SR)
+            out[c1:c1 + len(click2)] += click2[: len(out[c1:c1 + len(click2)])]
+    return (np.clip(out, -1, 1) * 32767).astype(np.int16)
 
 
 def ease(k):
@@ -48,8 +76,12 @@ def main():
     if fps > 60 or fps < 10:
         fps = 25
     W, H = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    sfx = a.out.rsplit(".", 1)[0] + ".sfx.wav"
+    wavfile.write(sfx, SR, sfx_track(events, max(frames / fps, (events[-1]["t"] + 3) if events else 1), a.zoom))
     ff = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{OW}x{OH}", "-r", str(fps), "-i", "-",
-                           "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", a.out], stdin=subprocess.PIPE)
+                           "-i", sfx, "-map", "0:v", "-map", "1:a", "-shortest",
+                           "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", a.out], stdin=subprocess.PIPE)
     i = 0
     while True:
         ok, f = cap.read()

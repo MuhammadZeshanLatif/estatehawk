@@ -15,6 +15,10 @@ def dur(f):
     return float(run("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f).stdout)
 
 
+def has_audio(f):
+    return bool(run("ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", f).stdout.strip())
+
+
 def pauses(voice):
     err = subprocess.run(["ffmpeg", "-i", voice, "-af", "silencedetect=noise=-35dB:d=0.25", "-f", "null", "-"], capture_output=True, text=True).stderr
     st = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", err)]
@@ -43,19 +47,21 @@ def main():
         p = os.path.join(tmp, f"{i}.mp4")
         have = dur(c) - a.skip
         vf = "fps=30,scale=1920:1080,setsar=1" + (f",tpad=stop_mode=clone:stop_duration={L - have + 0.1:.2f}" if have < L else "")
-        run("ffmpeg", "-y", "-ss", str(a.skip), "-i", c, "-t", f"{L:.3f}", "-vf", vf, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", p)
+        run("ffmpeg", "-y", "-ss", str(a.skip), "-i", c, "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{L:.3f}", "-vf", vf,
+            "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:normalize=0,aformat=sample_rates=44100:channel_layouts=stereo[ca]" if has_audio(c) else "[1:a]anull[ca]",
+            "-map", "0:v", "-map", "[ca]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", p)
         parts.append(p)
     lst = os.path.join(tmp, "list.txt")
     open(lst, "w").write("".join(f"file '{p}'\n" for p in parts))
     joined = os.path.join(tmp, "joined.mp4")
-    run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", joined)
+    run("ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", joined)  # video + clicks
     T = dur(joined)
     ms = int(a.lead * 1000)
     if a.music:
         fc = (f"[1:a]adelay={ms}|{ms},apad,atrim=0:{T:.2f},aformat=channel_layouts=stereo,volume=1.6[v];"
               f"[2:a]atrim=0:{T:.2f},afade=t=out:st={T - 2.5:.2f}:d=2.5,volume=0.32[m];"
               f"[m][v]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=400[md];"
-              f"[md][v]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]")
+              f"[0:a]volume=0.9[sx];[md][v][sx]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.95[a]")
         run("ffmpeg", "-y", "-i", joined, "-i", a.voice, "-i", a.music, "-filter_complex", fc.replace("[m][v]sidechain", "[m][vs]sidechain").replace("volume=1.6[v];", "volume=1.6,asplit[v][vs];"),
             "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", a.out)
     else:
