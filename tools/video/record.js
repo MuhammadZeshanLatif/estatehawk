@@ -37,18 +37,26 @@ const OVERLAY = `(() => {
     background:rgba(16,40,26,.92);color:#fff;font:600 26px/1.3 Inter,system-ui,sans-serif;padding:14px 28px;border-radius:14px;
     max-width:80vw;text-align:center;transition:opacity .35s,transform .35s;pointer-events:none;box-shadow:0 10px 30px rgba(0,0,0,.25)}
   #ehv-cap.on{opacity:1;transform:translateX(-50%) translateY(0)}
-  #ehv-cur{position:fixed;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;z-index:2147483647;
-    background:rgba(22,73,47,.35);border:2px solid #16492F;pointer-events:none;transition:transform .12s}
-  #ehv-cur.down{transform:scale(.7);background:rgba(22,73,47,.6)}
+  #ehv-cur{position:fixed;left:0;top:0;width:30px;height:30px;margin:-3px 0 0 -5px;z-index:2147483647;pointer-events:none;
+    transition:transform .12s;transform-origin:5px 3px;filter:drop-shadow(0 3px 5px rgba(0,0,0,.35))}
+  #ehv-cur.down{transform:scale(.82)}
+  .ehv-rip{position:fixed;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:3px solid #16A34A;z-index:2147483646;
+    pointer-events:none;animation:ehvrip .6s ease-out forwards}
+  @keyframes ehvrip{from{transform:scale(.4);opacity:1}to{transform:scale(3.4);opacity:0}}
   #ehv-card{position:fixed;inset:0;z-index:2147483645;background:#F7F6F2;display:flex;flex-direction:column;align-items:center;
     justify-content:center;gap:18px;font-family:Inter,system-ui,sans-serif;color:#14251B;opacity:0;transition:opacity .5s}
   #ehv-card.on{opacity:1}#ehv-card img{width:96px}#ehv-card h1{font:700 64px Georgia,serif;margin:0;color:#16492F}
   #ehv-card p{font:500 30px Inter,system-ui,sans-serif;margin:0;color:#3E5246}\`;
   document.documentElement.appendChild(css);
   const add = (id) => { const d = document.createElement('div'); d.id = id; document.documentElement.appendChild(d); return d; };
-  add('ehv-cap'); add('ehv-cur').style.transform = 'translate(-100px,-100px)';
+  add('ehv-cap');
+  const cu = add('ehv-cur');
+  cu.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24"><path d="M4 2l15 9.2-6.6 1.5 3.9 7.4-2.9 1.5-3.9-7.5L4 19z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  try { const p = JSON.parse(sessionStorage.getItem('ehv_cur') || 'null'); if (p) { cu.style.left = p[0] + 'px'; cu.style.top = p[1] + 'px'; } else cu.style.left = '-100px'; } catch (e) { }
   window.__ehvCap = (t) => { const c = document.getElementById('ehv-cap'); if (!t) { c.classList.remove('on'); return; } c.textContent = t; c.classList.add('on'); };
-  window.__ehvCur = (x, y, down) => { const c = document.getElementById('ehv-cur'); c.style.left = x + 'px'; c.style.top = y + 'px'; c.style.transform = ''; c.classList.toggle('down', !!down); };
+  window.__ehvCur = (x, y, down) => { const c = document.getElementById('ehv-cur'); c.style.left = x + 'px'; c.style.top = y + 'px'; c.classList.toggle('down', !!down);
+    try { sessionStorage.setItem('ehv_cur', JSON.stringify([x, y])); } catch (e) { }
+    if (down) { const r = document.createElement('div'); r.className = 'ehv-rip'; r.style.left = x + 'px'; r.style.top = y + 'px'; document.documentElement.appendChild(r); setTimeout(() => r.remove(), 700); } };
   window.__ehvCard = (h, p) => { let c = document.getElementById('ehv-card'); if (!c) c = add('ehv-card');
     c.innerHTML = h ? '<img src="/site/logo-mark.svg" onerror="this.remove()"><h1></h1><p></p>' : ''; if (h) { c.querySelector('h1').textContent = h; c.querySelector('p').textContent = p || ''; }
     requestAnimationFrame(() => c.classList.toggle('on', !!h)); };
@@ -62,21 +70,33 @@ function helpers(page, events, t0) {
   const v = {
     page,
     wait: (ms) => page.waitForTimeout(ms),
+    sceneCap: '',
+    // open an app page by clicking it in the sidebar (or load it when not in the app yet)
+    async nav(route) {
+      const inApp = page.url().startsWith(BASE + '/app');
+      if (inApp && new RegExp('#/' + route + '(/|$)').test(page.url())) return;
+      if (inApp && await page.locator(`#nav a[href="#/${route}"]`).count()) {
+        await v.click(`#nav a[href="#/${route}"]`, 0.5, 1.8);
+        await page.waitForSelector('.page-loader', { state: 'detached', timeout: 6000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        await ensure();
+      } else await v.go('#/' + route);
+    },
     async go(p) {
-      caption = '';  // a new page starts without the previous scene's caption
+      caption = v.sceneCap;  // a new page keeps only the current scene's caption
       await page.evaluate(() => window.__ehvCap && window.__ehvCap('')).catch(() => {});
       const url = p.startsWith('#') ? BASE + '/app' + p : BASE + p;
       const sameApp = p.startsWith('#') && page.url().startsWith(BASE + '/app');
       if (sameApp) await page.evaluate((h) => { location.hash = h; }, p);
       else await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-      await page.waitForSelector('.page-loader', { state: 'detached', timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(400);
+      await page.waitForSelector('.page-loader', { state: 'detached', timeout: 6000 }).catch(() => {});
       await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
       await ensure();
       await v.cursorTo(cur.x, cur.y);
     },
     async caption(text) { caption = CAPTIONS ? text : ''; await ensure(); if (!caption) await page.evaluate(() => window.__ehvCap && window.__ehvCap('')).catch(() => {}); },
-    async cursorTo(x, y, steps = 18) {
+    async cursorTo(x, y, steps = 34) {
       const from = { ...cur };
       for (let i = 1; i <= steps; i++) {
         const t = i / steps, e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -94,14 +114,19 @@ function helpers(page, events, t0) {
       return el.boundingBox();
     },
     async hover(sel) { const b = await v.box(sel); if (b) await v.cursorTo(b.x + Math.min(b.width / 2, 120), b.y + b.height / 2); return !!b; },
-    async click(sel) {
+    // wait until `sec` seconds after the recording started (keeps a single take in time with the voice)
+    log: (m) => console.log('   ' + now().toFixed(1) + 's', m),
+    async until(sec) { const ms = sec * 1000 - (Date.now() - t0); if (ms > 0) await page.waitForTimeout(ms); else console.log('   (late by', (-ms / 1000).toFixed(1) + 's at', sec + 's)'); },
+    // click with a visible cursor, ripple and camera zoom. hold: seconds the camera stays zoomed (short when the click opens a new page)
+    async click(sel, hold = 1.6, zoom) {
       if (!(await v.hover(sel))) return false;
+      events.push({ t: now() + 0.25, x: cur.x, y: cur.y, type: 'click', hold, ...(zoom ? { zoom } : {}) });
+      await page.waitForTimeout(450);  // camera zooms in while the cursor rests on the button
       await page.evaluate(([a, b]) => window.__ehvCur(a, b, true), [cur.x, cur.y]).catch(() => {});
-      events.push({ t: now(), x: cur.x, y: cur.y, type: 'click', hold: 1.6 });
       await page.mouse.click(cur.x, cur.y);
       await page.waitForTimeout(150);
       await page.evaluate(([a, b]) => window.__ehvCur && window.__ehvCur(a, b, false), [cur.x, cur.y]).catch(() => {});
-      await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(250);
       await ensure();
       return true;
     },
@@ -163,6 +188,7 @@ async function login(context) {
 async function newContext(browser, dir) {
   const base = MOBILE ? { ...devices['iPhone 13'] } : { viewport: { width: W, height: H }, deviceScaleFactor: 1 };
   const ctx = await browser.newContext({ ...base, recordVideo: { dir, size: { width: W, height: H } } });
+  await ctx.addInitScript(OVERLAY.replace('(() => {', '(() => { if (!document.documentElement || document.readyState === "loading") { document.addEventListener("DOMContentLoaded", () => setTimeout(arguments.callee, 0)); return; }').replace('(() => {', '(function f() {').replace('setTimeout(arguments.callee, 0)', 'setTimeout(f, 0)'));
   await ctx.addInitScript(() => { try { localStorage.setItem('eh_hide_banner', '1'); localStorage.setItem('eh_chat_seen', '1'); } catch (e) { } });
   await login(ctx);
   return ctx;
@@ -191,6 +217,8 @@ function toMp4(webm, name) {
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
     for (const s of group) {
       console.log('scene:', s.id, '-', s.title);
+      v.sceneCap = CAPTIONS && s.caption ? s.caption : '';
+      await v.caption(v.sceneCap);
       try { await s.run(v); } catch (e) { console.log('   scene error:', e.message.split('\n')[0]); }
     }
     await v.caption('');
