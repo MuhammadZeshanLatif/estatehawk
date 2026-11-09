@@ -26,12 +26,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("voice"); ap.add_argument("out"); ap.add_argument("clips", nargs="+")
     ap.add_argument("--music"); ap.add_argument("--skip", type=float, default=1.0, help="seconds cut from the start of each clip (page loading)")
+    ap.add_argument("--marks", help="scene boundaries in seconds of the voice, comma separated (overrides pause detection)")
     ap.add_argument("--lead", type=float, default=0.6, help="silence before the voice starts")
     a = ap.parse_args()
     total = dur(a.voice)
     ps = [p for p in pauses(a.voice) if 0.5 < p[0] < total - 0.5]
     cuts = sorted(sorted(ps, key=lambda p: p[1] - p[0], reverse=True)[:len(a.clips) - 1])
-    marks = [0.0] + [(s + e) / 2 for s, e in cuts] + [total]
+    marks = [0.0] + ([float(x) for x in a.marks.split(",")] if a.marks else [(s + e) / 2 for s, e in cuts]) + [total]
     lens = [marks[i + 1] - marks[i] for i in range(len(a.clips))]
     lens[0] += a.lead
     lens[-1] += 1.5  # let the end card breathe

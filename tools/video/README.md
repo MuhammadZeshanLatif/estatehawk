@@ -26,3 +26,4 @@ Current scenes: intro, home, deals, deal, offer, map, auctions, alerts, outreach
 3. Music: `python3 tools/video/music.py tools/video/out/music.wav 60` (generated, copyright-free) or any track you own.
 4. Join: `python3 tools/video/voiceover.py VOICE.wav tools/video/out/tour.mp4 tools/video/out/estatehawk-t*.mp4 --music tools/video/out/music.wav`
    It splits the voice at its longest pauses (one part per clip), trims each clip to its part and mixes the music under the voice.
+   If two sentences run together, pass exact boundaries: `--marks 5.47,16.23,...` (seconds). The first tour used `--marks 5.47,16.23,24.3,29.22,31.9,34.25`.
