@@ -70,7 +70,7 @@ def main():
     a = ap.parse_args()
     OW, OH = map(int, a.size.split("x"))
     ev = json.load(open(a.events))
-    events = sorted(ev.get("events", []), key=lambda e: e["t"])
+    events = sorted([e for e in ev.get("events", []) if e.get("type") in ("click", "focus")], key=lambda e: e["t"])
     cap = cv2.VideoCapture(a.raw)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25
     if fps > 60 or fps < 10:

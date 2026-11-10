@@ -2,7 +2,7 @@
 // Voice: tools/video/shorts/ad-voice.txt (Google AI Studio, voice Koda, emotion tags).
 // T = when each sentence starts in the voice (seconds), from transcribing the voice file. Update T when the voice changes.
 // Record: bash tools/video/run.sh --file shorts/ad.js --no-captions
-// Join:   python3 tools/video/voiceover.py VOICE.wav OUT.mp4 tools/video/out/estatehawk-demo.mp4 --music tools/video/out/music.wav --skip 0.8 --lead 0.4
+// Join:   python3 tools/video/fit.py tools/video/out/ad/estatehawk-demo.mp4 VOICE.wav OUT.mp4 --t 0,7.2,9.0,17.9,22.9,29.3,35.6,38.6,42.7,46.5 --music tools/video/out/music.wav
 const T = (process.env.AD_T || '0,4.6,6.6,15.0,20.0,27.0,32.5,36.0,41.5,46.0').split(',').map(Number);
 const O = 1.2;  // where the voice starts in the raw recording (skip 0.8 + lead 0.4)
 
@@ -11,11 +11,12 @@ module.exports = [
     id: 'ad',
     title: 'EstateHawk intro ad',
     run: async (v) => {
-      const at = (i) => v.until(T[i] + O);
+      const at = (i) => v.mark(i);  // fit.py lines each part up with its sentence (machine speed does not matter)
       const esc = () => v.page.keyboard.press('Escape').catch(() => {});
 
       // 0 "Imagine knowing which homeowners are behind on their taxes... before every other investor does."
       await v.go('/');
+      at(0);
       await v.cursorTo(980, 560);
       await v.focus('h1', 2.6, 1.55);
       await v.focus('.hero a.btn, a.btn.primary', 1.0, 1.9);
@@ -39,35 +40,33 @@ module.exports = [
       await at(4);
       await v.click('#leadTable tbody tr b', 0.6, 1.9);
       await v.page.waitForSelector('.timeline', { timeout: 10000 }).catch(() => {});
-      await v.focus('.timeline', 2.2, 1.8);
+      await v.focus('.timeline', 1.5, 1.8);
       await v.scrollTo('#dataCard');
-      await v.focus('#dataCard', 1.8, 1.8);
+      await v.focus('#dataCard', 1.2, 1.8);
 
       // 5 "Flood zone, the state's tax-sale rules, and a max-offer calculator, all on one screen."
       await at(5);
-      await v.scrollTo('#floodResearch'); await v.focus('#floodResearch', 0.9, 1.7);
-      await v.scrollTo('#rulesResearch'); await v.focus('#rulesResearch', 0.9, 1.5);
-      await v.scrollTo('#calcCard'); await v.focus('#calcCard', 1.0, 1.4);
+      await v.scrollTo('#floodResearch'); await v.focus('#floodResearch', 0.8, 1.7);
+      await v.scrollTo('#calcCard'); await v.focus('#calcCard', 0.9, 1.4);
 
       // 6 "Ready to reach out? Draft an offer letter in one click."
       await at(6);
       await v.scrollTo('#offerCard');
-      await v.click('#oGen', 1.6, 1.8);
-      await v.wait(1200); await esc();
+      await v.click('#oGen', 1.0, 1.8);
+      await v.wait(500); await esc();
 
       // 7 "See every lead on the map, and get an alert the moment something changes."
       await at(7);
       await v.scroll(-8000, 500);
       await v.click('#nav a[href="#/map"]', 0.5, 1.8);
       await v.page.waitForSelector('#bigMap', { timeout: 10000 }).catch(() => {});
-      await v.focus('#mItems .pcard', 0.9, 1.7);
       await v.click('#nav a[href="#/alerts"]', 0.5, 1.8);
-      await v.focus('#feed', 1.0, 1.5);
+      await v.focus('#feed', 0.6, 1.5);
 
       // 8 "Then track every owner, from the first letter, to the closed deal."
       await at(8);
       await v.click('#nav a[href="#/outreach"]', 0.5, 1.8);
-      await v.focus('#kanban', 2.4, 1.3);
+      await v.focus('#kanban', 1.4, 1.3);
 
       // 9 "No more stale lists. No more guessing. Start your free fourteen-day trial at getestatehawk.com. Your next deal is already waiting."
       await at(9);

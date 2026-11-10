@@ -96,15 +96,15 @@ function helpers(page, events, t0) {
       await v.cursorTo(cur.x, cur.y);
     },
     async caption(text) { caption = CAPTIONS ? text : ''; await ensure(); if (!caption) await page.evaluate(() => window.__ehvCap && window.__ehvCap('')).catch(() => {}); },
-    async cursorTo(x, y, steps = 34) {
-      const from = { ...cur };
-      for (let i = 1; i <= steps; i++) {
-        const t = i / steps, e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-        const px = from.x + (x - from.x) * e, py = from.y + (y - from.y) * e;
-        await page.mouse.move(px, py);
-        await page.evaluate(([a, b]) => window.__ehvCur && window.__ehvCur(a, b), [px, py]).catch(() => {});
-        await page.waitForTimeout(16);
-      }
+    // glide the visible cursor (CSS animation, so its speed does not depend on how busy the machine is)
+    async cursorTo(x, y, ms) {
+      const d = Math.hypot(x - cur.x, y - cur.y);
+      ms = ms ?? Math.round(Math.min(900, 280 + d * 0.6));
+      await page.evaluate(([a, b, t]) => { const c = document.getElementById('ehv-cur'); if (!c) return;
+        c.style.transition = `left ${t}ms cubic-bezier(.45,0,.2,1), top ${t}ms cubic-bezier(.45,0,.2,1), transform .12s`;
+        window.__ehvCur(a, b); }, [x, y, ms]).catch(() => {});
+      await page.mouse.move(x, y, { steps: 4 });
+      await page.waitForTimeout(ms);
       cur = { x, y };
     },
     async box(sel) {
@@ -116,6 +116,8 @@ function helpers(page, events, t0) {
     async hover(sel) { const b = await v.box(sel); if (b) await v.cursorTo(b.x + Math.min(b.width / 2, 120), b.y + b.height / 2); return !!b; },
     // wait until `sec` seconds after the recording started (keeps a single take in time with the voice)
     log: (m) => console.log('   ' + now().toFixed(1) + 's', m),
+    // mark where a voice sentence starts; fit.py later stretches each marked part to its sentence length
+    mark(name) { events.push({ t: now(), type: 'mark', name: String(name) }); },
     async until(sec) { const ms = sec * 1000 - (Date.now() - t0); if (ms > 0) await page.waitForTimeout(ms); else console.log('   (late by', (-ms / 1000).toFixed(1) + 's at', sec + 's)'); },
     // click with a visible cursor, ripple and camera zoom. hold: seconds the camera stays zoomed (short when the click opens a new page)
     async click(sel, hold = 1.6, zoom) {
@@ -136,7 +138,7 @@ function helpers(page, events, t0) {
       if (!b) return false;
       await v.cursorTo(b.x + Math.min(b.width / 2, 160), b.y + Math.min(b.height / 2, 60));
       events.push({ t: now(), x: b.x + b.width / 2, y: b.y + b.height / 2, type: 'focus', hold, ...(zoom ? { zoom } : {}) });
-      await page.waitForTimeout(hold * 1000 + 900);
+      await page.waitForTimeout(hold * 1000 + 500);
       return true;
     },
     async type(sel, text) { if (await v.click(sel)) await page.keyboard.type(text, { delay: 70 }); },
