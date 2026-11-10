@@ -191,6 +191,21 @@ async function newContext(browser, dir) {
   const base = MOBILE ? { ...devices['iPhone 13'] } : { viewport: { width: W, height: H }, deviceScaleFactor: 1 };
   const ctx = await browser.newContext({ ...base, recordVideo: { dir, size: { width: W, height: H } } });
   await ctx.addInitScript(OVERLAY.replace('(() => {', '(() => { if (!document.documentElement || document.readyState === "loading") { document.addEventListener("DOMContentLoaded", () => setTimeout(arguments.callee, 0)); return; }').replace('(() => {', '(function f() {').replace('setTimeout(arguments.callee, 0)', 'setTimeout(f, 0)'));
+  // map tiles: real Esri tiles when reachable, otherwise the stand-in tiles from tiles.py (EH_TILES)
+  let esriOk = true;
+  await ctx.route('https://server.arcgisonline.com/**', async (route) => {
+    const u = route.request().url();
+    if (esriOk) {
+      try { const r = await route.fetch({ timeout: 4000 }); if (r.ok()) return route.fulfill({ response: r }); } catch (e) { }
+      esriOk = false;
+    }
+    const m = u.match(/services\/(World_\w+)\/MapServer\/tile\/(\d+)\/(\d+)\/(\d+)/);
+    if (!m || !process.env.EH_TILES) return route.abort();
+    try {
+      const r = await ctx.request.get(`${process.env.EH_TILES}/${m[1] === 'World_Imagery' ? 'sat' : 'street'}/${m[2]}/${m[3]}/${m[4]}`);
+      return route.fulfill({ status: 200, contentType: 'image/jpeg', body: await r.body(), headers: { 'Access-Control-Allow-Origin': '*' } });
+    } catch (e) { return route.abort(); }
+  });
   await ctx.addInitScript(() => { try { localStorage.setItem('eh_hide_banner', '1'); localStorage.setItem('eh_chat_seen', '1'); } catch (e) { } });
   await login(ctx);
   return ctx;

@@ -2,7 +2,7 @@
 python3 tools/video/zoom.py RAW.webm EVENTS.json OUT.mp4 [--size 1920x1080] [--zoom 1.8]
 
 EVENTS.json (written by record.js): {"events":[{"t":seconds,"x":px,"y":px,"type":"click"|"focus","hold":seconds,"zoom":1.8}], "w":..,"h":..}
-The camera eases in over 0.6 s, holds on the point (following the cursor a little), and eases out over 0.7 s.
+Zoom is gentle (max 1.4x) and slow; nearby events share one shot, so the camera pans between them instead of zooming in and out again.
 Frames are upscaled to the output size, so the page fills the whole video."""
 import argparse, json, subprocess
 import numpy as np, cv2
@@ -22,12 +22,15 @@ def sfx_track(events, seconds, zoom_default):
     L = int(0.55 * SR)
     bw, aw = butter(2, [300 / (SR / 2), 2500 / (SR / 2)], "band")
     whoosh = lfilter(bw, aw, rng.normal(0, 1, L)) * np.sin(np.linspace(0, np.pi, L)) ** 2
-    whoosh *= 0.18 / (np.max(np.abs(whoosh)) + 1e-9)
+    whoosh *= 0.10 / (np.max(np.abs(whoosh)) + 1e-9)
     click *= 0.9 / (np.max(np.abs(click)) + 1e-9)
     click2 *= 0.9 / (np.max(np.abs(click)) + 1e-9)
-    for e in events:
-        w0 = int(max(0, e["t"] - 0.35) * SR)
-        out[w0:w0 + L] += whoosh[: len(out[w0:w0 + L])]
+    last = -99
+    for e in sorted(events, key=lambda e: e["t"]):
+        if e["t"] - last > MERGE_GAP:  # whoosh only when a new zoom shot starts
+            w0 = int(max(0, e["t"] - 0.6) * SR)
+            out[w0:w0 + L] += whoosh[: len(out[w0:w0 + L])]
+        last = e["t"] + e.get("hold", 1.8)
         if e.get("type") == "click":
             c0 = int((e["t"] + 0.2) * SR)
             out[c0:c0 + len(click)] += click[: len(out[c0:c0 + len(click)])]
@@ -41,26 +44,48 @@ def ease(k):
     return k * k * (3 - 2 * k)
 
 
-def camera(events, t, W, H, default_zoom):
-    """zoom and centre at time t"""
-    z, cx, cy = 1.0, W / 2, H / 2
+MAX_ZOOM = 1.4   # never closer than this: calm, professional framing
+MERGE_GAP = 3.0  # events closer than this keep the camera in (it pans instead of zooming out and in again)
+TAU = 0.45       # seconds; camera smoothing (higher = slower, softer moves)
+
+
+def soft(z):
+    """requested zoom (1.4..2.2 in scene files) -> gentle zoom 1.15..1.4"""
+    return 1 + min(MAX_ZOOM - 1, (max(1.0, z) - 1) * 0.45)
+
+
+def plan(events, default_zoom):
+    """camera shots: one per group of nearby events; each event inside a group is a pan target"""
+    shots = []
     for e in events:
-        zin, hold, zout = 0.6, e.get("hold", 1.8), 0.7
-        s = e["t"] - 0.35
-        if s <= t <= s + zin + hold + zout:
-            if t < s + zin:
-                k = ease((t - s) / zin)
-            elif t < s + zin + hold:
-                k = 1
-            else:
-                k = 1 - ease((t - s - zin - hold) / zout)
-            ez = e.get("zoom", default_zoom)
-            nz = 1 + (ez - 1) * k
-            if nz > z:
-                z = nz
-                cx = W / 2 + (e["x"] - W / 2) * k
-                cy = H / 2 + (e["y"] - H / 2) * k
-    return z, cx, cy
+        z = soft(e.get("zoom", default_zoom))
+        s0, s1 = e["t"] - 0.5, e["t"] + e.get("hold", 1.8)
+        if shots and s0 - shots[-1]["end"] < MERGE_GAP:
+            shots[-1]["end"] = max(shots[-1]["end"], s1)
+            shots[-1]["pts"].append((s0, e["x"], e["y"], z))
+        else:
+            shots.append({"start": s0, "end": s1, "pts": [(s0, e["x"], e["y"], z)]})
+    return shots
+
+
+def target(shots, t, W, H):
+    for sh in shots:
+        if sh["start"] <= t <= sh["end"]:
+            p = [q for q in sh["pts"] if q[0] <= t][-1] if any(q[0] <= t for q in sh["pts"]) else sh["pts"][0]
+            return p[3], p[1], p[2]
+    return 1.0, W / 2, H / 2
+
+
+class Camera:
+    """critically damped follow: two cascaded smoothing stages give slow, eased starts and stops"""
+    def __init__(self, W, H, fps):
+        self.a = 1 - np.exp(-1 / (fps * TAU / 2))
+        self.s1 = np.array([1.0, W / 2, H / 2]); self.s2 = self.s1.copy()
+
+    def step(self, tgt):
+        self.s1 += (np.array(tgt) - self.s1) * self.a
+        self.s2 += (self.s1 - self.s2) * self.a
+        return self.s2
 
 
 def main():
@@ -82,13 +107,15 @@ def main():
     ff = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{OW}x{OH}", "-r", str(fps), "-i", "-",
                            "-i", sfx, "-map", "0:v", "-map", "1:a", "-shortest",
                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", a.out], stdin=subprocess.PIPE)
+    shots = plan(events, a.zoom)
+    cam = Camera(W, H, fps)
     i = 0
     while True:
         ok, f = cap.read()
         if not ok:
             break
         t = i / fps
-        z, cx, cy = camera(events, t, W, H, a.zoom)
+        z, cx, cy = cam.step(target(shots, t + 0.35, W, H))
         cw, ch = W / z, H / z
         x0 = min(max(cx - cw / 2, 0), W - cw)
         y0 = min(max(cy - ch / 2, 0), H - ch)

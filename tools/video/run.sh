@@ -20,6 +20,13 @@ SECRET_KEY=video-demo ESTATEHAWK_DB="$WORK/demo.db" ESTATEHAWK_NO_SCHEDULER=1 GE
 echo $! > "$WORK/server.pid"
 trap 'kill "$(cat "$WORK/server.pid")" 2>/dev/null || true' EXIT
 
+# stand-in map tiles (the cloud workspace cannot reach server.arcgisonline.com)
+TPORT=$((PORT + 1000))
+python3 "$ROOT/tools/video/tiles.py" "$TPORT" > "$WORK/tiles.log" 2>&1 &
+echo $! > "$WORK/tiles.pid"
+export EH_TILES="http://127.0.0.1:$TPORT"
+trap 'kill "$(cat "$WORK/server.pid")" "$(cat "$WORK/tiles.pid")" 2>/dev/null || true' EXIT
+
 for i in $(seq 1 40); do curl -sf "$EH_BASE/healthz" >/dev/null && break; sleep 0.5; done
 # admin account + fictional demo leads
 curl -sf -c "$WORK/c.txt" -H 'Content-Type: application/json' "$EH_BASE/api/auth/setup" \
