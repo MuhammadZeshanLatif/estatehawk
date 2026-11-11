@@ -89,3 +89,9 @@ EstateHawk. Start your free trial at getestatehawk dot com.
 2. Product part: `bash tools/video/run.sh --file shorts/story-ad.js --no-captions --out tools/video/out/story`
 3. Ad 1: clips + product part in order, cut to the sentence times, voice on top, music ducked.
 4. Ad 2: L and R clips cropped to the center half and placed side by side, thin divider line, small "THE OLD WAY" / "WITH ESTATEHAWK" labels, product part full screen in the middle.
+
+### How the two finished ads were made (2026-11-11)
+- Clips: Google Flow (Omni 1.1 Flash, 16:9, 720p, 8 s, 12 credits each), prompts above. Voices: AI Studio Gemini 3.8 Flash TTS (Dan = Charon, Emily = Aoede, narrator = Charon).
+- `story/cards.js WORK` renders the end cards and split-screen labels.
+- `story/voice_times.py VOICE.wav` prints when each sentence starts; put those times in the spec.
+- `story/build.py story/dan.json` and `story/split.json` (replace WORK and CLIPS with real folders) build the ads.

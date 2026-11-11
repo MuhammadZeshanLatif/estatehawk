@@ -1,0 +1,14 @@
+{"out": "WORK/estatehawk-story-dan.mp4", "voice": "WORK/dan-voice.wav", "music": "/home/claude/estatehawk/tools/video/out/music.wav", "length": 66.5,
+ "shots": [
+  {"at": 0, "to": 10.4, "src": "CLIPS/Woman_holding_bills_near_husband_6d416f0f.mp4"},
+  {"at": 10.4, "to": 17.3, "src": "CLIPS/Man_scrolling_laptop_at_night_9281cd1c.mp4"},
+  {"at": 17.3, "to": 23.5, "src": "CLIPS/Man_reacting_to_phone_call_0293dcbc.mp4", "in": 0.8},
+  {"at": 23.5, "to": 27.3, "src": "CLIPS/Man_looking_at_sleeping_wife_0c628034.mp4", "in": 1.5},
+  {"at": 27.3, "to": 30.5, "src": "CLIPS/Man_looking_at_laptop_fdc09574.mp4", "in": 3.0},
+  {"at": 30.5, "to": 36.5, "src": "/home/claude/estatehawk/tools/video/out/story/estatehawk-demo.mp4", "in": 2.85, "out": 11.07},
+  {"at": 36.5, "to": 43.7, "src": "/home/claude/estatehawk/tools/video/out/story/estatehawk-demo.mp4", "in": 11.07, "out": 20.41},
+  {"at": 43.7, "to": 47.7, "src": "/home/claude/estatehawk/tools/video/out/story/estatehawk-demo.mp4", "in": 23.0, "out": 28.57},
+  {"at": 47.7, "to": 55.0, "src": "WORK/dan6.mp4"},
+  {"at": 55.0, "to": 58.4, "src": "CLIPS/Man_gives_envelope_to_woman_86e4d5a2.mp4", "in": 3.5},
+  {"at": 58.4, "to": 66.5, "image": "WORK/card-dan.png"}
+ ]}

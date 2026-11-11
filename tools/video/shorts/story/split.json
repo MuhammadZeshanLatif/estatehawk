@@ -1,0 +1,11 @@
+{"out": "WORK/estatehawk-story-split.mp4", "voice": "WORK/split-voice.wav", "music": "/home/claude/estatehawk/tools/video/out/music.wav", "length": 37.5,
+ "shots": [
+  {"at": 0, "to": 3.4, "left": "CLIPS/Man_working_at_desk_6210a582.mp4", "right": "CLIPS/Man_closing_laptop_in_kitchen_a5fa12d2.mp4", "overlay": "WORK/labels.png"},
+  {"at": 3.4, "to": 9.8, "left": "CLIPS/Man_copying_numbers_into_notebook_4728b354.mp4", "right": "CLIPS/Man_sleeping_in_bed_4aa65260.mp4", "overlay": "WORK/labels.png"},
+  {"at": 9.8, "to": 13.8, "left": "CLIPS/Man_sleeping_at_office_desk_d1c8512d.mp4", "right": "CLIPS/Man_opening_laptop_in_kitchen_1c9d8b35.mp4", "overlay": "WORK/labels.png"},
+  {"at": 13.8, "to": 19.0, "src": "/home/claude/estatehawk/tools/video/out/story/estatehawk-demo.mp4", "in": 4.0, "out": 11.07},
+  {"at": 19.0, "to": 23.7, "src": "/home/claude/estatehawk/tools/video/out/story/estatehawk-demo.mp4", "in": 11.6, "out": 18.0},
+  {"at": 23.7, "to": 28.9, "left": "CLIPS/Man_holding_phone_in_frustration_d6eacf38.mp4", "right": "CLIPS/Man_talking_on_phone_writing_815e4d75.mp4", "overlay": "WORK/labels.png"},
+  {"at": 28.9, "to": 31.7, "left": "CLIPS/Man_sitting_at_laptop_frustrated_ae20526c.mp4", "right": "CLIPS/Man_shaking_hands_with_homeowner_e0b20ae2.mp4", "overlay": "WORK/labels.png", "in": 2.0},
+  {"at": 31.7, "to": 37.5, "image": "WORK/card-split.png"}
+ ]}
