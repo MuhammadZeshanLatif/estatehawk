@@ -1,0 +1,13 @@
+{"out": "WORK/estatehawk-story-veteran.mp4", "voice": "WORK/vet-voice.wav", "music": "/home/claude/estatehawk/tools/video/out/music.wav", "length": 58.0,
+ "shots": [
+  {"at": 0, "to": 6.7, "src": "CLIPS/Veteran_holding_photo_on_porch_24f49635.mp4"},
+  {"at": 6.7, "to": 12.9, "src": "CLIPS/Veteran_reviewing_medical_bills_390f0486.mp4"},
+  {"at": 12.9, "to": 18.9, "src": "CLIPS/Veteran_reading_shocking_letter_965639e4.mp4", "in": 0.5},
+  {"at": 18.9, "to": 23.9, "src": "CLIPS/Veteran_holding_photo_on_porch_24f49635.mp4", "in": 3.0},
+  {"at": 23.9, "to": 31.0, "src": "CLIPS/Man_closing_laptop_standing_up_764b6aa4.mp4"},
+  {"at": 31.0, "to": 33.5, "src": "/home/claude/estatehawk/tools/video/out/story/estatehawk-demo.mp4", "in": 11.6, "out": 15.0},
+  {"at": 33.5, "to": 37.6, "src": "CLIPS/Man_knocking_on_front_door_216d0132.mp4", "in": 0.5},
+  {"at": 37.6, "to": 43.1, "src": "CLIPS/Man_explaining_papers_to_veteran_97199dd7.mp4", "in": 1.0},
+  {"at": 43.1, "to": 49.7, "src": "CLIPS/Veteran_hugging_family_on_lawn_3222ef47.mp4", "in": 1.0},
+  {"at": 49.7, "to": 58.0, "image": "WORK/card-vet.png"}
+ ]}

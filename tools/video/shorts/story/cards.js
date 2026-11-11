@@ -26,6 +26,9 @@ const label = (a, b) => `<html><head>${font}<style>${base}body{background:transp
   const shots = [
     ['card-dan.png', card('Your next deal is already waiting.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['card-split.png', card('Same market. Different morning.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-mail.png', card('Same budget. Different list.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-vet.png', card('Reach owners before the auction does.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-county.png', card('Your move, county.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['labels.png', label('THE OLD WAY', 'WITH ESTATEHAWK'), true],
   ];
   for (const [f, html, transparent] of shots) {
