@@ -13,18 +13,20 @@ module.exports = [
       await v.go('/');
       v.mark(0);
       await v.cursorTo(980, 560);
-      await v.focus('h1', 2.6, 1.5);
+      await v.focus('h1', 3.4, 1.5);
+      await v.wait(2200);
 
       // 1 "America mein har saal lakhon ghar maalikan property tax waqt par ada nahi kar paate ... investors aise ghar dhoondte hain."
       v.mark(1);
-      await v.scroll(650, 2400);
-      await v.wait(1500);
+      await v.scroll(500, 5200);
+      await v.wait(2500);
+      await v.scroll(300, 3000);
 
       // 2 "Masla ye tha ke ye listen har county ki alag website par bikhri hoti hain ... data purana hota hai."
       v.mark(2);
-      await v.scroll(700, 2400);
-      await v.wait(1500);
-      await v.scroll(-1350, 1200);
+      await v.scroll(350, 4500);  // stay above the pricing section: this is a pitch, not an ad
+      await v.wait(3200);
+      await v.scroll(-1150, 2000);
 
       // 3 "To maine socha ... roz sarkari county record se ... har property ko score de."
       v.mark(3);
@@ -46,20 +48,19 @@ module.exports = [
       await v.scroll(-8000, 500);
       await v.click('#nav a[href="#/map"]', 0.5, 1.7);
       await v.page.waitForSelector('#bigMap', { timeout: 10000 }).catch(() => {});
-      await v.wait(900);
       await v.click('#nav a[href="#/alerts"]', 0.5, 1.7);
       await v.focus('#feed', 1.0, 1.4);
 
       // 6 "Abhi ye Ohio aur Texas ki 80 counties mein chal raha hai ... aur bhi kai ideas hain."
       v.mark(6);
       await v.click('#nav a[href="#/counties"]', 0.5, 1.7);
-      await v.focus('#cGrid .card', 2.4, 1.5);
-      await v.wait(1200);
+      await v.focus('#cGrid .card', 2.8, 1.5);
+      await v.wait(3500);
 
       // 7 "Agar aap dekhna chahein to getestatehawk.com ... apni raye bhi dijiye ga. Bohat shukriya."
       v.mark(7);
       await esc();
-      await v.card('getestatehawk.com', 'Your feedback means a lot. Thank you.', 6000);
+      await v.card('getestatehawk.com', 'Your feedback means a lot. Thank you.', 14000);  // long, so the end of the video stays on the card
     },
   },
 ];
