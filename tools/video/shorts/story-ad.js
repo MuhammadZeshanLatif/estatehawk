@@ -1,4 +1,4 @@
-// Product part of the story ad (shorts/story-ad.md): voice sentences 6, 7, 8 and the end card. The story clips are AI video.
+// Product part of both story ads (shorts/story-ad.md, Dan and split screen). The story clips are AI video.
 // Record: bash tools/video/run.sh --file shorts/story-ad.js --no-captions --out tools/video/out/story
 // One v.mark(i) per sentence: 0 = "Every morning...", 1 = "The owner...", 2 = "A new lead...", 3 = end card.
 module.exports = [
