@@ -29,6 +29,16 @@ const label = (a, b) => `<html><head>${font}<style>${base}body{background:transp
     ['card-mail.png', card('Same budget. Different list.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['card-vet.png', card('Reach owners before the auction does.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['card-county.png', card('Your move, county.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-firstdeal.png', card('Your first deal is closer than you think.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-trucker.png', card('Build the life you are working for.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-fatherson.png', card('Old-school hustle. New-school data.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-partner.png', card('Don\'t quit. Upgrade.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-calls.png', card('Timing is everything.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-weekend.png', card('Same weekend. Different life.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-years.png', card('Same guy. Better data.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-driving.png', card('Save the gas.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-vlog.png', card('Your morning, upgraded.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['labels-years.png', label('2025', '2026 &middot; WITH ESTATEHAWK'), true],
     ['labels.png', label('THE OLD WAY', 'WITH ESTATEHAWK'), true],
   ];
   for (const [f, html, transparent] of shots) {
