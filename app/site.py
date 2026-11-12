@@ -124,10 +124,24 @@ def header(path, user=None):
             f'<button class="menu-btn" aria-label="Open menu" aria-expanded="false">{ic("menu")}</button></div></header>')
 
 
+# Official EstateHawk social profiles. Add each new channel here; the footer icons and Organization sameAs use this list.
+SOCIAL = [
+    ("LinkedIn", "https://www.linkedin.com/company/getestatehawk/",
+     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9h4v12H3zm7 0h3.8v1.7h.1c.5-1 1.8-2 3.8-2 4 0 4.8 2.7 4.8 6.1V21h-4v-5.4c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9V21h-4z"/></svg>'),
+    ("Facebook", "https://www.facebook.com/profile.php?id=61595889045774",
+     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.5 21v-8h2.7l.4-3.2h-3.1V7.8c0-.9.3-1.5 1.6-1.5h1.7V3.4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.2H7.3V13h2.8v8z"/></svg>'),
+]
+
+
+def social_links():
+    return ('<div class="social">' + "".join(
+        f'<a href="{u}" target="_blank" rel="noopener" aria-label="EstateHawk on {n}" title="{n}">{svg}</a>' for n, u, svg in SOCIAL) + '</div>')
+
+
 def footer():
     year = dt.date.today().year
     col = lambda t, links: f'<div><h4>{t}</h4><ul>{"".join(f"<li><a href={h!r}>{n}</a></li>" for h, n in links)}</ul></div>'
-    return (f'<footer class="ftr"><div class="wrap"><div class="about">{logo()}<p>Official county data. Real estate opportunities.</p></div>'
+    return (f'<footer class="ftr"><div class="wrap"><div class="about">{logo()}<p>Official county data. Real estate opportunities.</p>{social_links()}</div>'
             + col("Product", [("/features", "Features"), ("/how-it-works", "How it works"), ("/pricing", "Pricing"), ("/counties", "Counties")])
             + col("Resources", [("/deal-profit-calculator", "Free deal profit calculator"), ("/blog", "Blog"), ("/guides", "Guides"), ("/faq", "Help center"), ("/counties/ohio", "Ohio tax-delinquent lists"), ("/counties/texas", "Texas tax sales")])
             + col("Company", [("/about", "About"), ("/contact", "Contact"), ("/terms", "Terms of service"), ("/privacy", "Privacy policy"), ("/refund-policy", "Refund policy")])
@@ -145,7 +159,7 @@ def page(request, path, title, desc, body, schema=None, js=False, noindex=False,
     safe_json = lambda value: json.dumps(value, separators=(",", ":")).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     ld = "".join(f'<script type="application/ld+json">{safe_json(s)}</script>' for s in (schema or []))
     org = {"@context": "https://schema.org", "@type": "Organization", "name": SITE_NAME, "url": base_url(request), "logo": base_url(request) + "/site/logo-mark.svg",
-           "email": CONTACT_EMAIL}
+           "email": CONTACT_EMAIL, "sameAs": [u for _, u, _ in SOCIAL]}
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{esc(title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{url}">'
             f'<meta name="google-site-verification" content="NMkeUpE8IatxKPD9znk4QeemsBLuEgwogUIwcgsQElM">'
