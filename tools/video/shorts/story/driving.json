@@ -1,0 +1,32 @@
+{
+ "out": "WORK/estatehawk-story-driving.mp4",
+ "voice": "WORK/H-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 18.5,
+ "shots": [
+  {
+   "at": 0,
+   "to": 6.7,
+   "src": "CLIPS3/Man_shining_flashlight_from_car_eee36d7b.mp4",
+   "in": 0
+  },
+  {
+   "at": 6.7,
+   "to": 10.7,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 21.5,
+   "out": 26.5
+  },
+  {
+   "at": 10.7,
+   "to": 13.9,
+   "src": "CLIPS3/Man_relaxes_with_laptop_and_bcef4944.mp4",
+   "in": 1
+  },
+  {
+   "at": 13.9,
+   "to": 18.5,
+   "image": "WORK/card-driving.png"
+  }
+ ]
+}

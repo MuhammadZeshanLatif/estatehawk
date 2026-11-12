@@ -1,0 +1,44 @@
+{
+ "out": "WORK/estatehawk-story-vlog.mp4",
+ "voice": "WORK/I-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 23.5,
+ "shots": [
+  {
+   "at": 0,
+   "to": 4.9,
+   "src": "CLIPS3/Woman_holding_coffee_mug_kitchen_7a6b7bf3.mp4",
+   "in": 0
+  },
+  {
+   "at": 4.9,
+   "to": 8.4,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 2.85,
+   "out": 7.5
+  },
+  {
+   "at": 8.4,
+   "to": 12.3,
+   "src": "CLIPS3/Woman_writes_note_in_car_b05520b4.mp4",
+   "in": 0
+  },
+  {
+   "at": 12.3,
+   "to": 15.0,
+   "src": "CLIPS3/Woman_approaching_house_with_cli\u2026_4be3bc28.mp4",
+   "in": 1
+  },
+  {
+   "at": 15.0,
+   "to": 19.5,
+   "src": "CLIPS3/Woman_celebrating_in_parked_car_53a03a5b.mp4",
+   "in": 0
+  },
+  {
+   "at": 19.5,
+   "to": 23.5,
+   "image": "WORK/card-vlog.png"
+  }
+ ]
+}

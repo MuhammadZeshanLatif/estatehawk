@@ -1,0 +1,44 @@
+{
+ "out": "WORK/estatehawk-story-fatherson.mp4",
+ "voice": "WORK/C-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 29.0,
+ "shots": [
+  {
+   "at": 0,
+   "to": 6.3,
+   "src": "CLIPS3/Man_reading_old_record_book_520fe577.mp4",
+   "in": 0
+  },
+  {
+   "at": 6.3,
+   "to": 8.7,
+   "src": "CLIPS3/Man_reading_laptop_with_son_2a772e10.mp4",
+   "in": 0
+  },
+  {
+   "at": 8.7,
+   "to": 14.6,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 2.85,
+   "out": 9.0
+  },
+  {
+   "at": 14.6,
+   "to": 18.9,
+   "src": "CLIPS3/Man_reading_laptop_with_son_2a772e10.mp4",
+   "in": 3
+  },
+  {
+   "at": 18.9,
+   "to": 21.8,
+   "src": "CLIPS3/Men_shaking_hands_on_porch_147f8d10.mp4",
+   "in": 2
+  },
+  {
+   "at": 21.8,
+   "to": 29.0,
+   "image": "WORK/card-fatherson.png"
+  }
+ ]
+}

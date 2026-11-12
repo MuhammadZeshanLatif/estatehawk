@@ -1,0 +1,50 @@
+{
+ "out": "WORK/estatehawk-story-trucker.mp4",
+ "voice": "WORK/B-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 36.0,
+ "shots": [
+  {
+   "at": 0,
+   "to": 5.7,
+   "src": "CLIPS3/Truck_driver_looking_at_photo_44f88d70.mp4",
+   "in": 0
+  },
+  {
+   "at": 5.7,
+   "to": 12.3,
+   "src": "CLIPS3/Man_using_laptop_in_truck_e26fd560.mp4",
+   "in": 0
+  },
+  {
+   "at": 12.3,
+   "to": 19.7,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 2.85,
+   "out": 11.07
+  },
+  {
+   "at": 19.7,
+   "to": 22.5,
+   "src": "CLIPS3/Man_shaking_hands_with_couple_ac83eb00.mp4",
+   "in": 1
+  },
+  {
+   "at": 22.5,
+   "to": 25.7,
+   "src": "CLIPS3/Boss_shaking_man_hand_6d399286.mp4",
+   "in": 1
+  },
+  {
+   "at": 25.7,
+   "to": 30.5,
+   "src": "CLIPS3/Man_cheering_at_baseball_game_9864d792.mp4",
+   "in": 0
+  },
+  {
+   "at": 30.5,
+   "to": 36.0,
+   "image": "WORK/card-trucker.png"
+  }
+ ]
+}

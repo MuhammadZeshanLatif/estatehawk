@@ -1,0 +1,44 @@
+{
+ "out": "WORK/estatehawk-story-partner.mp4",
+ "voice": "WORK/D-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 29.5,
+ "shots": [
+  {
+   "at": 0,
+   "to": 5.1,
+   "src": "CLIPS3/Woman_watches_man_leave_office_b9f0977a.mp4",
+   "in": 0
+  },
+  {
+   "at": 5.1,
+   "to": 8.9,
+   "src": "CLIPS3/Woman_opens_laptop_at_desk_01710a5c.mp4",
+   "in": 0
+  },
+  {
+   "at": 8.9,
+   "to": 14.7,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 4.0,
+   "out": 11.07
+  },
+  {
+   "at": 14.7,
+   "to": 19.1,
+   "src": "CLIPS3/Woman_talking_on_phone_4e1471d8.mp4",
+   "in": 0
+  },
+  {
+   "at": 19.1,
+   "to": 23.1,
+   "src": "CLIPS3/Woman_entering_new_modern_office_934b9502.mp4",
+   "in": 0
+  },
+  {
+   "at": 23.1,
+   "to": 29.5,
+   "image": "WORK/card-partner.png"
+  }
+ ]
+}

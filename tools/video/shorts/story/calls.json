@@ -1,0 +1,35 @@
+{
+ "out": "WORK/estatehawk-story-calls.mp4",
+ "voice": "WORK/E-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 23.5,
+ "shots": [
+  {
+   "at": 0,
+   "to": 7.6,
+   "left": "CLIPS/Man_copying_numbers_into_notebook_4728b354.mp4",
+   "right": "CLIPS/Man_opening_laptop_in_kitchen_1c9d8b35.mp4",
+   "overlay": "WORK/labels.png"
+  },
+  {
+   "at": 7.6,
+   "to": 13.6,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 2.85,
+   "out": 11.07
+  },
+  {
+   "at": 13.6,
+   "to": 18.0,
+   "left": "CLIPS/Man_holding_phone_in_frustration_d6eacf38.mp4",
+   "right": "CLIPS/Man_talking_on_phone_writing_815e4d75.mp4",
+   "overlay": "WORK/labels.png",
+   "in": 1
+  },
+  {
+   "at": 18.0,
+   "to": 23.5,
+   "image": "WORK/card-calls.png"
+  }
+ ]
+}
