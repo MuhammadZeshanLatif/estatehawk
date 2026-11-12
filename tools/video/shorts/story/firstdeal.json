@@ -1,0 +1,50 @@
+{
+ "out": "WORK/estatehawk-story-firstdeal.mp4",
+ "voice": "WORK/A-voice.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 39.5,
+ "shots": [
+  {
+   "at": 0,
+   "to": 5.8,
+   "src": "CLIPS3/Man_counting_money_in_kitchen_ccef7734.mp4",
+   "in": 0
+  },
+  {
+   "at": 5.8,
+   "to": 12.4,
+   "src": "CLIPS3/Father_leading_girl_away_253ccf92.mp4",
+   "in": 0
+  },
+  {
+   "at": 12.4,
+   "to": 19.2,
+   "src": "CLIPS3/Man_looking_at_laptop_4a080e4e.mp4",
+   "in": 0
+  },
+  {
+   "at": 19.2,
+   "to": 24.3,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 11.07,
+   "out": 18
+  },
+  {
+   "at": 24.3,
+   "to": 29.3,
+   "src": "CLIPS3/Man_celebrates_phone_call_cf3ef252.mp4",
+   "in": 0
+  },
+  {
+   "at": 29.3,
+   "to": 32.3,
+   "src": "CLIPS3/Father_hugging_daughter_with_bic\u2026_aa89a1eb.mp4",
+   "in": 1
+  },
+  {
+   "at": 32.3,
+   "to": 39.5,
+   "image": "WORK/card-firstdeal.png"
+  }
+ ]
+}

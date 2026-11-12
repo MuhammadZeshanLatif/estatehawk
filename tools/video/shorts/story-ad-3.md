@@ -20,4 +20,4 @@ Voice scripts are in the AI Studio runs; sentence timing by `story/voice_times.p
 ### Built 2026-11-12
 Specs: `story/trucker.json fatherson.json partner.json calls.json weekend.json years.json driving.json vlog.json` (CLIPS3 = clips3 folder, CLIPS = batch 1 clips, WORK = voices and cards).
 - Two clips never downloaded, so: father-son uses `Man_reading_laptop_with_son` for C2 and C3; years uses `Man_driving_car_slowly` for the 2025 couch shots.
-- A (first deal) waits for the A5 bicycle clip.
+- A (first deal): `story/firstdeal.json`, built 2026-11-12.
