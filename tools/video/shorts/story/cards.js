@@ -38,6 +38,8 @@ const label = (a, b) => `<html><head>${font}<style>${base}body{background:transp
     ['card-years.png', card('Same guy. Better data.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['card-driving.png', card('Save the gas.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['card-vlog.png', card('Your morning, upgraded.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
+    ['card-auction.png', card('The auction never happened.', 'Reach them before the auction does. <u>getestatehawk.com</u>'), false],
+    ['card-2am.png', card('First in line. Every morning.', 'Start your free trial at <u>getestatehawk.com</u>'), false],
     ['labels-years.png', label('2025', '2026 &middot; WITH ESTATEHAWK'), true],
     ['labels.png', label('THE OLD WAY', 'WITH ESTATEHAWK'), true],
   ];
