@@ -1,0 +1,40 @@
+{
+ "out": "WORK/estatehawk-story-2am.mp4",
+ "voice": "WORK/2am.wav",
+ "music": "tools/video/out/music.wav",
+ "length": 26.0,
+ "shots": [
+  {
+   "at": 0,
+   "to": 9.0,
+   "src": "CLIPS4/Man_sleeping_while_phone_glows_8361a327.mp4",
+   "in": 0
+  },
+  {
+   "at": 9.0,
+   "to": 12.2,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 23.7,
+   "out": 26.2
+  },
+  {
+   "at": 12.2,
+   "to": 17.6,
+   "src": "tools/video/out/story/estatehawk-demo.mp4",
+   "in": 10.9,
+   "out": 17.5
+  },
+  {
+   "at": 17.6,
+   "to": 20.7,
+   "src": "CLIPS4/Man_holding_coffee_making_call_774d3835.mp4",
+   "in": 1.0,
+   "out": 5.0
+  },
+  {
+   "at": 20.7,
+   "to": 26.0,
+   "image": "WORK/card-2am.png"
+  }
+ ]
+}
