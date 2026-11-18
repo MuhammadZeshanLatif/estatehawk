@@ -2025,11 +2025,12 @@ async def admin_blog_image(request: Request):
     if int(request.headers.get("content-length") or 0) > 2_100_000:
         raise HTTPException(413, "Image is too large.")
     payload = await request.json()
-    return {"url": content.upload_image(payload.get("data"))}
+    return {"url": content.upload_image(payload.get("data"), payload.get("filename"))}
 
 
 @app.get("/blog-media/{image_id}")
-def blog_media(image_id: int):
+@app.get("/blog-media/{image_id}/{filename}")
+def blog_media(image_id: int, filename: str = ""):
     image = db.q1("SELECT mime,data FROM blog_images WHERE id=?", (image_id,))
     if not image:
         raise HTTPException(404, "Image not found")

@@ -605,22 +605,44 @@ export async function admin(el, [tab = 'companies']) {
     $('#blogNew').onclick = () => blogEditor(null);
     $$('[data-blog-edit]', body).forEach(b => b.onclick = () => blogEditor(posts.find(p => p.id === +b.dataset.blogEdit)));
     function blogEditor(p) {
-      modal(`<h2>${p ? 'Edit article' : 'New article'}</h2><p class="small muted" style="margin:8px 0 18px">Use ## for sections, ### for subheadings, - for lists and **text** for emphasis. Your draft is private until published.</p>
+      modal(`<h2>${p ? 'Edit article' : 'New article'}</h2><p class="small muted" style="margin:8px 0 18px">Use ## for sections, ### for subheadings, - for lists and **text** for emphasis. Images can be inserted at the cursor with a description and caption. Your draft is private until published.</p>
         <div class="field"><label>Title</label><input class="input" id="bTitle" maxlength="140" value="${esc(p?.title || '')}" style="width:100%"></div>
         <div class="terms"><div class="field"><label>URL slug</label><input class="input" id="bSlug" value="${esc(p?.slug || '')}"></div><div class="field"><label>Author</label><input class="input" id="bAuthor" value="${esc(p?.author || 'EstateHawk')}"></div></div>
         <div class="field"><label>Search description</label><input class="input" id="bDesc" maxlength="300" value="${esc(p?.description || '')}" style="width:100%"></div>
         <div class="field"><label>Card excerpt</label><textarea class="input" id="bExcerpt" rows="2" style="width:100%">${esc(p?.excerpt || '')}</textarea></div>
         <div class="field"><label>Cover image (optional)</label><input class="input" id="bImage" type="file" accept="image/jpeg,image/png,image/webp" style="width:100%"><div class="small muted" id="bImageState">${p?.hero_image ? 'Current cover image is saved.' : 'JPG, PNG or WebP, up to 1.5 MB.'}</div></div>
         <div class="field"><label>Cover image description</label><input class="input" id="bAlt" maxlength="180" value="${esc(p?.hero_alt || '')}" placeholder="Describe the image for accessibility" style="width:100%"></div>
+        <details class="field"><summary>Insert an image in the article</summary><div style="padding-top:12px"><label for="bInlineFile">Image file</label><input class="input" id="bInlineFile" type="file" accept="image/jpeg,image/png,image/webp"><label for="bInlineAlt">Image description (required)</label><input class="input" id="bInlineAlt" maxlength="180" style="width:100%"><label for="bInlineCaption">Caption (optional)</label><input class="input" id="bInlineCaption" maxlength="300" style="width:100%"><button class="btn" type="button" id="bInlineInsert" style="margin-top:10px">Insert image at cursor</button><p class="small muted">Use a descriptive file name. Select a position in the article, then insert the image. Edit its description or caption in the article text.</p></div></details>
         <div class="field"><label>Article body</label><textarea class="input" id="bBody" rows="16" style="width:100%;font-family:ui-monospace,monospace;line-height:1.5">${esc(p?.body || '')}</textarea></div>
         <div class="row between wrap gap6"><div>${p ? `<button class="btn" id="bDelete">Delete</button>` : ''}</div><div class="row gap6"><button class="btn" data-close>Cancel</button><button class="btn" id="bDraft">Save draft</button><button class="btn primary" id="bPublish">${p?.status === 'published' ? 'Update published article' : 'Publish article'}</button></div></div>`, (m, close) => {
         const field = id => $('#' + id, m).value.trim();
+        $('#bInlineInsert', m).onclick = async () => {
+          const file = $('#bInlineFile', m).files[0];
+          const alt = field('bInlineAlt'); const caption = field('bInlineCaption');
+          if (!file || !alt) { toast('Choose an image and add its description.', true); return; }
+          if (file.size > 1500000) { toast('Choose an image under 1.5 MB.', true); return; }
+          if (/[\]\r\n]/.test(alt) || /["\r\n]/.test(caption)) { toast('Remove brackets from the description and quotes from the caption.', true); return; }
+          const textarea = $('#bBody', m); const start = textarea.selectionStart; const end = textarea.selectionEnd;
+          const before = textarea.value;
+          const button = $('#bInlineInsert', m); button.disabled = true;
+          try {
+            const encoded = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
+            const uploaded = await api('/api/admin/blog-images', { method: 'POST', body: { data: encoded, filename: file.name } });
+            if (textarea.value !== before) { toast('The article changed during upload. Insert again at the intended position.', true); return; }
+            const image = `\n\n![${alt}](${uploaded.url}${caption ? ' "' + caption + '"' : ''})\n\n`;
+            textarea.value = before.slice(0, start) + image + before.slice(end);
+            textarea.focus(); textarea.setSelectionRange(start + image.length, start + image.length);
+            $('#bInlineFile', m).value = ''; $('#bInlineAlt', m).value = ''; $('#bInlineCaption', m).value = '';
+            toast('Image inserted. Save the article to keep this change.');
+          } catch (e) { toast('Image upload failed: ' + e.message, true); }
+          finally { button.disabled = false; }
+        };
         const save = async status => { const title = field('bTitle'); const slug = field('bSlug') || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
           const data = { title, slug, author: field('bAuthor'), description: field('bDesc'), excerpt: field('bExcerpt'), body: field('bBody'), status, hero_image: p?.hero_image || '', hero_alt: field('bAlt') };
           const file = $('#bImage', m).files[0];
           if (file) { if (file.size > 1500000) { toast('Choose an image under 1.5 MB.', true); return; }
             try { const encoded = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
-              const uploaded = await api('/api/admin/blog-images', {method:'POST', body:{data:encoded}}); data.hero_image = uploaded.url;
+              const uploaded = await api('/api/admin/blog-images', {method:'POST', body:{data:encoded,filename:file.name}}); data.hero_image = uploaded.url;
             } catch(e) { toast('Image upload failed: ' + e.message, true); return; } }
           try { await api(p ? '/api/admin/blogs/' + p.id : '/api/admin/blogs', { method: p ? 'PUT' : 'POST', body: data }); close(); toast(status === 'published' ? 'Article published' : 'Draft saved'); admin(el, ['blogs']); } catch(e) { toast(e.message, true); } };
         $('#bDraft', m).onclick = () => save('draft'); $('#bPublish', m).onclick = () => save('published');

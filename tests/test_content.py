@@ -57,6 +57,27 @@ class ContentTests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             content.save({"title": "Cover", "slug": "cover", "body": "Body", "hero_image": url})
 
+    def test_inline_image_caption_and_named_media(self):
+        encoded = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 40).decode()
+        url = content.upload_image(encoded, "County Owner Diagram.PNG")
+        self.assertRegex(url, r"^/blog-media/\d+/county-owner-diagram.png$")
+        body = f'Before\n\n![Parcel & owner]({url} "Research, not title assurance")\n\nAfter'
+        item = content.save({"title": "Images", "slug": "images", "body": body, "hero_image": url, "hero_alt": "Cover"})
+        rendered = site.blog_article(request(), item["slug"], item)
+        self.assertIn('alt="Parcel &amp; owner"', rendered)
+        self.assertIn('<figcaption>Research, not title assurance</figcaption>', rendered)
+        self.assertIn('loading="lazy"', rendered)
+        self.assertIn('<p>After</p>', rendered)
+
+    def test_inline_images_require_alt_and_local_uploaded_url(self):
+        for body in ['![](/blog-media/1)', '![ ](/blog-media/1)', '![Alt](https://outside.example/a.jpg)', '![Alt](javascript:alert(1))', '![Alt](/blog-media/1/../../a.jpg)']:
+            with self.subTest(body=body), self.assertRaises(HTTPException):
+                content.save({"title": "Bad", "slug": "bad", "body": body})
+        rendered = content.body_html('![<img onerror=alert(1)>](/blog-media/1 "<script>bad</script>")')
+        self.assertNotIn('<script>', rendered)
+        self.assertIn('&lt;script&gt;', rendered)
+        self.assertIn('alt="&lt;img onerror=alert(1)&gt;"', rendered)
+
     def test_first_source_stays_with_visitor_through_funnel(self):
         visit = request("/blog", b"utm_source=google&utm_medium=organic")
         content.track(visit, "landed", "a" * 32)

@@ -129,6 +129,17 @@ def post(slug, published_only=True):
     return db.q1(sql, (slug,))
 
 
+MEDIA_PATH = r'/blog-media/[0-9]+(?:/[a-z0-9][a-z0-9._-]*\.(?:jpg|png|webp))?'
+BODY_IMAGE = re.compile(r'!\[([^\]\r\n]+)\]\((' + MEDIA_PATH + r')(?: "([^"\r\n]*)")?\)')
+
+def validate_body_images(body):
+    for line in body.splitlines():
+        if line.strip().startswith('!['):
+            match = BODY_IMAGE.fullmatch(line.strip())
+            if not match or not match[1].strip() or len(match[1]) > 180 or len(match[3] or '') > 300:
+                raise HTTPException(400, 'Use an uploaded image, a description under 181 characters and an optional caption under 301 characters on its own line.')
+
+
 def save(payload, post_id=None):
     title = str(payload.get("title") or "").strip()[:140]
     slug = str(payload.get("slug") or "").strip().lower()
@@ -143,7 +154,8 @@ def save(payload, post_id=None):
         raise HTTPException(400, "Add a title, URL slug and article body before saving.")
     if len(body) > 100000:
         raise HTTPException(400, "Article is too long.")
-    if hero_image and (not re.fullmatch(r"/blog-media/[0-9]+", hero_image) or not hero_alt):
+    validate_body_images(body)
+    if hero_image and (not re.fullmatch(MEDIA_PATH, hero_image) or not hero_alt):
         raise HTTPException(400, "Upload a cover image and describe it for readers using a screen reader.")
     existing = db.q1("SELECT id,published FROM blog_posts WHERE id=?", (post_id,)) if post_id else None
     now = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -164,7 +176,7 @@ def save(payload, post_id=None):
         raise
 
 
-def upload_image(encoded):
+def upload_image(encoded, filename=None):
     if not isinstance(encoded, str) or len(encoded) > 2_000_000:
         raise HTTPException(400, "Choose a JPG, PNG or WebP image under 1.5 MB.")
     try:
@@ -180,6 +192,10 @@ def upload_image(encoded):
         raise HTTPException(400, "Choose a JPG, PNG or WebP image.")
     image_id = db.run("INSERT INTO blog_images(mime,data,created) VALUES(?,?,?)",
                       (mime, encoded, dt.datetime.now(dt.timezone.utc).isoformat()))
+    if filename:
+        stem = re.sub(r'[^a-z0-9]+', '-', str(filename).replace('\\', '/').rsplit('/', 1)[-1].rsplit('.', 1)[0].lower()).strip('-')[:90] or 'article-image'
+        extension = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[mime]
+        return f"/blog-media/{image_id}/{stem}.{extension}"
     return f"/blog-media/{image_id}"
 
 
@@ -201,7 +217,13 @@ def body_html(body):
         line = line.strip()
         if not line:
             flush(); continue
-        if line.startswith("## ") or line.startswith("### "):
+        image = BODY_IMAGE.fullmatch(line)
+        if image:
+            flush()
+            alt, url, caption = image.groups()
+            caption_html = '<figcaption>' + html.escape(caption) + '</figcaption>' if caption else ''
+            chunks.append(f'<figure class="blog-figure"><a href="{html.escape(url, quote=True)}" aria-label="Open full-size image: {html.escape(alt, quote=True)}"><img src="{html.escape(url, quote=True)}" alt="{html.escape(alt, quote=True)}" loading="lazy" decoding="async" width="1200"></a>{caption_html}</figure>')
+        elif line.startswith("## ") or line.startswith("### "):
             flush(); level = 3 if line.startswith("### ") else 2
             chunks.append(f"<h{level}>{inline(line[level+1:])}</h{level}>")
         elif line.startswith("- "):
