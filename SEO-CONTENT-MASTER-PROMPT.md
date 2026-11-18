@@ -96,3 +96,7 @@ EstateHawk Admin → Traffic funnel groups anonymous first-party browser visitor
 ## Handoff format
 
 Each article's handoff records: topic and date; verified product reference; keyword evidence; source and claim registers; step status; complete latest draft; metadata/links/assets; QA; approval and publishing history; unresolved items; exact next step. Preserve earlier approved work. Start a new assistant at the next unfinished step, rather than restarting research.
+
+
+## Blog imagery rule, confirmed 2026-11-18
+Keep EstateHawk forest-green/cream/gold branding but vary each article hero concept, medium and composition. Never repeat the house-on-desk/magnifying-glass template across articles. Use more than two useful images where the article benefits: current two articles have one distinct hero plus two contextual figures each. Place diagrams/checklists beside the relevant section, not decorative padding. Every image needs a descriptive kebab-case filename, truthful alt text and useful optional caption. Use the official hawk reference and retain accepted logo artwork. Inline images must render as actual editable CMS figures, not substitute download links. Article status stays draft until separately authorized.
