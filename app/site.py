@@ -636,10 +636,44 @@ def blog_index(request):
     items = content.posts("published")
     cards = ""
     for item in items:
-        cover = (f'<img src="{esc(item["hero_image"])}" alt="{esc(item["hero_alt"])}" loading="lazy" width="640" height="336" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-bottom:18px">'
-                 if item.get("hero_image") else "")
-        cards += f'<a class="card" href="/blog/{esc(item["slug"])}" style="display:block;padding:25px">{cover}<span class="eyebrow">EstateHawk blog</span><h2 style="font-size:26px;margin:12px 0">{esc(item["title"])}</h2><p>{esc(item["excerpt"] or item["description"])}</p><span style="color:var(--green);font-weight:600">Read article →</span></a>'
-    body = f'<section class="sec"><div class="wrap"><span class="eyebrow">Resources</span><h1>Real estate investing insights</h1><p style="max-width:700px;margin:18px 0 32px">Practical articles about county records, tax delinquency, owner research and turning leads into informed decisions.</p><div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">{cards or "<p>Articles are coming soon.</p>"}</div></div></section>'
+        href = f'/blog/{esc(item["slug"])}'
+        cover = (f'<div class="blog-card-cover"><img src="{esc(item["hero_image"])}" '
+                 f'alt="{esc(item["hero_alt"])}" loading="lazy" decoding="async" width="1536" height="1024"></div>'
+                 if item.get("hero_image") else '')
+        author = item.get("author") or "EstateHawk"
+        date = item.get("published") or item.get("updated") or ""
+        try:
+            parsed = dt.datetime.fromisoformat(date.replace("Z", "+00:00"))
+            date_label = parsed.strftime("%B ") + str(parsed.day) + parsed.strftime(", %Y")
+        except (ValueError, TypeError):
+            date_label = ""
+        dated = f'<time datetime="{esc(date)}">{esc(date_label)}</time>' if date_label else ''
+        avatar = '<img src="/site/icon-180.png" alt="" width="40" height="40">' if author == "EstateHawk" else '<span class="blog-card-initial" aria-hidden="true">' + esc(author[:1].upper()) + '</span>'
+        cards += (f'<article class="blog-card"><a class="blog-card-link" href="{href}">{cover}'
+                  f'<div class="blog-card-content"><div class="blog-card-meta"><span class="blog-card-author">{avatar}'
+                  f'<span>By <strong>{esc(author)}</strong></span></span>{dated}</div>'
+                  f'<h2>{esc(item["title"])}</h2><p>{esc(item["excerpt"] or item["description"])}</p>'
+                  f'<span class="blog-card-read">Read article {ic("arrow")}</span></div></a></article>')
+    styles = """<style>
+.blog-listing>.wrap{max-width:1560px}.blog-listing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px;margin-top:32px;align-items:stretch}
+.blog-card{min-width:0;background:#fff;border:1px solid #e3e9e4;border-radius:26px;box-shadow:0 5px 24px rgba(22,65,46,.06);transition:border-color .18s,box-shadow .18s,transform .18s}
+.blog-card:hover,.blog-card:focus-within{border-color:var(--green);box-shadow:0 8px 28px rgba(22,65,46,.14);transform:translateY(-3px)}
+.blog-card-link{height:100%;display:flex;flex-direction:column;color:inherit;text-decoration:none;border-radius:26px}
+.blog-card-link:focus-visible{outline:3px solid var(--green);outline-offset:5px}
+.blog-card-cover{border-radius:25px 25px 0 0;background:var(--cream,#faf7ef);overflow:hidden;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center}
+.blog-card-cover img{display:block;width:100%;height:100%;object-fit:contain}
+.blog-card-content{display:flex;flex-direction:column;flex:1;padding:28px;min-width:0}
+.blog-card-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:18px}
+.blog-card-author{display:flex;align-items:center;gap:12px;min-width:0}.blog-card-author>span{overflow-wrap:anywhere}.blog-card-author img,.blog-card-initial{width:40px;height:40px;border-radius:50%;flex-shrink:0;object-fit:contain;background:#f0f5ef;padding:4px}
+.blog-card-initial{display:grid;place-items:center;color:var(--green);font-weight:700}.blog-card-author strong{color:var(--green);font-weight:600}
+.blog-card-content h2{font-family:inherit;font-size:27px;line-height:1.35;color:var(--green);margin:0 0 14px;overflow-wrap:anywhere}
+.blog-card-content p{font-size:17px;line-height:1.65;margin:0 0 24px;color:var(--muted);overflow-wrap:anywhere}
+.blog-card-read{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;color:var(--green);margin-top:auto;padding-top:2px}.blog-card-read svg{width:18px;height:18px}
+@media(max-width:1100px){.blog-listing-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.blog-card-content{padding:24px}}
+@media(max-width:680px){.blog-listing-grid{grid-template-columns:minmax(0,1fr);gap:24px}.blog-card-content{padding:22px}.blog-card-content h2{font-size:25px}.blog-card-meta{font-size:13px}}
+@media(prefers-reduced-motion:reduce){.blog-card{transition:none}.blog-card:hover,.blog-card:focus-within{transform:none}}
+</style>"""
+    body = styles + f'<section class="sec blog-listing"><div class="wrap"><span class="eyebrow">Resources</span><h1>Real estate investing insights</h1><p style="max-width:700px;margin:18px 0 32px">Practical articles about county records, tax delinquency, owner research and turning leads into informed decisions.</p><div class="blog-listing-grid">{cards or "<p>Articles are coming soon.</p>"}</div></div></section>'
     return page(request, "/blog", "Real Estate Investing Blog | EstateHawk", "Practical tax-delinquent property and real estate investing articles from EstateHawk.", body, noindex=not bool(items))
 
 
