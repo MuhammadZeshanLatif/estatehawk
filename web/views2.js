@@ -600,11 +600,30 @@ export async function admin(el, [tab = 'companies']) {
   }
   if (tab === 'blogs') {
     const posts = await api('/api/admin/blogs');
-    body.innerHTML = `<div class="row between wrap gap6" style="margin-bottom:16px"><p class="muted small">Write a draft, preview it, then publish when ready. Only published posts appear on the website.</p><button class="btn primary" id="blogNew">${ic('plus', 16)} New article</button></div>
-      <div class="grid" style="gap:12px">${posts.map(p => `<article class="card card-pad"><div class="row between wrap gap6"><div><span class="pill tiny ${p.status === 'published' ? 'p-green' : 'p-grey'}">${esc(p.status)}</span><h3 style="margin:9px 0 4px">${esc(p.title)}</h3><div class="small muted">/blog/${esc(p.slug)} · Updated ${esc((p.updated || '').slice(0,10))}</div></div><div class="row gap6"><button class="btn sm" data-blog-edit="${p.id}">Edit</button><a class="btn sm" href="/api/admin/blogs/${p.id}/preview" target="_blank" rel="noopener">Preview</a>${p.status === 'published' ? `<a class="btn sm" href="/blog/${esc(p.slug)}" target="_blank" rel="noopener">Live</a>` : ''}</div></div></article>`).join('') || '<div class="card card-pad muted">No articles yet. Create your first draft.</div>'}</div>`;
+    const action = (id,name,icon,attr) => `<button class="btn sm" title="${name}" aria-label="${name}" ${attr}="${id}">${ic(icon,16)} ${name}</button>`;
+    body.innerHTML = `<div class="row between wrap gap6" style="margin-bottom:16px"><p class="muted small">Manage drafts, preview the article layout, or schedule publication.</p><button class="btn primary" id="blogNew">${ic('plus',16)} New article</button></div>
+      <div class="grid" style="gap:12px">${posts.map(p => `<article class="card card-pad"><div class="row between wrap gap6"><div><span class="pill tiny ${p.status === 'published' ? 'p-green' : 'p-grey'}">${esc(p.status)}</span><h3 style="margin:9px 0 4px">${esc(p.title)}</h3><div class="small muted">/blog/${esc(p.slug)} · Updated ${esc((p.updated || '').slice(0,10))}${p.status === 'scheduled' ? ' · Scheduled '+esc(new Date(p.published).toLocaleString()) : ''}</div></div><div class="row wrap gap6">
+      <a class="btn sm" title="Preview" aria-label="Preview" href="/api/admin/blogs/${p.id}/preview" target="_blank" rel="noopener">${ic('eye',16)} Preview</a>
+      ${action(p.id,'Edit','edit','data-blog-edit')}
+      ${action(p.id,p.status === 'published' ? 'Unpublish' : p.status === 'scheduled' ? 'Cancel Schedule' : 'Publish Now',p.status === 'published' ? 'eyeoff' : p.status === 'scheduled' ? 'x' : 'globe','data-blog-status')}
+      ${p.status !== 'published' ? action(p.id,p.status === 'scheduled' ? 'Reschedule' : 'Schedule','clock','data-blog-schedule') : `<a class="btn sm" title="View live article" href="/blog/${esc(p.slug)}" target="_blank" rel="noopener">${ic('external',16)} Live</a>`}
+      ${action(p.id,'Delete','trash','data-blog-delete')}</div></div></article>`).join('') || '<div class="card card-pad muted">No articles yet. Create your first draft.</div>'}</div>`;
     $('#blogNew').onclick = () => blogEditor(null);
-    $$('[data-blog-edit]', body).forEach(b => b.onclick = () => blogEditor(posts.find(p => p.id === +b.dataset.blogEdit)));
-    function blogEditor(p) {
+    $$('[data-blog-edit]',body).forEach(b => b.onclick = () => blogEditor(posts.find(p => p.id === +b.dataset.blogEdit)));
+    $$('[data-blog-schedule]',body).forEach(b => b.onclick = () => blogEditor(posts.find(p => p.id === +b.dataset.blogSchedule),true));
+    $$('[data-blog-status]',body).forEach(b => b.onclick = async () => {
+      const p=posts.find(p=>p.id===+b.dataset.blogStatus); const status=p.status === 'draft' ? 'published' : 'draft';
+      if (!confirm(status === 'published' ? 'Publish this article now?' : p.status === 'scheduled' ? 'Cancel this schedule and keep a draft?' : 'Unpublish this article and keep a draft?')) return;
+      b.disabled=true;
+      try { await api('/api/admin/blogs/'+p.id,{method:'PUT',body:{...p,status}}); toast(status === 'published' ? 'Article published' : 'Article kept as draft'); await admin(el,['blogs']); }
+      catch(e){toast(e.message,true);b.disabled=false;}
+    });
+    $$('[data-blog-delete]',body).forEach(b => b.onclick = async () => {
+      if (!confirm('Delete this article permanently?')) return; b.disabled=true;
+      try { await api('/api/admin/blogs/'+b.dataset.blogDelete,{method:'DELETE'}); await admin(el,['blogs']); }
+      catch(e){toast(e.message,true);b.disabled=false;}
+    });
+    function blogEditor(p, scheduling=false) {
       modal(`<h2>${p ? 'Edit article' : 'New article'}</h2><p class="small muted" style="margin:8px 0 18px">Use ## for sections, ### for subheadings, - for lists and **text** for emphasis. Images can be inserted at the cursor with a description and caption. Your draft is private until published.</p>
         <div class="field"><label>Title</label><input class="input" id="bTitle" maxlength="140" value="${esc(p?.title || '')}" style="width:100%"></div>
         <div class="terms"><div class="field"><label>URL slug</label><input class="input" id="bSlug" value="${esc(p?.slug || '')}"></div><div class="field"><label>Author</label><input class="input" id="bAuthor" value="${esc(p?.author || 'EstateHawk')}"></div></div>
@@ -614,8 +633,15 @@ export async function admin(el, [tab = 'companies']) {
         <div class="field"><label>Cover image description</label><input class="input" id="bAlt" maxlength="180" value="${esc(p?.hero_alt || '')}" placeholder="Describe the image for accessibility" style="width:100%"></div>
         <details class="field"><summary>Insert an image in the article</summary><div style="padding-top:12px"><label for="bInlineFile">Image file</label><input class="input" id="bInlineFile" type="file" accept="image/jpeg,image/png,image/webp"><label for="bInlineAlt">Image description (required)</label><input class="input" id="bInlineAlt" maxlength="180" style="width:100%"><label for="bInlineCaption">Caption (optional)</label><input class="input" id="bInlineCaption" maxlength="300" style="width:100%"><button class="btn" type="button" id="bInlineInsert" style="margin-top:10px">Insert image at cursor</button><p class="small muted">Use a descriptive file name. Select a position in the article, then insert the image. Edit its description or caption in the article text.</p></div></details>
         <div class="field"><label>Article body</label><textarea class="input" id="bBody" rows="16" style="width:100%;font-family:ui-monospace,monospace;line-height:1.5">${esc(p?.body || '')}</textarea></div>
-        <div class="row between wrap gap6"><div>${p ? `<button class="btn" id="bDelete">Delete</button>` : ''}</div><div class="row gap6"><button class="btn" data-close>Cancel</button><button class="btn" id="bDraft">Save draft</button><button class="btn primary" id="bPublish">${p?.status === 'published' ? 'Update published article' : 'Publish article'}</button></div></div>`, (m, close) => {
+        <div class="field"><label for="bScheduleAt">Publication time (your local timezone)</label><input class="input" id="bScheduleAt" type="datetime-local"></div>
+        <div class="row between wrap gap6"><div>${p ? `<button class="btn" id="bDelete">${ic('trash',16)} Delete</button>` : ''}</div><div class="row wrap gap6"><button class="btn" data-close>Cancel</button>${p ? `<a class="btn" href="/api/admin/blogs/${p.id}/preview" target="_blank" rel="noopener">${ic('eye',16)} Preview saved</a>` : ''}<button class="btn" id="bDraft">${ic('save',16)} Save draft</button><button class="btn" id="bSchedule">${ic('clock',16)} ${p?.status === 'scheduled' ? 'Reschedule' : 'Schedule'}</button><button class="btn primary" id="bPublish">${ic('globe',16)} ${p?.status === 'published' ? 'Update published article' : 'Publish article'}</button></div></div>`, (m, close) => {
         const field = id => $('#' + id, m).value.trim();
+        let saving=false;
+        if (p?.status === 'scheduled' && p.published) {
+          const d=new Date(p.published);
+          $('#bScheduleAt',m).value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+        }
+        if (scheduling) $('#bScheduleAt',m).focus();
         $('#bInlineInsert', m).onclick = async () => {
           const file = $('#bInlineFile', m).files[0];
           const alt = field('bInlineAlt'); const caption = field('bInlineCaption');
@@ -639,13 +665,21 @@ export async function admin(el, [tab = 'companies']) {
         };
         const save = async status => { const title = field('bTitle'); const slug = field('bSlug') || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
           const data = { title, slug, author: field('bAuthor'), description: field('bDesc'), excerpt: field('bExcerpt'), body: field('bBody'), status, hero_image: p?.hero_image || '', hero_alt: field('bAlt') };
+          if (saving) return;
+          if (status === 'scheduled') {
+            const when=new Date(field('bScheduleAt'));
+            if (!field('bScheduleAt') || !Number.isFinite(when.getTime()) || when <= new Date()) { toast('Choose a future publication time.',true); return; }
+            data.publish_at=when.toISOString();
+          }
           const file = $('#bImage', m).files[0];
           if (file) { if (file.size > 1500000) { toast('Choose an image under 1.5 MB.', true); return; }
             try { const encoded = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(file); });
               const uploaded = await api('/api/admin/blog-images', {method:'POST', body:{data:encoded,filename:file.name}}); data.hero_image = uploaded.url;
             } catch(e) { toast('Image upload failed: ' + e.message, true); return; } }
-          try { await api(p ? '/api/admin/blogs/' + p.id : '/api/admin/blogs', { method: p ? 'PUT' : 'POST', body: data }); close(); toast(status === 'published' ? 'Article published' : 'Draft saved'); admin(el, ['blogs']); } catch(e) { toast(e.message, true); } };
-        $('#bDraft', m).onclick = () => save('draft'); $('#bPublish', m).onclick = () => save('published');
+          saving=true;
+          const buttons=['bDraft','bPublish','bSchedule'].map(id=>$('#'+id,m)); buttons.forEach(b=>b.disabled=true);
+          try { await api(p ? '/api/admin/blogs/' + p.id : '/api/admin/blogs', { method: p ? 'PUT' : 'POST', body: data }); close(); toast(status === 'published' ? 'Article published' : status === 'scheduled' ? 'Article scheduled' : 'Draft saved'); admin(el, ['blogs']); } catch(e) { toast(e.message, true); } finally { saving=false; buttons.forEach(b=>b.disabled=false); } };
+        $('#bSchedule',m).onclick = () => save('scheduled'); $('#bDraft', m).onclick = () => save('draft'); $('#bPublish', m).onclick = () => save('published');
         if (p) $('#bDelete', m).onclick = async () => { if (!confirm('Delete this article permanently?')) return; try { await api('/api/admin/blogs/' + p.id, {method:'DELETE'}); close(); admin(el, ['blogs']); } catch(e) { toast(e.message, true); } };
       });
     }

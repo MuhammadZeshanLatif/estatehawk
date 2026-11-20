@@ -118,13 +118,27 @@ def funnel(days=30):
             "totals": {k: sum(v[k] for v in groups.values()) for k in EVENTS}}
 
 
+def publish_due():
+    """Activate due schedules on a content request, including the first visit after sleep."""
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    db.run("UPDATE blog_posts SET status='published' WHERE status='scheduled' AND published<=?", (now,))
+
+
 def posts(status=None):
+    publish_due()
     if status == "published":
         return db.q("SELECT * FROM blog_posts WHERE status='published' ORDER BY published DESC, id DESC")
     return db.q("SELECT * FROM blog_posts ORDER BY updated DESC, id DESC")
 
 
+def related_candidates():
+    """Only lightweight public article fields; never load every article body for sidebars."""
+    publish_due()
+    return db.q("SELECT id,slug,title,status,published,hero_image FROM blog_posts WHERE status='published'")
+
+
 def post(slug, published_only=True):
+    publish_due()
     sql = "SELECT * FROM blog_posts WHERE slug=?" + (" AND status='published'" if published_only else "")
     return db.q1(sql, (slug,))
 
@@ -150,16 +164,27 @@ def save(payload, post_id=None):
     hero_image = str(payload.get("hero_image") or "").strip()
     hero_alt = str(payload.get("hero_alt") or "").strip()[:180]
     status = payload.get("status") or "draft"
-    if not title or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug) or not body or status not in ("draft", "published"):
+    if not title or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug) or not body or status not in ("draft", "published", "scheduled"):
         raise HTTPException(400, "Add a title, URL slug and article body before saving.")
     if len(body) > 100000:
         raise HTTPException(400, "Article is too long.")
     validate_body_images(body)
     if hero_image and (not re.fullmatch(MEDIA_PATH, hero_image) or not hero_alt):
         raise HTTPException(400, "Upload a cover image and describe it for readers using a screen reader.")
-    existing = db.q1("SELECT id,published FROM blog_posts WHERE id=?", (post_id,)) if post_id else None
+    existing = db.q1("SELECT id,published,status FROM blog_posts WHERE id=?", (post_id,)) if post_id else None
     now = dt.datetime.now(dt.timezone.utc).isoformat()
-    published = (existing or {}).get("published") or (now if status == "published" else None)
+    previous = existing or {}
+    published = previous.get("published") if previous.get("status") != "scheduled" else None
+    if status == "scheduled":
+        try:
+            when = dt.datetime.fromisoformat(str(payload.get("publish_at") or "").replace("Z", "+00:00"))
+            if when.tzinfo is None or when <= dt.datetime.now(dt.timezone.utc):
+                raise ValueError()
+            published = when.astimezone(dt.timezone.utc).isoformat()
+        except (ValueError, TypeError):
+            raise HTTPException(400, "Choose a future publication time with a timezone.")
+    elif status == "published":
+        published = published or now
     try:
         if post_id:
             if not existing:

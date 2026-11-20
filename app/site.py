@@ -7,7 +7,7 @@ import os
 import re
 import time
 
-from . import db, plans, content
+from . import db, plans, content, blog_layout
 from .site_ui import ILL_DB, ILL_HOUSE, ILL_MAP, alerts_mock, browser, ic, leads_mock, logo, offer_mock, owner_mock, pipeline_mock, property_mock, score_mock
 from . import site_ui
 
@@ -649,15 +649,56 @@ def blog_article(request, slug, item=None):
         return None
     path = f'/blog/{slug}'
     bc, bs = crumbs(request, [("/blog", "Blog"), (path, item["title"])])
+    rendered, headings, minutes = blog_layout.article_body(content.body_html(item["body"]))
+    author = {"@type": "Organization" if item["author"] == "EstateHawk" else "Person", "name": item["author"]}
+    if item["author"] == "EstateHawk":
+        author["url"] = base_url(request) + "/about"
     article = {"@context": "https://schema.org", "@type": "BlogPosting", "headline": item["title"],
                "description": item["description"], "mainEntityOfPage": base_url(request) + path,
-               "datePublished": item["published"], "dateModified": item["updated"],
-               "author": {"@type": "Organization" if item["author"] == "EstateHawk" else "Person", "name": item["author"]}}
+               "author": author, "dateModified": item["updated"], "inLanguage": "en-US"}
+    if item.get("status") == "published" and item.get("published"):
+        article["datePublished"] = item["published"]
     if item.get("hero_image"):
         article["image"] = base_url(request) + item["hero_image"]
-    cover = f'<img src="{esc(item["hero_image"])}" alt="{esc(item["hero_alt"])}" width="1200" height="630" style="width:100%;height:auto;border-radius:16px;margin:0 0 30px" fetchpriority="high">' if item.get("hero_image") else ""
-    body = f'<section class="sec"><div class="wrap" style="max-width:860px">{bc}<article class="blog-article"><header style="margin:28px 0"><span class="eyebrow">EstateHawk blog</span><h1 style="margin:12px 0">{esc(item["title"])}</h1><p>{esc(item["excerpt"] or item["description"])}</p><p class="small" style="margin-top:16px">By {esc(item["author"])} · {esc((item["published"] or "")[:10])}</p></header>{cover}<div class="blog-body">{content.body_html(item["body"])}</div></article><a class="btn" href="/blog" style="margin-top:36px">More articles</a></div></section><style>.blog-body h2,.blog-body h3{{margin:34px 0 12px}}.blog-body p,.blog-body li{{font-size:17px;line-height:1.8}}.blog-body p,.blog-body ul{{margin:0 0 18px}}.blog-body a{{color:var(--green);text-decoration:underline;text-underline-offset:3px}}.blog-figure{{margin:30px 0}}.blog-figure img{{display:block;width:100%;max-width:100%;height:auto;border-radius:12px}}.blog-figure figcaption{{margin-top:10px;color:var(--muted);font-size:14px;line-height:1.6}}</style>'
-    return page(request, path, f'{item["title"]} | EstateHawk', item["description"] or item["excerpt"], body, [bs, article], image=item.get("hero_image"))
+    def stamp(label, value):
+        if not value:
+            return ""
+        try:
+            parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            text = parsed.strftime("%b %d, %Y").replace(" 0", " ")
+        except ValueError:
+            return ""
+        return f'<span>{label} <time datetime="{esc(value)}">{text}</time></span>'
+    dates = stamp("Published", item.get("published")) if item.get("status") == "published" else ""
+    if not item.get("published") or item["updated"][:10] != item["published"][:10]:
+        dates += stamp("Updated", item.get("updated"))
+    icon = '<img src="/site/icon-180.png" alt="" width="28" height="28">'
+    byline = f'<span class="blog-byline">{icon}By {esc(item["author"])}</span>'
+    if item["author"] == "EstateHawk":
+        byline = f'<a class="blog-byline" href="/about">{icon}By EstateHawk</a>'
+    def toc(mobile=False):
+        entries = ''.join(f'<li class="{"sub" if level == "3" else ""}"><a href="#{ident}">{esc(title)}</a></li>' for level, ident, title in headings)
+        listing = f'<ol>{entries}</ol>'
+        if mobile:
+            return f'<details class="blog-toc blog-panel blog-mobile-toc"><summary>On this page</summary><nav aria-label="Article sections">{listing}</nav></details>'
+        return f'<nav class="blog-toc blog-panel" aria-label="On this page"><h2>On this page</h2>{listing}<a class="back-top" href="#article-top">↑ Back to top</a></nav>'
+    left = f'<aside class="blog-left">{toc()}</aside>' if headings else ''
+    cover = f'<img class="blog-cover" src="{esc(item["hero_image"])}" alt="{esc(item["hero_alt"])}" width="1200" height="800" fetchpriority="high">' if item.get("hero_image") else ''
+    author_detail = '<p>Property research resources</p><a href="/about">About EstateHawk →</a>' if item["author"] == "EstateHawk" else ''
+    author_card = f'<section class="blog-panel blog-author" aria-label="About the author"><h2>About the author</h2><img src="/site/icon-180.png" alt="" width="56" height="56"><strong>{esc(item["author"])}</strong>{author_detail}</section>'
+    matches = blog_layout.related(item, content.related_candidates())
+    related_rows = ''
+    for other in matches:
+        thumb = f'<img src="{esc(other["hero_image"])}" alt="" width="60" height="54" loading="lazy">' if other.get("hero_image") else ''
+        related_rows += f'<a href="/blog/{esc(other["slug"])}">{thumb}<span>{esc(other["title"])}</span></a>'
+    related_card = f'<section class="blog-panel blog-related" aria-label="Related reading"><h2>Related reading</h2>{related_rows}</section>' if matches else ''
+    body = (f'<section class="blog-shell"><div class="wrap">{bc}<div class="blog-grid">{left}'
+            f'<article class="blog-article" id="article-top"><header><span class="eyebrow">EstateHawk blog</span><h1>{esc(item["title"])}</h1>'
+            f'<p class="blog-deck">{esc(item["excerpt"] or item["description"])}</p><div class="blog-meta">{byline}{dates}<span>{minutes} min read</span></div></header>'
+            f'{toc(True) if headings else ""}{cover}<div class="blog-body">{rendered}</div><a class="btn blog-more" href="/blog">More articles →</a></article>'
+            f'<aside class="blog-right">{author_card}{related_card}</aside></div></div></section><style>{blog_layout.CSS}</style>{blog_layout.JS}')
+    result = page(request, path, f'{item["title"]} | EstateHawk', item["description"] or item["excerpt"], body, [bs, article], image=item.get("hero_image"))
+    return result.replace('<meta property="og:type" content="website">', '<meta property="og:type" content="article">', 1)
 
 
 STATIC_PAGES = {"": home, "features": features, "how-it-works": how, "pricing": pricing, "counties": counties, "guides": guides,
