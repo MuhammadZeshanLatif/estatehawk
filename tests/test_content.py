@@ -41,6 +41,31 @@ class ContentTests(unittest.TestCase):
         self.assertIn("reading-county-tax-lists", site.sitemap(request()))
         self.assertIn('"@type":"BlogPosting"', site.render(request(), "blog/reading-county-tax-lists"))
 
+    def test_schedule_visibility_timezone_activation_and_cancel(self):
+        data = {"title": "Scheduled guide", "slug": "scheduled-guide", "body": "## Read\nFull text", "status": "scheduled", "publish_at": "2099-01-02T10:00:00+05:00"}
+        item = content.save(data)
+        self.assertEqual(item["published"], "2099-01-02T05:00:00+00:00")
+        self.assertIsNone(content.post(data["slug"]))
+        self.assertNotIn(data["slug"], site.sitemap(request()))
+        preview = site.blog_article(request(), item["slug"], item)
+        self.assertNotIn('datePublished', preview)
+        self.assertIn('blog-grid', preview)
+        canceled = content.save({**data, "status": "draft"}, item["id"])
+        self.assertIsNone(canceled["published"])
+        content.save(data, item["id"])
+        db.run("UPDATE blog_posts SET published=? WHERE id=?", ("2020-01-01T05:00:00+00:00", item["id"]))
+        self.assertEqual(content.post(data["slug"])["status"], "published")
+        self.assertIn(data["slug"], site.sitemap(request()))
+        public = site.render(request(), "blog/"+data["slug"])
+        self.assertIn('blog-grid', public)
+        self.assertIn('datePublished', public)
+        self.assertEqual(public.count('<h1'), 1)
+
+    def test_schedule_rejects_missing_past_naive_invalid_times(self):
+        for value in [None, "bad", "2020-01-01T00:00:00Z", "2099-01-01T00:00:00"]:
+            with self.subTest(value=value), self.assertRaises(HTTPException):
+                content.save({"title": "Bad", "slug": "bad-schedule", "body": "Full", "status": "scheduled", "publish_at": value})
+
     def test_body_escapes_script_and_slug_collision(self):
         self.assertIn("&lt;script&gt;", content.body_html("<script>alert(1)</script>"))
         data = {"title": "One", "slug": "same", "body": "Body", "status": "draft"}
