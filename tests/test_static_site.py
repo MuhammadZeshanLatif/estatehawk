@@ -59,6 +59,7 @@ class StaticSiteTests(unittest.TestCase):
         htaccess = (out / ".htaccess").read_text(encoding="utf-8")
         self.assertIn("https://app.getestatehawk.com%{REQUEST_URI}", htaccess)
         self.assertIn("RewriteRule ^(.+)$ $1.html [L]", htaccess)
+        self.assertIn("RewriteRule ^(api|v1)(/.*)?$ https://app.getestatehawk.com%{REQUEST_URI} [R=308,L]", htaccess)
         self.assertTrue((out / "404.html").is_file() and (out / "index.html").is_file())
 
     def test_build_needs_separate_app_url(self):
