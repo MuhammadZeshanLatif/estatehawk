@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat, content
+from . import db, scoring, ai, notify, jobs, demo, geocode, contacts, auth, ctx, plans, site, billing, mailer, google_auth, quality, research, chat, content, static_site
 from .counties import KNOWN_ISSG
 from .scraper.issg import IssgClient
 
@@ -47,17 +47,44 @@ async def bad_value(request, exc):
 
 @app.middleware("http")
 async def canonical_host(request, call_next):
-    """Pages on the old onrender address move to the real domain, so Google sees one site. The API stays on both."""
+    """One address per page so Google sees one site.
+    Website pages live on getestatehawk.com; once APP_URL is set the product (login, dashboard, API) lives there.
+    The old onrender address and the wrong host for a page answer with a 301 to the right one. The API stays on all hosts."""
     host = (request.url.hostname or "").lower()
-    if host == "www.getestatehawk.com" and request.method in ("GET", "HEAD"):
+    path = request.url.path
+    if request.method in ("GET", "HEAD") and not path.startswith("/api/"):
         from fastapi.responses import RedirectResponse
         q = ("?" + request.url.query) if request.url.query else ""
-        return RedirectResponse(site.CANONICAL + request.url.path + q, status_code=301)
-    if host.endswith(".onrender.com") and request.method in ("GET", "HEAD") and not request.url.path.startswith("/api/"):
-        from fastapi.responses import RedirectResponse
-        q = ("?" + request.url.query) if request.url.query else ""
-        return RedirectResponse(site.CANONICAL + request.url.path + q, status_code=301)
+        app_base = site.app_url()
+        app_host = app_base.split("://", 1)[-1].split("/", 1)[0].lower()
+        separate = app_base != site.CANONICAL
+        target = None
+        if host == "www.getestatehawk.com" or host.endswith(".onrender.com"):
+            target = app_base if separate and site.is_app_path(path) else site.CANONICAL
+        elif separate and host == app_host and not site.is_app_path(path) and path not in ("/robots.txt", "/sitemap.xml"):
+            target = site.CANONICAL  # a website page asked for on the app host
+        elif separate and host == site.CANONICAL.split("://", 1)[1] and site.is_app_path(path):
+            target = app_base  # only reached while DNS still points the main domain here
+        if target:
+            return RedirectResponse(target + path + q, status_code=301)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def website_cors(request, call_next):
+    """The static website (contact form, chat box) calls a few public API routes from getestatehawk.com."""
+    origin = request.headers.get("origin", "")
+    public = request.url.path.startswith("/api/public/")
+    allowed = public and origin in (site.CANONICAL, "https://www.getestatehawk.com") + tuple(
+        o.strip() for o in os.environ.get("EXTRA_SITE_ORIGINS", "").split(",") if o.strip())
+    if allowed and request.method == "OPTIONS":
+        return Response(status_code=204, headers={"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+                                                  "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400", "Vary": "Origin"})
+    resp = await call_next(request)
+    if allowed:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+    return resp
 
 
 @app.get("/healthz")
@@ -256,7 +283,7 @@ DISPOSABLE = {"mailinator.com", "10minutemail.com", "guerrillamail.com", "guerri
 
 
 def _verify_link(request, uid):
-    return f"{site.base_url(request)}/verify-email?token={auth.make_reset(uid, 'verify')}"
+    return f"{site.app_url(request)}/verify-email?token={auth.make_reset(uid, 'verify')}"
 
 
 def _county_ok(cid):
@@ -288,7 +315,7 @@ def _new_trial(request, name, email, pw_hash, company, cid, ip, how, phone=""):
     u = db.q1("SELECT * FROM users WHERE email=?", (email,))
     auth.audit("signed up", f"{company} ({email}) trial" + (" via Google" if how == "google" else ""), user=u, org=oid, ip=ip)
     cname = (db.q1("SELECT name FROM counties WHERE id=?", (cid,)) or {}).get("name", "your county")
-    site_url = site.base_url(request)
+    site_url = site.app_url(request)
     rid = u["id"] if u else uid
     confirm = how != "google"
     mailer.send(email, "Welcome to EstateHawk: confirm your email" if confirm else "Welcome to EstateHawk: your 14-day trial is on", f"Welcome, {name.split(' ')[0]}",
@@ -320,7 +347,7 @@ def google_start(request: Request, county_id: str = "", company: str = "", phone
         phone = _optional_phone(phone)
     except HTTPException:
         return _back("/signup", "Enter a valid phone number, or leave it blank.")
-    url, cookie = google_auth.start(site.base_url(request), cid, company, phone)
+    url, cookie = google_auth.start(site.app_url(request), cid, company, phone)
     r = RedirectResponse(url, status_code=303)
     https = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
     r.set_cookie(google_auth.COOKIE, cookie, max_age=600, httponly=True, samesite="lax", secure=https, path="/api/auth/google")
@@ -334,7 +361,7 @@ def google_callback(request: Request, code: str = "", state: str = "", error: st
         return _back("/login", "Google sign-in was cancelled.")
     auth.throttle(ip)
     try:
-        p = google_auth.finish(site.base_url(request), code, state, request.cookies.get(google_auth.COOKIE))
+        p = google_auth.finish(site.app_url(request), code, state, request.cookies.get(google_auth.COOKIE))
     except ValueError as e:
         auth.failed(ip)
         return _back("/login", str(e))
@@ -457,7 +484,7 @@ async def auth_forgot(request: Request):
     email = (b.get("email") or "").strip().lower()[:120]
     u = db.q1("SELECT id, name, active FROM users WHERE email=?", (email,))
     if u and u["active"]:
-        link = f"{site.base_url(request)}/reset-password?token={auth.make_reset(u['id'])}"
+        link = f"{site.app_url(request)}/reset-password?token={auth.make_reset(u['id'])}"
         mailer.send(email, "Reset your EstateHawk password", "Reset your password",
                     ["Someone (hopefully you) asked to reset the password for this EstateHawk account.",
                      f"The link works once and expires in {auth.RESET_MINUTES} minutes. If you did not ask, ignore this email."],
@@ -508,7 +535,7 @@ def _user_in_my_org(uid):
 def _send_support_reset(user, request):
     if not user or not user["active"]:
         raise HTTPException(404, "Active user not found")
-    link = f"{site.base_url(request)}/reset-password?token={auth.make_reset(user['id'])}"
+    link = f"{site.app_url(request)}/reset-password?token={auth.make_reset(user['id'])}"
     sent = mailer.send(user["email"], "Reset your EstateHawk password", "Reset your password",
                        ["EstateHawk support sent you a secure link to choose a new password.",
                         "The link works once and expires after a short time. If you did not request help, ignore this email."],
@@ -543,7 +570,7 @@ async def users_add(request: Request):
                  (email, (b.get("name") or "").strip() or email.split("@")[0], auth.hash_pw(pw or _s.token_urlsafe(24)),
                   b.get("role") if b.get("role") in ("admin", "member") else "member", jobs.now(), _team_org(), _optional_phone(b.get("phone"))))
     me = ctx.get().get("user") or {}
-    link = f"{site.base_url(request)}/reset-password?invite=1&token={auth.make_reset(uid, 'invite')}"
+    link = f"{site.app_url(request)}/reset-password?invite=1&token={auth.make_reset(uid, 'invite')}"
     sent = mailer.send(email, f"{me.get('name') or 'Your team'} invited you to EstateHawk", "You are invited to EstateHawk",
                        [f"{mailer.esc(me.get('name') or 'A teammate')} added you to <b>{mailer.esc(info['name'])}</b> on EstateHawk, where your team finds and works tax-delinquent property leads.",
                         "Choose your password to get started. The link works for 7 days."], ("Set my password", link))
@@ -1793,7 +1820,7 @@ async def billing_checkout(request: Request):
         raise HTTPException(400, "The owner company does not need a plan")
     u = ctx.get().get("user") or {}
     try:
-        url = billing.start_checkout(OID(), plan, u.get("email"), site.base_url(request))
+        url = billing.start_checkout(OID(), plan, u.get("email"), site.app_url(request))
     except Exception as e:
         raise HTTPException(400, str(e))
     auth.audit("checkout started", plan)
@@ -1996,12 +2023,18 @@ def admin_blogs():
 @app.post("/api/admin/blogs")
 async def admin_blog_create(request: Request):
     item = content.save(await request.json())
+    if item.get("status") == "published":
+        static_site.request_rebuild("blog publish")
     return item
 
 
 @app.put("/api/admin/blogs/{post_id}")
 async def admin_blog_update(post_id: int, request: Request):
-    return content.save(await request.json(), post_id)
+    before = db.q1("SELECT status FROM blog_posts WHERE id=?", (post_id,)) or {}
+    saved = content.save(await request.json(), post_id)
+    if "published" in (before.get("status"), saved.get("status")):
+        static_site.request_rebuild("blog update")
+    return saved
 
 
 @app.get("/api/admin/blogs/{post_id}/preview")
@@ -2016,7 +2049,10 @@ def admin_blog_preview(post_id: int, request: Request):
 
 @app.delete("/api/admin/blogs/{post_id}")
 def admin_blog_delete(post_id: int):
+    before = db.q1("SELECT status FROM blog_posts WHERE id=?", (post_id,)) or {}
     db.run("DELETE FROM blog_posts WHERE id=?", (post_id,))
+    if before.get("status") == "published":
+        static_site.request_rebuild("blog delete")
     return {"ok": True}
 
 

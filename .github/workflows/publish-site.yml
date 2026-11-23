@@ -1,0 +1,56 @@
+name: Publish website to SymbolHost
+# Builds the public website (home, pricing, counties, blog) as plain HTML and uploads it by FTP.
+# Runs when a blog post is published/changed (Render sends a "publish-site" event), after the daily
+# county sync (county numbers change), on every push to main, and from the "Run workflow" button.
+on:
+  repository_dispatch:
+    types: [publish-site]
+  workflow_run:
+    workflows: ["Daily county sync"]
+    types: [completed]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: publish-site
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    # Does nothing until the FTP details are saved as repository secrets.
+    if: ${{ vars.SITE_PUBLISH_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      APP_URL: ${{ vars.APP_URL || 'https://app.getestatehawk.com' }}
+      TZ: Asia/Karachi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m app.static_site build dist/site
+      - name: Check the build
+        run: |
+          test -f dist/site/index.html
+          test -f dist/site/blog.html
+          test -f dist/site/.htaccess
+          ! grep -rl 'href="/login"' dist/site --include=*.html
+      - name: Upload to SymbolHost
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ vars.FTP_PROTOCOL || 'ftps' }}
+          local-dir: ./dist/site/
+          server-dir: ${{ vars.FTP_SERVER_DIR || './public_html/' }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            cgi-bin/**
+            .well-known/**
