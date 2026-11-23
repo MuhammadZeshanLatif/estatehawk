@@ -12,7 +12,7 @@ jobs:
     steps:
       - run: |
           for i in 1 2 3; do
-            curl -fsS -m 90 https://getestatehawk.com/healthz && exit 0
+            curl -fsSL -m 90 "${{ vars.APP_URL || 'https://getestatehawk.com' }}/healthz" && exit 0
             sleep 10
           done
           exit 1

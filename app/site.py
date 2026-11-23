@@ -29,6 +29,24 @@ def base_url(request=None):
     return CANONICAL
 
 
+def app_url(request=None):
+    """Where the signed-in product lives. Same as the website until APP_URL (e.g. https://app.getestatehawk.com) is set."""
+    url = os.environ.get("APP_URL")
+    if url:
+        return url.rstrip("/")
+    return base_url(request)
+
+
+# Paths that belong to the product (Render) and never to the static website host.
+APP_PATHS = ("app", "login", "signup", "forgot-password", "reset-password", "check-email", "verify-email",
+             "report", "letters", "v1", "api", "blog-media", "static", "manifest.webmanifest", "healthz")
+
+
+def is_app_path(path):
+    first = path.strip("/").split("/", 1)[0]
+    return first in APP_PATHS
+
+
 # ------------------------------------------------------------------ live numbers (cached)
 _cache = {"t": 0, "v": None}
 
