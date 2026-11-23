@@ -31,7 +31,9 @@ RewriteCond %{HTTPS} !=on [OR]
 RewriteCond %{HTTP_HOST} ^www\. [NC]
 RewriteRule ^ https://{SITE_HOST}%{REQUEST_URI} [R=301,L]
 
-# the product (sign in, dashboard, API, email links) lives on the app host
+# the product lives on the app host. API calls keep their method and body (308), so an old
+# webhook or form still pointed at this domain reaches the app instead of failing.
+RewriteRule ^(api|v1)(/.*)?$ {APP_URL}%{REQUEST_URI} [R=308,L]
 RewriteRule ^({APP_PATHS})(/.*)?$ {APP_URL}%{REQUEST_URI} [R=301,L]
 
 # /page.html and /page/ are the same page as /page
